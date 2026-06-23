@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify, Response
 from datetime import datetime, timezone
+from urllib.parse import quote
 import requests
 import os
 import math
 import base64
+import re
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -160,9 +162,17 @@ BBR_HEATING_FUEL = {
     "9": "Andet",
 }
 
+BBR_STATUS = {
+    "1": "Bygning under opførelse",
+    "2": "Bygning færdigmeldt",
+    "3": "Bygning nedrevet",
+    "4": "Bygning nedbrændt",
+    "5": "Bygning under sletning",
+    "6": "Opført",
+}
+
 BBR_WATER_SUPPLY = {}
 BBR_ASBEST_MATERIAL = {}
-BBR_STATUS = {}
 
 
 def translate_bbr_code(code, mapping):
@@ -178,8 +188,15 @@ def translate_bbr_code(code, mapping):
 
 
 # -------------------------------------------------------
-# Retning og afstand
+# Retning, afstand og små helpers
 # -------------------------------------------------------
+
+def parse_radius(value, default=250):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
 
 def direction_from_degrees(deg):
     if deg is None:
@@ -221,6 +238,24 @@ def distance_meters(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return round(radius_earth_m * c)
+
+
+def is_positive_text(value):
+    if value is None:
+        return False
+
+    if not isinstance(value, str):
+        return True
+
+    bad_parts = [
+        "Ikke verificeret",
+        "Ikke oplyst",
+        "Ukendt",
+        "ikke fundet",
+        "ikke koblet",
+    ]
+
+    return not any(part.lower() in value.lower() for part in bad_parts)
 
 
 # -------------------------------------------------------
@@ -553,6 +588,43 @@ def categorize_osm_risk(tags):
     return categories
 
 
+def build_osm_risk_summary(findings):
+    summary = {}
+
+    for finding in findings:
+        distance = finding.get("distance_m")
+
+        for category in finding.get("categories", []):
+            name = category.get("category")
+            note = category.get("note")
+            risk_level = category.get("risk_level")
+
+            if not name:
+                continue
+
+            if name not in summary:
+                summary[name] = {
+                    "category": name,
+                    "count": 0,
+                    "nearest_distance_m": None,
+                    "risk_level": risk_level,
+                    "note": note,
+                    "verification_status": "OSM-data - ikke verificeret"
+                }
+
+            summary[name]["count"] += 1
+
+            if distance is not None:
+                current = summary[name]["nearest_distance_m"]
+                if current is None or distance < current:
+                    summary[name]["nearest_distance_m"] = distance
+
+    return sorted(
+        summary.values(),
+        key=lambda item: item["nearest_distance_m"] if item["nearest_distance_m"] is not None else 999999
+    )
+
+
 def get_osm_risk_check(latitude, longitude, radius_m=250):
     if latitude is None or longitude is None:
         return {
@@ -560,6 +632,8 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
             "query_radius_m": int(radius_m),
             "findings": [],
             "finding_count": 0,
+            "grouped_summary": {},
+            "osm_risk_summary": [],
             "verification_status": "OSM-risikotjek ikke verificeret"
         }
 
@@ -708,6 +782,7 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
                 "query_radius_m": int(radius_m),
                 "finding_count": len(findings),
                 "grouped_summary": grouped_summary,
+                "osm_risk_summary": build_osm_risk_summary(findings),
                 "findings": findings,
                 "note": "OSM-data kan være ufuldstændige, forældede eller forkerte. Alle fund skal verificeres før operativ brug.",
                 "verification_status": "Mulige risikoelementer fundet via åben datakilde - ikke verificeret"
@@ -724,6 +799,7 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
         "query_radius_m": int(radius_m),
         "finding_count": 0,
         "grouped_summary": {},
+        "osm_risk_summary": [],
         "findings": [],
         "attempts": attempts,
         "note": "OSM-risikotjek kunne ikke gennemføres via de testede Overpass-servere.",
@@ -769,7 +845,7 @@ def get_aerial_check(address_data, radius_m=250):
 
     public_image_url = (
         f"https://indsatsbrief-api.onrender.com/aerial-image.jpg"
-        f"?address={requests.utils.quote(normalized_address)}"
+        f"?address={quote(normalized_address)}"
     )
 
     return {
@@ -1090,7 +1166,9 @@ def test_bbr_graphql_address(access_address_id):
     if not access_address_id:
         return {
             "status": "error",
-            "message": "Mangler access_address_id"
+            "message": "Mangler access_address_id",
+            "nodes": [],
+            "attempts": attempts
         }
 
     for candidate in bbr_address_candidate_queries(access_address_id):
@@ -1132,6 +1210,7 @@ def test_bbr_graphql_address(access_address_id):
 
     return {
         "status": "no_candidate_worked",
+        "nodes": [],
         "attempts": attempts
     }
 
@@ -1247,12 +1326,213 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
 
 
 # -------------------------------------------------------
+# BBR fallback
+# -------------------------------------------------------
+
+def bbr_building_has_real_data(building_data):
+    if not building_data:
+        return False
+
+    useful_fields = [
+        "usage_text",
+        "building_type_text",
+        "construction_year",
+        "renovation_year",
+        "area_m2",
+        "outer_wall_material_text",
+        "roof_material_text",
+        "heating_fuel_text",
+        "asbestos_material_text",
+    ]
+
+    for field in useful_fields:
+        value = building_data.get(field)
+
+        if not is_positive_text(value):
+            continue
+
+        return True
+
+    return False
+
+
+def get_base_house_number(house_number):
+    if not house_number:
+        return None
+
+    match = re.match(r"^(\d+)", str(house_number).strip())
+
+    if not match:
+        return None
+
+    return match.group(1)
+
+
+def build_bbr_fallback_address_queries(address_data):
+    if not address_data:
+        return []
+
+    street_name = address_data.get("street_name")
+    house_number = address_data.get("house_number")
+    postal_code = address_data.get("postal_code")
+    city = address_data.get("city")
+    normalized_address = address_data.get("normalized_address")
+
+    queries = []
+
+    def add_query(label, query):
+        if not query:
+            return
+
+        query = str(query).strip()
+
+        if not query:
+            return
+
+        for existing in queries:
+            if existing["query"].lower() == query.lower():
+                return
+
+        queries.append({
+            "label": label,
+            "query": query
+        })
+
+    add_query("original_normalized_address", normalized_address)
+
+    if street_name and house_number and postal_code and city:
+        add_query(
+            "street_house_postal_city",
+            f"{street_name} {house_number}, {postal_code} {city}"
+        )
+
+    base_house_number = get_base_house_number(house_number)
+
+    if street_name and base_house_number and postal_code and city:
+        add_query(
+            "base_house_number_without_letter_or_floor",
+            f"{street_name} {base_house_number}, {postal_code} {city}"
+        )
+
+    return queries
+
+
+def get_bbr_with_fallback(address_data):
+    if not address_data:
+        return get_building_placeholder(address_data)
+
+    attempts = []
+
+    original_access_address_id = address_data.get("access_address_id")
+
+    if original_access_address_id:
+        original_result = test_bbr_graphql_address(original_access_address_id)
+        original_building = normalize_bbr_building_from_graphql(original_result, address_data)
+
+        attempts.append({
+            "label": "original_access_address_id",
+            "query": address_data.get("normalized_address"),
+            "access_address_id": original_access_address_id,
+            "bbr_status": original_result.get("status"),
+            "nodes_count": len(original_result.get("nodes") or [])
+        })
+
+        if bbr_building_has_real_data(original_building):
+            original_building["bbr_fallback"] = {
+                "used": False,
+                "matched_on": "original_access_address_id",
+                "attempts": attempts
+            }
+            return original_building
+
+    fallback_queries = build_bbr_fallback_address_queries(address_data)
+
+    seen_access_ids = set()
+    if original_access_address_id:
+        seen_access_ids.add(original_access_address_id)
+
+    for candidate in fallback_queries:
+        candidate_address_data = lookup_address(candidate["query"])
+
+        if not candidate_address_data or "error" in candidate_address_data:
+            attempts.append({
+                "label": candidate["label"],
+                "query": candidate["query"],
+                "address_lookup_status": "failed",
+                "address_lookup": candidate_address_data
+            })
+            continue
+
+        candidate_access_address_id = candidate_address_data.get("access_address_id")
+
+        if not candidate_access_address_id:
+            attempts.append({
+                "label": candidate["label"],
+                "query": candidate["query"],
+                "address_lookup_status": "no_access_address_id",
+                "candidate_address_data": candidate_address_data
+            })
+            continue
+
+        if candidate_access_address_id in seen_access_ids:
+            attempts.append({
+                "label": candidate["label"],
+                "query": candidate["query"],
+                "address_lookup_status": "duplicate_access_address_id",
+                "access_address_id": candidate_access_address_id
+            })
+            continue
+
+        seen_access_ids.add(candidate_access_address_id)
+
+        bbr_result = test_bbr_graphql_address(candidate_access_address_id)
+        building = normalize_bbr_building_from_graphql(bbr_result, candidate_address_data)
+
+        attempts.append({
+            "label": candidate["label"],
+            "query": candidate["query"],
+            "matched_address": candidate_address_data.get("normalized_address"),
+            "access_address_id": candidate_access_address_id,
+            "bbr_status": bbr_result.get("status"),
+            "nodes_count": len(bbr_result.get("nodes") or [])
+        })
+
+        if bbr_building_has_real_data(building):
+            building["bbr_fallback"] = {
+                "used": True,
+                "matched": True,
+                "matched_on": candidate["label"],
+                "original_address": address_data.get("normalized_address"),
+                "matched_address": candidate_address_data.get("normalized_address"),
+                "attempts": attempts,
+                "note": "BBR-data er fundet via fallback-adresse. Skal verificeres ved operativ brug."
+            }
+
+            building["verification_status"] = (
+                "BBR/bygningsdata fundet via fallback-adresse - skal verificeres"
+            )
+
+            return building
+
+    placeholder = get_building_placeholder(address_data)
+    placeholder["source"] = "BBR GraphQL fallback prøvet, men ingen bygning fundet"
+    placeholder["bbr_fallback"] = {
+        "used": True,
+        "matched": False,
+        "attempts": attempts
+    }
+    placeholder["verification_status"] = "BBR/bygningsdata ikke fundet"
+
+    return placeholder
+
+
+# -------------------------------------------------------
 # Placeholders
 # -------------------------------------------------------
 
 def get_building_placeholder(address_data):
     return {
-        "source": "BBR ikke koblet på incident-brief endnu",
+        "source": "BBR ikke fundet",
         "bbr_id": None,
         "access_address_id": address_data.get("access_address_id") if address_data else None,
         "address_id": address_data.get("address_id") if address_data else None,
@@ -1286,7 +1566,7 @@ def get_building_placeholder(address_data):
         "technical_installations": [],
 
         "fire_relevant_notes": [
-            "BBR/bygningsdata er ikke koblet på incident-brief endnu",
+            "BBR/bygningsdata blev ikke fundet",
             "Bygningstype, areal, etager, kælder, tag og tekniske anlæg skal verificeres i BBR/beredskabets egne systemer"
         ],
 
@@ -1330,7 +1610,7 @@ def home():
 def privacy_policy():
     html = """
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="da">
     <head>
         <meta charset="UTF-8">
         <title>Privacy Policy - IndsatsBrief Brand</title>
@@ -1396,18 +1676,9 @@ def privacy_policy():
         <h2>Data sharing and third-party services</h2>
         <p>
             Data may be processed by third-party services used to provide the response,
-            including:
+            including Dataforsyningen/DAWA, Datafordeleren/BBR, Open-Meteo,
+            OpenStreetMap/Overpass, Google Maps links, and Render hosting.
         </p>
-
-        <ul>
-            <li>Dataforsyningen/DAWA</li>
-            <li>Datafordeleren/BBR</li>
-            <li>Datafordeleren/GeoDanmark Ortofoto, if available</li>
-            <li>Open-Meteo</li>
-            <li>OpenStreetMap/Overpass</li>
-            <li>Google Maps links</li>
-            <li>Render hosting</li>
-        </ul>
 
         <h2>Purpose</h2>
         <p>
@@ -1467,18 +1738,20 @@ def test_bbr_graphql_address_route():
     access_address_id = address_data.get("access_address_id")
     bbr_address_result = test_bbr_graphql_address(access_address_id)
     normalized_building = normalize_bbr_building_from_graphql(bbr_address_result, address_data)
+    fallback_building = get_bbr_with_fallback(address_data)
 
     return jsonify({
         "address_data": address_data,
         "bbr_address_result": bbr_address_result,
-        "normalized_building": normalized_building
+        "normalized_building": normalized_building,
+        "fallback_building": fallback_building
     })
 
 
 @app.route("/test-hydrants", methods=["GET"])
 def test_hydrants():
     address = request.args.get("address", "")
-    radius_m = int(request.args.get("radius_m", 250))
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
 
     if not address:
         return jsonify({
@@ -1510,7 +1783,7 @@ def test_hydrants():
 @app.route("/osm-risk-check", methods=["GET"])
 def osm_risk_check_route():
     address = request.args.get("address", "")
-    radius_m = int(request.args.get("radius_m", 250))
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
 
     if not address:
         return jsonify({
@@ -1542,7 +1815,7 @@ def osm_risk_check_route():
 @app.route("/aerial-check", methods=["GET"])
 def aerial_check_route():
     address = request.args.get("address", "")
-    radius_m = int(request.args.get("radius_m", 250))
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
 
     if not address:
         return jsonify({
@@ -1593,7 +1866,7 @@ def aerial_image_route():
 
     public_image_url = (
         f"https://indsatsbrief-api.onrender.com/aerial-image.jpg"
-        f"?address={requests.utils.quote(address_data.get('normalized_address', address))}"
+        f"?address={quote(address_data.get('normalized_address', address))}"
     )
 
     return jsonify({
@@ -1687,7 +1960,7 @@ def hazmat_lookup():
 @app.route("/incident-brief", methods=["GET"])
 def incident_brief():
     address = request.args.get("address", "")
-    radius_m = int(request.args.get("radius_m", 250))
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
 
     if not address:
         return jsonify({"error": "Missing address"}), 400
@@ -1732,8 +2005,7 @@ def incident_brief():
         }
 
     if address_data and address_data.get("access_address_id"):
-        bbr_address_result = test_bbr_graphql_address(address_data.get("access_address_id"))
-        building_data = normalize_bbr_building_from_graphql(bbr_address_result, address_data)
+        building_data = get_bbr_with_fallback(address_data)
     else:
         building_data = get_building_placeholder(address_data)
 
@@ -1787,7 +2059,7 @@ def incident_brief():
             "Vejnavn og husnummer forsøgt hentet via Dataforsyningen/DAWA",
             "Kortlink genereret via OpenStreetMap",
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
-            "BBR GraphQL koblet via husnummer/adgangsadresse-id",
+            "BBR GraphQL forsøgt via adgangsadresse-id og fallback-adresser",
             "BBR-koder er oversat programmatisk, men bør verificeres ved kritisk indsats",
             "Mulige brandhaner forsøgt hentet fra OpenStreetMap/Overpass, men er ikke verificeret",
             "OSM-risikotjek er baseret på åbne OpenStreetMap-tags og må ikke betragtes som verificeret indsatsdata",

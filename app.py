@@ -1017,6 +1017,54 @@ def incident_brief():
 if __name__ == "__main__":
     app.run(debug=True)
 
+@app.route("/hazmat", methods=["GET"])
+def hazmat_lookup():
+    query = request.args.get("query", "").strip()
+
+    if not query:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler query parameter. Brug fx /hazmat?query=UN1203 eller /hazmat?query=benzin"
+        }), 400
+
+    cleaned_query = query.upper().replace(" ", "")
+
+    if cleaned_query.startswith("UN"):
+        search_text = cleaned_query
+        un_number = cleaned_query.replace("UN", "")
+    elif cleaned_query.isdigit():
+        search_text = f"UN{cleaned_query}"
+        un_number = cleaned_query
+    else:
+        search_text = query
+        un_number = None
+
+    return jsonify({
+        "query": query,
+        "search_text": search_text,
+        "un_number": un_number,
+
+        "official_lookup": {
+            "source": "Beredskabsstyrelsen Kemikalieberedskab",
+            "url": "https://kemikalieberedskab.dk/",
+            "instruction": f"Åbn linket og søg på: {search_text}"
+        },
+
+        "app_lookup": {
+            "source": "Beredskabsstyrelsens app",
+            "name": "Farlige stoffer",
+            "instruction": f"Brug samme søgetekst i appen: {search_text}"
+        },
+
+        "safety_note": [
+            "Denne API gengiver ikke kemikaliedata direkte fra opslagsværket.",
+            "Brug Kemikalieberedskab.dk, appen Farlige stoffer, ADR-oplysninger, sikkerhedsdatablad eller Kemisk Beredskab til verificeret indsatsinformation.",
+            "Gæt aldrig indsatsafstand, evakueringsafstand, slukningsmiddel, reaktionsfare eller værnemidler ud fra uverificerede data."
+        ],
+
+        "verification_status": "Officielt opslag påkrævet før brug ved indsats"
+    })
+
 @app.route("/privacy", methods=["GET"])
 def privacy_policy():
     html = """

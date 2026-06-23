@@ -1016,3 +1016,106 @@ def incident_brief():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+@app.route("/privacy", methods=["GET"])
+def privacy_policy():
+    html = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Privacy Policy - IndsatsBrief Brand</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 850px;
+                margin: 40px auto;
+                padding: 0 20px;
+                line-height: 1.6;
+                color: #222;
+            }
+            h1, h2 {
+                color: #111;
+            }
+            .note {
+                background: #f4f4f4;
+                padding: 12px;
+                border-left: 4px solid #555;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Privacy Policy for IndsatsBrief Brand</h1>
+
+        <p><strong>Last updated:</strong> 23 June 2026</p>
+
+        <p>
+            IndsatsBrief Brand is a custom GPT and API service that helps generate
+            incident briefing information based on address-related public and operationally
+            relevant data.
+        </p>
+
+        <h2>What data is sent to the API</h2>
+        <p>
+            When a user asks for an incident brief, the GPT may send the provided address
+            and selected radius to the IndsatsBrief API.
+        </p>
+
+        <p>The API may use the address to retrieve:</p>
+        <ul>
+            <li>Address and coordinate data</li>
+            <li>Map links</li>
+            <li>Weather and wind data</li>
+            <li>BBR/building register data</li>
+            <li>Possible fire hydrant data from open sources, if available</li>
+        </ul>
+
+        <h2>What data is not intentionally collected</h2>
+        <p>
+            The API does not intentionally collect names, phone numbers, CPR numbers,
+            private login information, payment information, or user account credentials.
+        </p>
+
+        <h2>Logging</h2>
+        <p>
+            The hosting provider may process standard technical logs such as request time,
+            endpoint, IP address, and error logs for operation, security, and troubleshooting.
+        </p>
+
+        <h2>Data sharing and third-party services</h2>
+        <p>
+            Data may be processed by third-party services used to provide the response,
+            including:
+        </p>
+
+        <ul>
+            <li>Dataforsyningen/DAWA</li>
+            <li>Datafordeleren/BBR</li>
+            <li>Open-Meteo</li>
+            <li>OpenStreetMap/Overpass</li>
+            <li>Render hosting</li>
+        </ul>
+
+        <h2>Purpose</h2>
+        <p>
+            The data is used only to generate incident briefing information, operate the
+            service, and troubleshoot the API.
+        </p>
+
+        <h2>Important limitation</h2>
+        <div class="note">
+            This service is decision support only. It does not replace verified emergency
+            services systems, local procedures, incident commander assessment, GIS,
+            object plans, official databases, or local operational knowledge.
+        </div>
+
+        <h2>Contact</h2>
+        <p>
+            For questions about this API or privacy policy, contact:<br>
+            <strong>Frederik Racher</strong>
+        </p>
+    </body>
+    </html>
+    """
+
+    return html

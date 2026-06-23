@@ -203,6 +203,49 @@ def test_bbr_graphql_connection():
         }
 
 
+def get_bbr_schema_fields():
+    api_key = os.getenv("DATAFORDELER_API_KEY")
+
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "DATAFORDELER_API_KEY mangler som environment variable"
+        }
+
+    url = f"https://graphql.datafordeler.dk/BBR/v3?apiKey={api_key}"
+
+    query = """
+    query {
+      __schema {
+        queryType {
+          fields {
+            name
+          }
+        }
+      }
+    }
+    """
+
+    try:
+        response = requests.post(
+            url,
+            json={"query": query},
+            timeout=20
+        )
+
+        return {
+            "status": "ok",
+            "status_code": response.status_code,
+            "response_text": response.text[:5000]
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
 # -------------------------------------------------------
 # BBR-klar placeholder
 # -------------------------------------------------------
@@ -274,6 +317,17 @@ def home():
 @app.route("/test-bbr", methods=["GET"])
 def test_bbr():
     result = test_bbr_graphql_connection()
+    status_code = result.get("status_code", 500)
+
+    if result.get("status") == "error":
+        return jsonify(result), 500
+
+    return jsonify(result), status_code
+
+
+@app.route("/test-bbr-schema", methods=["GET"])
+def test_bbr_schema():
+    result = get_bbr_schema_fields()
     status_code = result.get("status_code", 500)
 
     if result.get("status") == "error":
@@ -381,7 +435,9 @@ def incident_brief():
             "Vejnavn og husnummer forsøgt hentet via Dataforsyningen/DAWA",
             "Kortlink genereret via OpenStreetMap",
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
-            "BBR er strukturelt klargjort, men ikke koblet på endnu",
+            "BBR GraphQL-forbindelse kan testes via /test-bbr",
+            "BBR schema kan testes via /test-bbr-schema",
+            "BBR er strukturelt klargjort, men ikke koblet på incident-brief endnu",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
             "Brandhaner, gas og el er ikke verificeret"
         ]

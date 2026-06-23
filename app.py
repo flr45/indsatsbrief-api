@@ -178,7 +178,7 @@ def translate_bbr_code(code, mapping):
 
 
 # -------------------------------------------------------
-# Retningshjælp
+# Retning og afstand
 # -------------------------------------------------------
 
 def direction_from_degrees(deg):
@@ -202,10 +202,6 @@ def opposite_direction_text(deg):
     return direction_from_degrees(opposite)
 
 
-# -------------------------------------------------------
-# Afstand
-# -------------------------------------------------------
-
 def distance_meters(lat1, lon1, lat2, lon2):
     if None in [lat1, lon1, lat2, lon2]:
         return None
@@ -228,7 +224,7 @@ def distance_meters(lat1, lon1, lat2, lon2):
 
 
 # -------------------------------------------------------
-# Adresseopslag via Dataforsyningen/DAWA
+# Adresseopslag via DAWA
 # -------------------------------------------------------
 
 def lookup_address(address):
@@ -357,7 +353,7 @@ def get_weather(latitude, longitude):
 
 
 # -------------------------------------------------------
-# Brandhaner via OpenStreetMap / Overpass
+# Brandhaner via OSM / Overpass
 # -------------------------------------------------------
 
 def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
@@ -403,7 +399,7 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
             attempts.append({
                 "url": overpass_url,
                 "status_code": response.status_code,
-                "preview": response.text[:500]
+                "preview": response.text[:300]
             })
 
             response.raise_for_status()
@@ -431,7 +427,6 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
                     "longitude": hydrant_lon,
                     "distance_m": distance,
                     "map_url": f"https://www.openstreetmap.org/?mlat={hydrant_lat}&mlon={hydrant_lon}#map=19/{hydrant_lat}/{hydrant_lon}" if hydrant_lat and hydrant_lon else None,
-
                     "hydrant_type": tags.get("fire_hydrant:type"),
                     "position": tags.get("fire_hydrant:position"),
                     "diameter": tags.get("fire_hydrant:diameter"),
@@ -439,7 +434,6 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
                     "ref": tags.get("ref"),
                     "operator": tags.get("operator"),
                     "raw_tags": tags,
-
                     "verification_status": "Mulig brandhane fra OpenStreetMap - ikke verificeret"
                 })
 
@@ -474,6 +468,266 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
         "attempts": attempts,
         "note": "Overpass/OSM kunne ikke hentes fra de testede servere. Brandhaner/vandforsyning er ikke verificeret.",
         "verification_status": "Brandhaner/vandforsyning ikke verificeret"
+    }
+
+
+# -------------------------------------------------------
+# OSM risikotjek
+# -------------------------------------------------------
+
+def categorize_osm_risk(tags):
+    categories = []
+
+    if tags.get("generator:source") == "solar" or tags.get("plant:source") == "solar":
+        categories.append({
+            "category": "Muligt solcelleanlæg",
+            "risk_level": "OBS",
+            "note": "Registreret i OpenStreetMap som solenergi/solcelleanlæg - ikke verificeret"
+        })
+
+    if tags.get("power") in ["generator", "plant"] and (
+        tags.get("generator:source") == "solar" or tags.get("plant:source") == "solar"
+    ):
+        categories.append({
+            "category": "Muligt solcelle-/energianlæg",
+            "risk_level": "OBS",
+            "note": "Power-tag i OpenStreetMap indikerer mulig energiproduktion - ikke verificeret"
+        })
+
+    if tags.get("man_made") == "storage_tank":
+        categories.append({
+            "category": "Mulig tank/beholder",
+            "risk_level": "OBS",
+            "note": "Registreret i OpenStreetMap som tank/beholder - indhold ikke verificeret"
+        })
+
+    if tags.get("amenity") == "fuel":
+        categories.append({
+            "category": "Tankstation/brændstof",
+            "risk_level": "Vigtig",
+            "note": "Registreret i OpenStreetMap som tankstation/brændstofanlæg - ikke verificeret"
+        })
+
+    if tags.get("landuse") == "industrial":
+        categories.append({
+            "category": "Industriområde",
+            "risk_level": "OBS",
+            "note": "Registreret i OpenStreetMap som industriområde - konkret risiko ikke verificeret"
+        })
+
+    if tags.get("building") in ["industrial", "warehouse", "commercial", "retail"]:
+        categories.append({
+            "category": "Mulig erhvervs-/lagerbygning",
+            "risk_level": "OBS",
+            "note": "Bygningstype registreret i OpenStreetMap - ikke verificeret"
+        })
+
+    if tags.get("barrier") in ["gate", "bollard", "lift_gate"]:
+        categories.append({
+            "category": "Mulig adgangsbegrænsning",
+            "risk_level": "OBS",
+            "note": "Port/bom/adgangsbarriere registreret i OpenStreetMap - ikke verificeret"
+        })
+
+    if tags.get("access") in ["private", "no", "permissive"]:
+        categories.append({
+            "category": "Mulig adgangsbegrænsning",
+            "risk_level": "OBS",
+            "note": f"Access-tag i OpenStreetMap: {tags.get('access')} - skal verificeres"
+        })
+
+    if tags.get("railway"):
+        categories.append({
+            "category": "Jernbane/spor",
+            "risk_level": "OBS",
+            "note": "Jernbane/spor registreret i OpenStreetMap - afstand og adgang skal verificeres"
+        })
+
+    if tags.get("natural") == "water" or tags.get("waterway") or tags.get("landuse") == "reservoir":
+        categories.append({
+            "category": "Vand/sø/vandløb",
+            "risk_level": "Mulig ressource/risiko",
+            "note": "Vand registreret i OpenStreetMap - anvendelighed som vandforsyning ikke verificeret"
+        })
+
+    return categories
+
+
+def get_osm_risk_check(latitude, longitude, radius_m=250):
+    if latitude is None or longitude is None:
+        return {
+            "source": "OpenStreetMap/Overpass ikke forsøgt - mangler koordinater",
+            "query_radius_m": int(radius_m),
+            "findings": [],
+            "finding_count": 0,
+            "verification_status": "OSM-risikotjek ikke verificeret"
+        }
+
+    overpass_urls = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.ru/api/interpreter"
+    ]
+
+    query = f"""
+    [out:json][timeout:25];
+    (
+      node(around:{int(radius_m)},{latitude},{longitude})["generator:source"="solar"];
+      way(around:{int(radius_m)},{latitude},{longitude})["generator:source"="solar"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["generator:source"="solar"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["plant:source"="solar"];
+      way(around:{int(radius_m)},{latitude},{longitude})["plant:source"="solar"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["plant:source"="solar"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["power"="generator"];
+      way(around:{int(radius_m)},{latitude},{longitude})["power"="generator"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["power"="generator"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["power"="plant"];
+      way(around:{int(radius_m)},{latitude},{longitude})["power"="plant"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["power"="plant"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["man_made"="storage_tank"];
+      way(around:{int(radius_m)},{latitude},{longitude})["man_made"="storage_tank"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["man_made"="storage_tank"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["amenity"="fuel"];
+      way(around:{int(radius_m)},{latitude},{longitude})["amenity"="fuel"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["amenity"="fuel"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["landuse"="industrial"];
+      way(around:{int(radius_m)},{latitude},{longitude})["landuse"="industrial"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["landuse"="industrial"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["building"="industrial"];
+      way(around:{int(radius_m)},{latitude},{longitude})["building"="industrial"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["building"="industrial"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["building"="warehouse"];
+      way(around:{int(radius_m)},{latitude},{longitude})["building"="warehouse"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["building"="warehouse"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["barrier"="gate"];
+      way(around:{int(radius_m)},{latitude},{longitude})["barrier"="gate"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["barrier"="gate"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["barrier"="lift_gate"];
+      way(around:{int(radius_m)},{latitude},{longitude})["barrier"="lift_gate"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["barrier"="lift_gate"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["access"="private"];
+      way(around:{int(radius_m)},{latitude},{longitude})["access"="private"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["access"="private"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["railway"];
+      way(around:{int(radius_m)},{latitude},{longitude})["railway"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["railway"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["natural"="water"];
+      way(around:{int(radius_m)},{latitude},{longitude})["natural"="water"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["natural"="water"];
+
+      node(around:{int(radius_m)},{latitude},{longitude})["waterway"];
+      way(around:{int(radius_m)},{latitude},{longitude})["waterway"];
+      relation(around:{int(radius_m)},{latitude},{longitude})["waterway"];
+    );
+    out center tags 100;
+    """
+
+    attempts = []
+
+    for overpass_url in overpass_urls:
+        try:
+            response = requests.get(
+                overpass_url,
+                params={"data": query},
+                headers={
+                    "User-Agent": "IndsatsBrief-Brand/1.0",
+                    "Accept": "application/json"
+                },
+                timeout=30
+            )
+
+            attempts.append({
+                "url": overpass_url,
+                "status_code": response.status_code,
+                "preview": response.text[:300]
+            })
+
+            response.raise_for_status()
+            result = response.json()
+
+            findings = []
+
+            for element in result.get("elements", []):
+                tags = element.get("tags", {}) or {}
+                categories = categorize_osm_risk(tags)
+
+                if not categories:
+                    continue
+
+                if element.get("type") == "node":
+                    item_lat = element.get("lat")
+                    item_lon = element.get("lon")
+                else:
+                    center = element.get("center", {}) or {}
+                    item_lat = center.get("lat")
+                    item_lon = center.get("lon")
+
+                distance = distance_meters(latitude, longitude, item_lat, item_lon)
+
+                findings.append({
+                    "id": element.get("id"),
+                    "osm_type": element.get("type"),
+                    "name": tags.get("name"),
+                    "latitude": item_lat,
+                    "longitude": item_lon,
+                    "distance_m": distance,
+                    "map_url": f"https://www.openstreetmap.org/?mlat={item_lat}&mlon={item_lon}#map=19/{item_lat}/{item_lon}" if item_lat and item_lon else None,
+                    "categories": categories,
+                    "raw_tags": tags,
+                    "verification_status": "Fundet i OpenStreetMap - ikke verificeret"
+                })
+
+            findings = sorted(
+                findings,
+                key=lambda x: x["distance_m"] if x["distance_m"] is not None else 999999
+            )
+
+            grouped_summary = {}
+
+            for finding in findings:
+                for category in finding.get("categories", []):
+                    name = category.get("category")
+                    grouped_summary[name] = grouped_summary.get(name, 0) + 1
+
+            return {
+                "source": "OpenStreetMap via Overpass API",
+                "working_overpass_url": overpass_url,
+                "query_radius_m": int(radius_m),
+                "finding_count": len(findings),
+                "grouped_summary": grouped_summary,
+                "findings": findings,
+                "note": "OSM-data kan være ufuldstændige, forældede eller forkerte. Alle fund skal verificeres før operativ brug.",
+                "verification_status": "Mulige risikoelementer fundet via åben datakilde - ikke verificeret"
+            }
+
+        except Exception as e:
+            attempts.append({
+                "url": overpass_url,
+                "error": str(e)
+            })
+
+    return {
+        "source": "OpenStreetMap/Overpass API",
+        "query_radius_m": int(radius_m),
+        "finding_count": 0,
+        "grouped_summary": {},
+        "findings": [],
+        "attempts": attempts,
+        "note": "OSM-risikotjek kunne ikke gennemføres via de testede Overpass-servere.",
+        "verification_status": "OSM-risikotjek ikke verificeret"
     }
 
 
@@ -581,7 +835,7 @@ def get_aerial_check(address_data, radius_m=250):
 
 
 # -------------------------------------------------------
-# Ortofoto WMS via Datafordeleren
+# Datafordeler Ortofoto WMS, forsøgsmodul
 # -------------------------------------------------------
 
 def get_datafordeler_api_key():
@@ -589,14 +843,6 @@ def get_datafordeler_api_key():
 
 
 def build_ortofoto_wms_url(latitude, longitude, width=900, height=900, bbox_degrees=0.0012):
-    """
-    Bygger et WMS GetMap-link til GeoDanmark Ortofoto Forår.
-
-    VIGTIGT:
-    URL’en indeholder API-key og må derfor ikke returneres direkte til brugeren.
-    Denne funktion bruges kun internt.
-    """
-
     api_key = get_datafordeler_api_key()
 
     if not api_key:
@@ -647,11 +893,6 @@ def build_ortofoto_wms_url(latitude, longitude, width=900, height=900, bbox_degr
 
 
 def fetch_ortofoto_image(latitude, longitude):
-    """
-    Forsøger at hente ortofoto.
-    Returnerer metadata og base64-preview, men IKKE WMS-url med API-key.
-    """
-
     if latitude is None or longitude is None:
         return {
             "status": "error",
@@ -713,10 +954,6 @@ def fetch_ortofoto_image(latitude, longitude):
 
 
 def get_ortofoto_image_bytes(latitude, longitude):
-    """
-    Returnerer rå billedbytes til /aerial-image.jpg.
-    """
-
     wms = build_ortofoto_wms_url(latitude, longitude)
 
     if wms.get("status") != "ready":
@@ -739,7 +976,7 @@ def get_ortofoto_image_bytes(latitude, longitude):
 
 
 # -------------------------------------------------------
-# Datafordeler / BBR GraphQL
+# BBR GraphQL
 # -------------------------------------------------------
 
 def current_graphql_time():
@@ -1140,6 +1377,7 @@ def privacy_policy():
             <li>Weather and wind data</li>
             <li>BBR/building register data</li>
             <li>Possible fire hydrant data from open sources, if available</li>
+            <li>OpenStreetMap risk tags near the address, if available</li>
             <li>External map links and attempted ortofoto image links for manual visual assessment</li>
         </ul>
 
@@ -1266,6 +1504,38 @@ def test_hydrants():
     return jsonify({
         "address_data": address_data,
         "water_supply": hydrants
+    })
+
+
+@app.route("/osm-risk-check", methods=["GET"])
+def osm_risk_check_route():
+    address = request.args.get("address", "")
+    radius_m = int(request.args.get("radius_m", 250))
+
+    if not address:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler address parameter"
+        }), 400
+
+    address_data = lookup_address(address)
+
+    if not address_data or "error" in address_data:
+        return jsonify({
+            "status": "error",
+            "message": "Adresse kunne ikke slås op",
+            "address_lookup": address_data
+        }), 400
+
+    osm_risk_check = get_osm_risk_check(
+        address_data.get("latitude"),
+        address_data.get("longitude"),
+        radius_m
+    )
+
+    return jsonify({
+        "address_data": address_data,
+        "osm_risk_check": osm_risk_check
     })
 
 
@@ -1469,6 +1739,7 @@ def incident_brief():
 
     water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
     aerial_check_data = get_aerial_check(address_data, radius_m)
+    osm_risk_check_data = get_osm_risk_check(latitude, longitude, radius_m)
 
     data = {
         "normalized_address": normalized_address,
@@ -1494,6 +1765,7 @@ def incident_brief():
         "building": building_data,
         "road": get_road_placeholder(address_data),
         "water_supply": water_supply_data,
+        "osm_risk_check": osm_risk_check_data,
 
         "utilities": {
             "gas": "Ikke verificeret",
@@ -1518,6 +1790,7 @@ def incident_brief():
             "BBR GraphQL koblet via husnummer/adgangsadresse-id",
             "BBR-koder er oversat programmatisk, men bør verificeres ved kritisk indsats",
             "Mulige brandhaner forsøgt hentet fra OpenStreetMap/Overpass, men er ikke verificeret",
+            "OSM-risikotjek er baseret på åbne OpenStreetMap-tags og må ikke betragtes som verificeret indsatsdata",
             "Luftfoto/satellitlinks og ortofoto er kun til manuel visuel vurdering og må ikke betragtes som verificeret indsatsdata",
             "Solceller, tanke, oplag, adgangsforhold og andre visuelle farer må kun omtales som mulige, ikke verificerede observationer",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",

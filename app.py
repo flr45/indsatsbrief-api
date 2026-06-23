@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timezone
 import requests
 import os
+import math
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -12,7 +13,6 @@ app.json.ensure_ascii = False
 # -------------------------------------------------------
 
 BBR_BUILDING_USAGE = {
-    # Bygninger til helårsbeboelse
     "110": "Stuehus til landbrugsejendom",
     "120": "Fritliggende enfamiliehus",
     "121": "Sammenbygget enfamiliehus",
@@ -26,7 +26,6 @@ BBR_BUILDING_USAGE = {
     "185": "Anneks i tilknytning til helårsbolig",
     "190": "Anden bygning til helårsbeboelse",
 
-    # Landbrug
     "211": "Stald til svin",
     "212": "Stald til kvæg, får mv.",
     "213": "Stald til fjerkræ",
@@ -37,20 +36,17 @@ BBR_BUILDING_USAGE = {
     "218": "Lade til halm, hø mv.",
     "219": "Anden bygning til landbrug mv.",
 
-    # Produktion
     "221": "Bygning til industri med integreret produktionsapparat",
     "222": "Bygning til industri uden integreret produktionsapparat",
     "223": "Værksted",
     "229": "Anden bygning til produktion",
 
-    # Energi/forsyning
     "231": "Bygning til energiproduktion",
     "232": "Bygning til energidistribution",
     "233": "Bygning til vandforsyning",
     "234": "Bygning til håndtering af affald og spildevand",
     "239": "Anden bygning til energiproduktion og forsyning",
 
-    # Transport/parkering
     "311": "Bygning til jernbane- og busdrift",
     "312": "Bygning til luftfart",
     "313": "Bygning til parkering- og transportanlæg",
@@ -58,7 +54,6 @@ BBR_BUILDING_USAGE = {
     "315": "Havneanlæg",
     "319": "Andet transportanlæg",
 
-    # Kontor, handel og lager
     "321": "Bygning til kontor",
     "322": "Bygning til detailhandel",
     "323": "Bygning til lager",
@@ -66,14 +61,12 @@ BBR_BUILDING_USAGE = {
     "325": "Tankstation",
     "329": "Anden bygning til kontor, handel og lager",
 
-    # Hotel, restaurant og service
     "331": "Hotel, kro eller konferencecenter med overnatning",
     "332": "Bed & breakfast mv.",
     "333": "Restaurant, café og konferencecenter uden overnatning",
     "334": "Privat servicevirksomhed som frisør, vaskeri, netcafé mv.",
     "339": "Anden bygning til serviceerhverv",
 
-    # Kultur mv.
     "411": "Biograf, teater, koncertsted mv.",
     "412": "Museum",
     "413": "Bibliotek",
@@ -82,18 +75,15 @@ BBR_BUILDING_USAGE = {
     "416": "Forlystelsespark",
     "419": "Anden bygning til kulturelle formål",
 
-    # Undervisning og forskning
     "421": "Grundskole",
     "422": "Universitet",
     "429": "Anden bygning til undervisning og forskning",
 
-    # Sygehus og sundhed
     "431": "Hospital og sygehus",
     "432": "Hospice, behandlingshjem mv.",
     "433": "Sundhedscenter, lægehus, fødeklinik mv.",
     "439": "Anden bygning til sundhedsformål",
 
-    # Institution
     "441": "Daginstitution",
     "442": "Servicefunktion på døgninstitution",
     "443": "Kaserne",
@@ -101,14 +91,12 @@ BBR_BUILDING_USAGE = {
     "449": "Anden bygning til institutionsformål",
     "451": "Beskyttelsesrum",
 
-    # Ferie
     "510": "Sommerhus",
     "521": "Feriecenter, center til campingplads mv.",
     "522": "Bygning med ferielejligheder til erhvervsmæssig udlejning",
     "523": "Bygning med ferielejligheder til eget brug",
     "529": "Anden bygning til ferieformål",
 
-    # Sport
     "531": "Klubhus i forbindelse med fritid og idræt",
     "532": "Svømmehal",
     "533": "Idrætshal",
@@ -116,12 +104,10 @@ BBR_BUILDING_USAGE = {
     "535": "Bygning til træning og opstaldning af heste",
     "539": "Anden bygning til idrætsformål",
 
-    # Fritid
     "540": "Kolonihavehus",
     "585": "Anneks i tilknytning til fritids- og sommerhus",
     "590": "Anden bygning til fritidsformål",
 
-    # Mindre bygninger
     "910": "Garage",
     "920": "Carport",
     "930": "Udhus",
@@ -163,18 +149,6 @@ BBR_ROOF_MATERIAL = {
     "90": "Andet materiale",
 }
 
-BBR_HEATING_INSTALLATION = {
-    "1": "Fjernvarme/blokvarme",
-    "2": "Centralvarme med én fyringsenhed",
-    "3": "Ovn til fast og flydende brændsel",
-    "5": "Varmepumpe",
-    "6": "Centralvarme med to fyringsenheder",
-    "7": "Elvarme",
-    "8": "Gasradiator",
-    "9": "Ingen varmeinstallation",
-    "99": "Blandet",
-}
-
 BBR_HEATING_FUEL = {
     "1": "Elektricitet",
     "2": "Gasværksgas",
@@ -185,32 +159,9 @@ BBR_HEATING_FUEL = {
     "9": "Andet",
 }
 
-BBR_SUPPLEMENTARY_HEATING = {
-    "0": "Ikke oplyst",
-    "1": "Varmepumpe",
-    "2": "Brændeovne og lignende med skorsten",
-    "3": "Biopejse og lignende uden skorsten",
-    "4": "Solpaneler",
-    "5": "Pejs",
-    "6": "Gasradiator",
-    "7": "Elvarme",
-    "10": "Biogasanlæg",
-    "80": "Andet",
-    "90": "(UDFASES) Bygningen har ingen supplerende varme",
-}
-
-BBR_WATER_SUPPLY = {
-    # Vi fylder denne ud senere, når vi har den rigtige kodeliste.
-}
-
-BBR_ASBEST_MATERIAL = {
-    # Vi fylder denne ud senere, når vi har den rigtige kodeliste.
-}
-
-BBR_STATUS = {
-    # Vi mangler stadig den præcise BBR-statuskodeliste.
-    # Derfor oversætter vi ikke status endnu.
-}
+BBR_WATER_SUPPLY = {}
+BBR_ASBEST_MATERIAL = {}
+BBR_STATUS = {}
 
 
 def translate_bbr_code(code, mapping):
@@ -248,6 +199,31 @@ def opposite_direction_text(deg):
 
     opposite = (deg + 180) % 360
     return direction_from_degrees(opposite)
+
+
+# -------------------------------------------------------
+# Afstand
+# -------------------------------------------------------
+
+def distance_meters(lat1, lon1, lat2, lon2):
+    if None in [lat1, lon1, lat2, lon2]:
+        return None
+
+    radius_earth_m = 6371000
+
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+
+    a = (
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    )
+
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return round(radius_earth_m * c)
 
 
 # -------------------------------------------------------
@@ -380,6 +356,102 @@ def get_weather(latitude, longitude):
 
 
 # -------------------------------------------------------
+# Brandhaner via OpenStreetMap / Overpass
+# -------------------------------------------------------
+
+def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
+    if latitude is None or longitude is None:
+        return {
+            "source": "OpenStreetMap/Overpass ikke forsøgt - mangler koordinater",
+            "hydrants": [],
+            "alternative_water": [],
+            "verification_status": "Brandhaner/vandforsyning ikke verificeret"
+        }
+
+    overpass_url = "https://overpass-api.de/api/interpreter"
+
+    query = f"""
+    [out:json][timeout:15];
+    (
+      node["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
+      way["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
+      relation["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
+    );
+    out center tags 50;
+    """
+
+    try:
+        response = requests.post(
+            overpass_url,
+            data={"data": query},
+            timeout=20
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        hydrants = []
+
+        for element in result.get("elements", []):
+            tags = element.get("tags", {}) or {}
+
+            if element.get("type") == "node":
+                hydrant_lat = element.get("lat")
+                hydrant_lon = element.get("lon")
+            else:
+                center = element.get("center", {}) or {}
+                hydrant_lat = center.get("lat")
+                hydrant_lon = center.get("lon")
+
+            distance = distance_meters(latitude, longitude, hydrant_lat, hydrant_lon)
+
+            hydrants.append({
+                "id": element.get("id"),
+                "osm_type": element.get("type"),
+                "latitude": hydrant_lat,
+                "longitude": hydrant_lon,
+                "distance_m": distance,
+                "map_url": f"https://www.openstreetmap.org/?mlat={hydrant_lat}&mlon={hydrant_lon}#map=19/{hydrant_lat}/{hydrant_lon}" if hydrant_lat and hydrant_lon else None,
+
+                "hydrant_type": tags.get("fire_hydrant:type"),
+                "position": tags.get("fire_hydrant:position"),
+                "diameter": tags.get("fire_hydrant:diameter"),
+                "pressure": tags.get("fire_hydrant:pressure"),
+                "ref": tags.get("ref"),
+                "operator": tags.get("operator"),
+                "raw_tags": tags,
+
+                "verification_status": "Mulig brandhane fra OpenStreetMap - ikke verificeret"
+            })
+
+        hydrants = sorted(
+            hydrants,
+            key=lambda h: h["distance_m"] if h["distance_m"] is not None else 999999
+        )
+
+        return {
+            "source": "OpenStreetMap via Overpass API",
+            "query_radius_m": int(radius_m),
+            "hydrants": hydrants,
+            "hydrant_count": len(hydrants),
+            "alternative_water": [],
+            "note": "Brandhaner fra OpenStreetMap kan være ufuldstændige eller forkerte og må ikke betragtes som verificeret vandforsyning.",
+            "verification_status": "Mulige brandhaner fundet via åben datakilde - ikke verificeret"
+        }
+
+    except Exception as e:
+        return {
+            "source": "OpenStreetMap/Overpass API",
+            "query_radius_m": int(radius_m),
+            "hydrants": [],
+            "hydrant_count": 0,
+            "alternative_water": [],
+            "error": str(e),
+            "note": "Overpass/OSM kunne ikke hentes. Brandhaner/vandforsyning er ikke verificeret.",
+            "verification_status": "Brandhaner/vandforsyning ikke verificeret"
+        }
+
+
+# -------------------------------------------------------
 # Datafordeler / BBR GraphQL
 # -------------------------------------------------------
 
@@ -439,47 +511,6 @@ def test_bbr_graphql_connection():
     """
 
     return call_bbr_graphql(query)
-
-
-def test_bbr_graphql_sample():
-    now = current_graphql_time()
-
-    query = """
-    query($tid: DafDateTime!) {
-      BBR_Bygning(
-        first: 5,
-        virkningstid: $tid,
-        registreringstid: $tid
-      ) {
-        pageInfo {
-          endCursor
-          hasNextPage
-        }
-        nodes {
-          id_lokalId
-          id_namespace
-          husnummer
-          datafordelerRowId
-          kommunekode
-          byg007Bygningsnummer
-          byg021BygningensAnvendelse
-          byg026Opfoerelsesaar
-          byg027OmTilbygningsaar
-          byg030Vandforsyning
-          byg032YdervaeggensMateriale
-          byg033Tagdaekningsmateriale
-          byg036AsbestholdigtMateriale
-          byg038SamletBygningsareal
-          byg057Opvarmningsmiddel
-          grund
-          jordstykke
-          status
-        }
-      }
-    }
-    """
-
-    return call_bbr_graphql(query, {"tid": now})
 
 
 def bbr_address_candidate_queries(access_address_id):
@@ -592,7 +623,6 @@ def select_best_bbr_building(nodes):
     def score(node):
         points = 0
 
-        # Status 6 ser ud til at være den aktive/brugbare i vores testdata.
         if str(node.get("status")) == "6":
             points += 100
 
@@ -658,7 +688,6 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
 
         "construction_year": building.get("byg026Opfoerelsesaar"),
         "renovation_year": building.get("byg027OmTilbygningsaar"),
-
         "area_m2": building.get("byg038SamletBygningsareal"),
 
         "basement": "Ikke verificeret",
@@ -685,7 +714,6 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
         "status_text": translate_bbr_code(status_code, BBR_STATUS),
 
         "raw_bbr_building": building,
-
         "all_bbr_nodes_for_address": nodes,
 
         "fire_relevant_notes": [
@@ -699,7 +727,7 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
 
 
 # -------------------------------------------------------
-# BBR placeholder
+# Placeholders
 # -------------------------------------------------------
 
 def get_building_placeholder(address_data):
@@ -718,11 +746,6 @@ def get_building_placeholder(address_data):
         "construction_year": None,
         "renovation_year": None,
         "area_m2": None,
-        "residential_area_m2": None,
-        "business_area_m2": None,
-        "built_area_m2": None,
-        "floors": None,
-
         "basement": "Ikke verificeret",
 
         "roof_material": "Ikke verificeret",
@@ -740,9 +763,6 @@ def get_building_placeholder(address_data):
         "heating_fuel": "Ikke verificeret",
         "heating_fuel_text": "Ikke verificeret",
 
-        "heating_installation": "Ikke verificeret",
-        "heating_installation_text": "Ikke verificeret",
-
         "technical_installations": [],
 
         "fire_relevant_notes": [
@@ -753,10 +773,6 @@ def get_building_placeholder(address_data):
         "verification_status": "BBR/bygningsdata ikke verificeret"
     }
 
-
-# -------------------------------------------------------
-# Vejdata placeholder
-# -------------------------------------------------------
 
 def get_road_placeholder(address_data):
     street_name = address_data.get("street_name", "Ikke verificeret") if address_data else "Ikke verificeret"
@@ -801,17 +817,6 @@ def test_bbr():
     return jsonify(result), status_code
 
 
-@app.route("/test-bbr-graphql-sample", methods=["GET"])
-def test_bbr_graphql_sample_route():
-    result = test_bbr_graphql_sample()
-    status_code = result.get("status_code", 500)
-
-    if result.get("status") == "error":
-        return jsonify(result), 500
-
-    return jsonify(result), status_code
-
-
 @app.route("/test-bbr-graphql-address", methods=["GET"])
 def test_bbr_graphql_address_route():
     address = request.args.get("address", "")
@@ -842,10 +847,42 @@ def test_bbr_graphql_address_route():
     })
 
 
+@app.route("/test-hydrants", methods=["GET"])
+def test_hydrants():
+    address = request.args.get("address", "")
+    radius_m = int(request.args.get("radius_m", 250))
+
+    if not address:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler address parameter"
+        }), 400
+
+    address_data = lookup_address(address)
+
+    if not address_data or "error" in address_data:
+        return jsonify({
+            "status": "error",
+            "message": "Adresse kunne ikke slås op",
+            "address_lookup": address_data
+        }), 400
+
+    hydrants = get_possible_hydrants_from_osm(
+        address_data.get("latitude"),
+        address_data.get("longitude"),
+        radius_m
+    )
+
+    return jsonify({
+        "address_data": address_data,
+        "water_supply": hydrants
+    })
+
+
 @app.route("/incident-brief", methods=["GET"])
 def incident_brief():
     address = request.args.get("address", "")
-    radius_m = request.args.get("radius_m", 250)
+    radius_m = int(request.args.get("radius_m", 250))
 
     if not address:
         return jsonify({"error": "Missing address"}), 400
@@ -895,6 +932,8 @@ def incident_brief():
     else:
         building_data = get_building_placeholder(address_data)
 
+    water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
+
     data = {
         "normalized_address": normalized_address,
         "municipality": municipality,
@@ -921,17 +960,9 @@ def incident_brief():
         },
 
         "weather": weather_data,
-
         "building": building_data,
-
         "road": get_road_placeholder(address_data),
-
-        "water_supply": {
-            "source": "Ikke tilgængeligt",
-            "hydrants": [],
-            "alternative_water": [],
-            "verification_status": "Brandhaner/vandforsyning ikke verificeret"
-        },
+        "water_supply": water_supply_data,
 
         "utilities": {
             "gas": "Ikke verificeret",
@@ -949,9 +980,9 @@ def incident_brief():
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
             "BBR GraphQL koblet via husnummer/adgangsadresse-id",
             "BBR-koder er oversat programmatisk, men bør verificeres ved kritisk indsats",
-            "BBR-status, vandforsyning og asbest-koder er endnu ikke fuldt oversat",
+            "Mulige brandhaner forsøgt hentet fra OpenStreetMap/Overpass, men er ikke verificeret",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
-            "Brandhaner, gas og el er ikke verificeret"
+            "Gas og el er ikke verificeret"
         ]
     }
 

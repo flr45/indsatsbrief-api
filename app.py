@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from datetime import datetime
 import requests
 import os
@@ -166,8 +166,12 @@ def get_weather(latitude, longitude):
 # BBR test via Datafordeler GraphQL
 # -------------------------------------------------------
 
+def get_datafordeler_api_key():
+    return os.getenv("DATAFORDELER_API_KEY")
+
+
 def test_bbr_graphql_connection():
-    api_key = os.getenv("DATAFORDELER_API_KEY")
+    api_key = get_datafordeler_api_key()
 
     if not api_key:
         return {
@@ -203,8 +207,8 @@ def test_bbr_graphql_connection():
         }
 
 
-def get_bbr_schema_fields():
-    api_key = os.getenv("DATAFORDELER_API_KEY")
+def get_bbr_schema_text():
+    api_key = get_datafordeler_api_key()
 
     if not api_key:
         return {
@@ -212,30 +216,111 @@ def get_bbr_schema_fields():
             "message": "DATAFORDELER_API_KEY mangler som environment variable"
         }
 
+    # Datafordeleren har et separat schema-endpoint, fordi introspection kan være slået fra.
+    # Vi prøver først v3, derefter v1 som fallback.
+    schema_urls = [
+        f"https://graphql.datafordeler.dk/BBR/schema/v3?apiKey={api_key}",
+        f"https://graphql.datafordeler.dk/BBR/schema/v1?apiKey={api_key}",
+        f"https://datafordeler.dk/GraphQLSchema/BBR.graphql"
+    ]
+
+    attempts = []
+
+    for url in schema_urls:
+        try:
+            response = requests.get(url, timeout=20)
+            text = response.text
+
+            attempts.append({
+                "url": url.split("?apiKey=")[0],
+                "status_code": response.status_code,
+                "preview": text[:500]
+            })
+
+            if response.status_code == 200 and "type" in text:
+                return {
+                    "status": "ok",
+                    "status_code": response.status_code,
+                    "source_url": url.split("?apiKey=")[0],
+                    "schema_preview": text[:8000],
+                    "attempts": attempts
+                }
+
+        except Exception as e:
+            attempts.append({
+                "url": url.split("?apiKey=")[0],
+                "error": str(e)
+            })
+
+    return {
+        "status": "error",
+        "message": "Kunne ikke hente BBR GraphQL schema fra de kendte endpoints",
+        "attempts": attempts
+    }
+
+
+def test_bbr_husnummer_query(access_address_id):
+    api_key = get_datafordeler_api_key()
+
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "DATAFORDELER_API_KEY mangler som environment variable"
+        }
+
+    if not access_address_id:
+        return {
+            "status": "error",
+            "message": "Mangler access_address_id fra adresseopslag"
+        }
+
     url = f"https://graphql.datafordeler.dk/BBR/v3?apiKey={api_key}"
 
+    # Dette query bygger på Datafordeler-eksempler, hvor DAR_Husnummer kan kobles til BBR Bygning
+    # via husnummerGiverAdgangTilBygning. Hvis feltnavne afviger i din adgang/version,
+    # returnerer endpointet GraphQL-fejl, som vi bruger til at tilpasse næste version.
     query = """
-    query {
-      __schema {
-        queryType {
-          fields {
-            name
+    query($id: String!) {
+      DAR_Husnummer(
+        where: { id_lokalId: { eq: $id } }
+      ) {
+        nodes {
+          adgangsadressebetegnelse
+          adgangTilBygning
+          husnummerGiverAdgangTilBygning {
+            byg007Bygningsnummer
+            byg021BygningensAnvendelse
+            byg026Opfoerelsesaar
+            byg038SamletBygningsareal
+            byg039BygningensSamledeBoligAreal
+            byg041BebyggetAreal
+            byg054AntalEtager
+            byg032YdervaeggenesMateriale
+            byg033Tagdaekningsmateriale
           }
         }
       }
     }
     """
 
+    variables = {
+        "id": access_address_id
+    }
+
     try:
         response = requests.post(
             url,
-            json={"query": query},
+            json={
+                "query": query,
+                "variables": variables
+            },
             timeout=20
         )
 
         return {
             "status": "ok",
             "status_code": response.status_code,
+            "access_address_id": access_address_id,
             "response_text": response.text[:5000]
         }
 
@@ -252,7 +337,7 @@ def get_bbr_schema_fields():
 
 def get_building_placeholder(address_data):
     return {
-        "source": "BBR ikke koblet på endnu",
+        "source": "BBR ikke koblet på incident-brief endnu",
         "bbr_id": None,
         "access_address_id": address_data.get("access_address_id") if address_data else None,
         "address_id": address_data.get("address_id") if address_data else None,
@@ -270,7 +355,7 @@ def get_building_placeholder(address_data):
         "technical_installations": [],
 
         "fire_relevant_notes": [
-            "BBR/bygningsdata er ikke koblet på endnu",
+            "BBR/bygningsdata er ikke koblet på incident-brief endnu",
             "Bygningstype, areal, etager, kælder, tag og tekniske anlæg skal verificeres i BBR/beredskabets egne systemer"
         ],
 
@@ -327,13 +412,40 @@ def test_bbr():
 
 @app.route("/test-bbr-schema", methods=["GET"])
 def test_bbr_schema():
-    result = get_bbr_schema_fields()
-    status_code = result.get("status_code", 500)
+    result = get_bbr_schema_text()
 
     if result.get("status") == "error":
         return jsonify(result), 500
 
-    return jsonify(result), status_code
+    return jsonify(result), result.get("status_code", 200)
+
+
+@app.route("/test-bbr-address", methods=["GET"])
+def test_bbr_address():
+    address = request.args.get("address", "")
+
+    if not address:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler address parameter"
+        }), 400
+
+    address_data = lookup_address(address)
+
+    if not address_data or "error" in address_data:
+        return jsonify({
+            "status": "error",
+            "message": "Adresse kunne ikke slås op",
+            "address_lookup": address_data
+        }), 400
+
+    access_address_id = address_data.get("access_address_id")
+    bbr_result = test_bbr_husnummer_query(access_address_id)
+
+    return jsonify({
+        "address_data": address_data,
+        "bbr_test": bbr_result
+    })
 
 
 @app.route("/incident-brief", methods=["GET"])
@@ -437,7 +549,8 @@ def incident_brief():
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
             "BBR GraphQL-forbindelse kan testes via /test-bbr",
             "BBR schema kan testes via /test-bbr-schema",
-            "BBR er strukturelt klargjort, men ikke koblet på incident-brief endnu",
+            "BBR-adressequery kan testes via /test-bbr-address?address=...",
+            "BBR er endnu ikke koblet på incident-brief output",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
             "Brandhaner, gas og el er ikke verificeret"
         ]

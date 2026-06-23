@@ -162,14 +162,14 @@ def get_weather(latitude, longitude):
 
 
 # -------------------------------------------------------
-# BBR GraphQL
+# Datafordeler GraphQL
 # -------------------------------------------------------
 
 def get_datafordeler_api_key():
     return os.getenv("DATAFORDELER_API_KEY")
 
 
-def call_bbr_graphql(query, variables=None, version="v3"):
+def call_datafordeler_graphql(register, query, variables=None, version="v3"):
     api_key = get_datafordeler_api_key()
 
     if not api_key:
@@ -178,7 +178,7 @@ def call_bbr_graphql(query, variables=None, version="v3"):
             "message": "DATAFORDELER_API_KEY mangler som environment variable"
         }
 
-    url = f"https://graphql.datafordeler.dk/BBR/{version}?apiKey={api_key}"
+    url = f"https://graphql.datafordeler.dk/{register}/{version}?apiKey={api_key}"
 
     try:
         response = requests.post(
@@ -197,6 +197,7 @@ def call_bbr_graphql(query, variables=None, version="v3"):
 
         return {
             "status": "ok",
+            "register": register,
             "version": version,
             "status_code": response.status_code,
             "response_json": response_json,
@@ -206,9 +207,19 @@ def call_bbr_graphql(query, variables=None, version="v3"):
     except Exception as e:
         return {
             "status": "error",
+            "register": register,
             "version": version,
             "message": str(e)
         }
+
+
+def test_dar_graphql_connection():
+    query = """
+    query {
+      __typename
+    }
+    """
+    return call_datafordeler_graphql("DAR", query)
 
 
 def test_bbr_graphql_connection():
@@ -217,204 +228,94 @@ def test_bbr_graphql_connection():
       __typename
     }
     """
-    return call_bbr_graphql(query)
+    return call_datafordeler_graphql("BBR", query)
 
 
-def bbr_candidate_queries(access_address_id):
-    """
-    Vi tester flere mulige BBR GraphQL-varianter, fordi feltnavne/rootfelter
-    kan være præfikset forskelligt i Datafordelerens BBR GraphQL.
-    """
+# -------------------------------------------------------
+# BBR via DAR Husnummer-relation
+# -------------------------------------------------------
 
-    return [
-        {
-            "name": "v3_BBR_Bygning_adgangsadresseid_uuid",
-            "version": "v3",
-            "query": """
-            query($id: UUID!) {
-              BBR_Bygning(
-                where: {
-                  adgangsadresseid: { eq: $id }
-                }
-              ) {
-                nodes {
-                  byg007Bygningsnummer
-                  byg021BygningensAnvendelse
-                  byg026Opfoerelsesaar
-                  byg032YdervaeggenesMateriale
-                  byg033Tagdaekningsmateriale
-                  byg038SamletBygningsareal
-                  byg039BygningensSamledeBoligAreal
-                  byg041BebyggetAreal
-                  byg054AntalEtager
-                }
-              }
-            }
-            """,
-            "variables": {"id": access_address_id}
-        },
-        {
-            "name": "v3_BBR_Bygning_adgangsadresseid_string",
-            "version": "v3",
-            "query": """
-            query($id: String!) {
-              BBR_Bygning(
-                where: {
-                  adgangsadresseid: { eq: $id }
-                }
-              ) {
-                nodes {
-                  byg007Bygningsnummer
-                  byg021BygningensAnvendelse
-                  byg026Opfoerelsesaar
-                  byg032YdervaeggenesMateriale
-                  byg033Tagdaekningsmateriale
-                  byg038SamletBygningsareal
-                  byg039BygningensSamledeBoligAreal
-                  byg041BebyggetAreal
-                  byg054AntalEtager
-                }
-              }
-            }
-            """,
-            "variables": {"id": access_address_id}
-        },
-        {
-            "name": "v1_BBR_Bygning_adgangsadresseid_string",
-            "version": "v1",
-            "query": """
-            query($id: String!) {
-              BBR_Bygning(
-                where: {
-                  adgangsadresseid: { eq: $id }
-                }
-              ) {
-                nodes {
-                  byg007Bygningsnummer
-                  byg021BygningensAnvendelse
-                  byg026Opfoerelsesaar
-                  byg032YdervaeggenesMateriale
-                  byg033Tagdaekningsmateriale
-                  byg038SamletBygningsareal
-                  byg039BygningensSamledeBoligAreal
-                  byg041BebyggetAreal
-                  byg054AntalEtager
-                }
-              }
-            }
-            """,
-            "variables": {"id": access_address_id}
-        },
-        {
-            "name": "v3_BBR_Bygning_bygning_minimal",
-            "version": "v3",
-            "query": """
-            query {
-              BBR_Bygning(
-                first: 1
-              ) {
-                nodes {
-                  byg007Bygningsnummer
-                }
-              }
-            }
-            """,
-            "variables": {}
-        },
-        {
-            "name": "v1_BBR_Bygning_bygning_minimal",
-            "version": "v1",
-            "query": """
-            query {
-              BBR_Bygning(
-                first: 1
-              ) {
-                nodes {
-                  byg007Bygningsnummer
-                }
-              }
-            }
-            """,
-            "variables": {}
+def query_building_via_dar_husnummer(access_address_id):
+    if not access_address_id:
+        return {
+            "status": "error",
+            "message": "Mangler access_address_id fra adresseopslag"
         }
-    ]
 
+    query = """
+    query($id: String!) {
+      DAR_Husnummer(
+        where: {
+          id_lokalId: { eq: $id }
+        }
+      ) {
+        nodes {
+          id_lokalId
+          adgangsadressebetegnelse
+          adgangTilBygning
+          husnummerGiverAdgangTilBygning {
+            byg007Bygningsnummer
+            byg021BygningensAnvendelse
+            byg026Opfoerelsesaar
+            byg038SamletBygningsareal
+            byg039BygningensSamledeBoligAreal
+            byg041BebyggetAreal
+            byg054AntalEtager
+            byg033Tagdaekningsmateriale
+          }
+        }
+      }
+    }
+    """
 
-def test_bbr_candidates(access_address_id):
-    attempts = []
-
-    for candidate in bbr_candidate_queries(access_address_id):
-        result = call_bbr_graphql(
-            candidate["query"],
-            candidate["variables"],
-            candidate["version"]
-        )
-
-        response_json = result.get("response_json") or {}
-        errors = response_json.get("errors")
-
-        data = response_json.get("data") if response_json else None
-
-        attempts.append({
-            "name": candidate["name"],
-            "version": candidate["version"],
-            "status_code": result.get("status_code"),
-            "errors": errors,
-            "data_preview": data,
-            "response_text_preview": result.get("response_text", "")[:1500]
-        })
-
-        if result.get("status_code") == 200 and data and not errors:
-            return {
-                "status": "success",
-                "working_candidate": candidate["name"],
-                "version": candidate["version"],
-                "result": result,
-                "attempts": attempts
-            }
-
-    return {
-        "status": "no_candidate_worked",
-        "attempts": attempts
+    variables = {
+        "id": access_address_id
     }
 
-
-def extract_nodes_from_bbr_result(bbr_candidates_result):
-    if not bbr_candidates_result or bbr_candidates_result.get("status") != "success":
-        return []
-
-    result = bbr_candidates_result.get("result", {})
-    response_json = result.get("response_json") or {}
-    data = response_json.get("data") or {}
-
-    for key, value in data.items():
-        if isinstance(value, dict) and "nodes" in value:
-            return value.get("nodes") or []
-
-    return []
+    return call_datafordeler_graphql("DAR", query, variables, version="v3")
 
 
-def normalize_bbr_building_from_candidates(bbr_candidates_result, address_data):
-    if not bbr_candidates_result or bbr_candidates_result.get("status") != "success":
+def normalize_bbr_building_from_dar(dar_result, address_data):
+    if not dar_result or dar_result.get("status") == "error":
         placeholder = get_building_placeholder(address_data)
-        placeholder["source"] = "BBR GraphQL forsøgt, men ingen query-variant virkede"
-        placeholder["bbr_attempt_status"] = bbr_candidates_result.get("status") if bbr_candidates_result else None
-        placeholder["verification_status"] = "BBR/bygningsdata ikke verificeret"
+        placeholder["source"] = "DAR/BBR GraphQL blev forsøgt, men gav teknisk fejl"
+        placeholder["bbr_query_error"] = dar_result
         return placeholder
 
-    nodes = extract_nodes_from_bbr_result(bbr_candidates_result)
+    response_json = dar_result.get("response_json") or {}
+
+    if response_json.get("errors"):
+        placeholder = get_building_placeholder(address_data)
+        placeholder["source"] = "DAR GraphQL forsøgt, men query gav fejl"
+        placeholder["bbr_query_error"] = response_json.get("errors")
+        return placeholder
+
+    nodes = (
+        response_json
+        .get("data", {})
+        .get("DAR_Husnummer", {})
+        .get("nodes", [])
+    )
 
     if not nodes:
         placeholder = get_building_placeholder(address_data)
-        placeholder["source"] = "BBR GraphQL query virkede, men gav ingen bygninger"
+        placeholder["source"] = "DAR GraphQL svarede, men fandt intet husnummer"
         placeholder["verification_status"] = "BBR/bygningsdata ikke fundet"
         return placeholder
 
-    building = nodes[0]
+    husnummer = nodes[0]
+    buildings = husnummer.get("husnummerGiverAdgangTilBygning") or []
+
+    if not buildings:
+        placeholder = get_building_placeholder(address_data)
+        placeholder["source"] = "DAR Husnummer fundet, men ingen bygning relation returneret"
+        placeholder["verification_status"] = "BBR/bygningsdata ikke fundet"
+        return placeholder
+
+    building = buildings[0]
 
     return {
-        "source": "BBR GraphQL via Datafordeleren",
-        "working_candidate": bbr_candidates_result.get("working_candidate"),
+        "source": "DAR GraphQL → BBR bygning via Datafordeleren",
         "bbr_id": building.get("byg007Bygningsnummer"),
         "access_address_id": address_data.get("access_address_id") if address_data else None,
         "address_id": address_data.get("address_id") if address_data else None,
@@ -428,17 +329,23 @@ def normalize_bbr_building_from_candidates(bbr_candidates_result, address_data):
         "floors": building.get("byg054AntalEtager"),
         "basement": "Ikke verificeret",
         "roof_material": building.get("byg033Tagdaekningsmateriale", "Ikke verificeret"),
-        "outer_wall_material": building.get("byg032YdervaeggenesMateriale", "Ikke verificeret"),
-        "water_supply": building.get("byg030Vandforsyning", "Ikke verificeret"),
-        "drainage": building.get("byg031Afloebsforhold", "Ikke verificeret"),
+        "outer_wall_material": "Ikke verificeret",
+        "water_supply": "Ikke verificeret",
+        "drainage": "Ikke verificeret",
         "heating_installation": "Ikke verificeret",
         "technical_installations": [],
+
+        "raw_dar_husnummer": {
+            "id_lokalId": husnummer.get("id_lokalId"),
+            "adgangsadressebetegnelse": husnummer.get("adgangsadressebetegnelse"),
+            "adgangTilBygning": husnummer.get("adgangTilBygning")
+        },
 
         "raw_bbr_building": building,
 
         "fire_relevant_notes": [
             "BBR-data er registerdata og skal vurderes kritisk ved indsats",
-            "Kælder, tekniske anlæg, ABA, nøgleboks, stigrør og aktuelle adgangsforhold er ikke verificeret af denne BBR-query"
+            "Kælder, tekniske anlæg, ABA, nøgleboks, stigrør og aktuelle adgangsforhold er ikke verificeret af denne query"
         ],
 
         "verification_status": "BBR/bygningsdata forsøgt hentet via Datafordeleren"
@@ -518,13 +425,13 @@ def home():
 
 @app.route("/test-bbr", methods=["GET"])
 def test_bbr():
-    result = test_bbr_graphql_connection()
-    status_code = result.get("status_code", 500)
+    bbr_result = test_bbr_graphql_connection()
+    dar_result = test_dar_graphql_connection()
 
-    if result.get("status") == "error":
-        return jsonify(result), 500
-
-    return jsonify(result), status_code
+    return jsonify({
+        "bbr_connection": bbr_result,
+        "dar_connection": dar_result
+    })
 
 
 @app.route("/test-bbr-address", methods=["GET"])
@@ -547,12 +454,12 @@ def test_bbr_address():
         }), 400
 
     access_address_id = address_data.get("access_address_id")
-    candidates_result = test_bbr_candidates(access_address_id)
+    dar_bbr_result = query_building_via_dar_husnummer(access_address_id)
 
     return jsonify({
         "address_data": address_data,
-        "bbr_candidates_result": candidates_result,
-        "normalized_building": normalize_bbr_building_from_candidates(candidates_result, address_data)
+        "dar_bbr_result": dar_bbr_result,
+        "normalized_building": normalize_bbr_building_from_dar(dar_bbr_result, address_data)
     })
 
 
@@ -604,8 +511,8 @@ def incident_brief():
         }
 
     if address_data and address_data.get("access_address_id"):
-        candidates_result = test_bbr_candidates(address_data.get("access_address_id"))
-        building_data = normalize_bbr_building_from_candidates(candidates_result, address_data)
+        dar_bbr_result = query_building_via_dar_husnummer(address_data.get("access_address_id"))
+        building_data = normalize_bbr_building_from_dar(dar_bbr_result, address_data)
     else:
         building_data = get_building_placeholder(address_data)
 
@@ -661,7 +568,7 @@ def incident_brief():
             "Vejnavn og husnummer forsøgt hentet via Dataforsyningen/DAWA",
             "Kortlink genereret via OpenStreetMap",
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
-            "BBR-bygningsdata forsøgt hentet via BBR GraphQL med flere query-varianter",
+            "BBR-bygningsdata forsøgt hentet via DAR GraphQL relation til BBR Bygning",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
             "Brandhaner, gas og el er ikke verificeret"
         ]

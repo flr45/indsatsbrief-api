@@ -58,6 +58,7 @@ def lookup_address(address):
         adgangs_point = adgangsadresse.get("adgangspunkt", {})
         coords = adgangs_point.get("koordinater", None)
 
+        # Dataforsyningen returnerer typisk [lon, lat]
         longitude = coords[0] if coords else None
         latitude = coords[1] if coords else None
 
@@ -228,7 +229,7 @@ def test_bbr_graphql_sample():
     now = current_graphql_time()
 
     query = """
-    query($tid: DateTime!) {
+    query($tid: DafDateTime!) {
       BBR_Bygning(
         first: 5,
         virkningstid: $tid,

@@ -364,14 +364,19 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
         return {
             "source": "OpenStreetMap/Overpass ikke forsøgt - mangler koordinater",
             "hydrants": [],
+            "hydrant_count": 0,
             "alternative_water": [],
             "verification_status": "Brandhaner/vandforsyning ikke verificeret"
         }
 
-    overpass_url = "https://overpass-api.de/api/interpreter"
+    overpass_urls = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.ru/api/interpreter"
+    ]
 
     query = f"""
-    [out:json][timeout:15];
+    [out:json][timeout:25];
     (
       node["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
       way["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
@@ -380,75 +385,95 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
     out center tags 50;
     """
 
-    try:
-        response = requests.post(
-            overpass_url,
-            data={"data": query},
-            timeout=20
-        )
-        response.raise_for_status()
-        result = response.json()
+    attempts = []
 
-        hydrants = []
+    for overpass_url in overpass_urls:
+        try:
+            response = requests.get(
+                overpass_url,
+                params={"data": query},
+                headers={
+                    "User-Agent": "IndsatsBrief-Brand/1.0",
+                    "Accept": "application/json"
+                },
+                timeout=30
+            )
 
-        for element in result.get("elements", []):
-            tags = element.get("tags", {}) or {}
-
-            if element.get("type") == "node":
-                hydrant_lat = element.get("lat")
-                hydrant_lon = element.get("lon")
-            else:
-                center = element.get("center", {}) or {}
-                hydrant_lat = center.get("lat")
-                hydrant_lon = center.get("lon")
-
-            distance = distance_meters(latitude, longitude, hydrant_lat, hydrant_lon)
-
-            hydrants.append({
-                "id": element.get("id"),
-                "osm_type": element.get("type"),
-                "latitude": hydrant_lat,
-                "longitude": hydrant_lon,
-                "distance_m": distance,
-                "map_url": f"https://www.openstreetmap.org/?mlat={hydrant_lat}&mlon={hydrant_lon}#map=19/{hydrant_lat}/{hydrant_lon}" if hydrant_lat and hydrant_lon else None,
-
-                "hydrant_type": tags.get("fire_hydrant:type"),
-                "position": tags.get("fire_hydrant:position"),
-                "diameter": tags.get("fire_hydrant:diameter"),
-                "pressure": tags.get("fire_hydrant:pressure"),
-                "ref": tags.get("ref"),
-                "operator": tags.get("operator"),
-                "raw_tags": tags,
-
-                "verification_status": "Mulig brandhane fra OpenStreetMap - ikke verificeret"
+            attempts.append({
+                "url": overpass_url,
+                "status_code": response.status_code,
+                "preview": response.text[:500]
             })
 
-        hydrants = sorted(
-            hydrants,
-            key=lambda h: h["distance_m"] if h["distance_m"] is not None else 999999
-        )
+            response.raise_for_status()
+            result = response.json()
 
-        return {
-            "source": "OpenStreetMap via Overpass API",
-            "query_radius_m": int(radius_m),
-            "hydrants": hydrants,
-            "hydrant_count": len(hydrants),
-            "alternative_water": [],
-            "note": "Brandhaner fra OpenStreetMap kan være ufuldstændige eller forkerte og må ikke betragtes som verificeret vandforsyning.",
-            "verification_status": "Mulige brandhaner fundet via åben datakilde - ikke verificeret"
-        }
+            hydrants = []
 
-    except Exception as e:
-        return {
-            "source": "OpenStreetMap/Overpass API",
-            "query_radius_m": int(radius_m),
-            "hydrants": [],
-            "hydrant_count": 0,
-            "alternative_water": [],
-            "error": str(e),
-            "note": "Overpass/OSM kunne ikke hentes. Brandhaner/vandforsyning er ikke verificeret.",
-            "verification_status": "Brandhaner/vandforsyning ikke verificeret"
-        }
+            for element in result.get("elements", []):
+                tags = element.get("tags", {}) or {}
+
+                if element.get("type") == "node":
+                    hydrant_lat = element.get("lat")
+                    hydrant_lon = element.get("lon")
+                else:
+                    center = element.get("center", {}) or {}
+                    hydrant_lat = center.get("lat")
+                    hydrant_lon = center.get("lon")
+
+                distance = distance_meters(latitude, longitude, hydrant_lat, hydrant_lon)
+
+                hydrants.append({
+                    "id": element.get("id"),
+                    "osm_type": element.get("type"),
+                    "latitude": hydrant_lat,
+                    "longitude": hydrant_lon,
+                    "distance_m": distance,
+                    "map_url": f"https://www.openstreetmap.org/?mlat={hydrant_lat}&mlon={hydrant_lon}#map=19/{hydrant_lat}/{hydrant_lon}" if hydrant_lat and hydrant_lon else None,
+
+                    "hydrant_type": tags.get("fire_hydrant:type"),
+                    "position": tags.get("fire_hydrant:position"),
+                    "diameter": tags.get("fire_hydrant:diameter"),
+                    "pressure": tags.get("fire_hydrant:pressure"),
+                    "ref": tags.get("ref"),
+                    "operator": tags.get("operator"),
+                    "raw_tags": tags,
+
+                    "verification_status": "Mulig brandhane fra OpenStreetMap - ikke verificeret"
+                })
+
+            hydrants = sorted(
+                hydrants,
+                key=lambda h: h["distance_m"] if h["distance_m"] is not None else 999999
+            )
+
+            return {
+                "source": "OpenStreetMap via Overpass API",
+                "working_overpass_url": overpass_url,
+                "query_radius_m": int(radius_m),
+                "hydrants": hydrants,
+                "hydrant_count": len(hydrants),
+                "alternative_water": [],
+                "note": "Brandhaner fra OpenStreetMap kan være ufuldstændige eller forkerte og må ikke betragtes som verificeret vandforsyning.",
+                "verification_status": "Mulige brandhaner fundet via åben datakilde - ikke verificeret"
+            }
+
+        except Exception as e:
+            attempts.append({
+                "url": overpass_url,
+                "error": str(e)
+            })
+
+    return {
+        "source": "OpenStreetMap/Overpass API",
+        "query_radius_m": int(radius_m),
+        "hydrants": [],
+        "hydrant_count": 0,
+        "alternative_water": [],
+        "attempts": attempts,
+        "note": "Overpass/OSM kunne ikke hentes fra de testede servere. Brandhaner/vandforsyning er ikke verificeret.",
+        "verification_status": "Brandhaner/vandforsyning ikke verificeret"
+    }
 
 
 # -------------------------------------------------------

@@ -477,6 +477,103 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
 
 
 # -------------------------------------------------------
+# Luftfoto / satellit / visuel risikotjekliste
+# -------------------------------------------------------
+
+def get_aerial_check(address_data, radius_m=250):
+    if not address_data:
+        return {
+            "source": "Luftfoto/satellit ikke tilgængeligt",
+            "status": "Adresse ikke fundet",
+            "verification_status": "Ikke verificeret",
+            "links": {},
+            "possible_visual_risks_to_check": []
+        }
+
+    latitude = address_data.get("latitude")
+    longitude = address_data.get("longitude")
+    normalized_address = address_data.get("normalized_address", "Ikke verificeret")
+
+    if latitude is None or longitude is None:
+        return {
+            "source": "Luftfoto/satellit ikke tilgængeligt",
+            "status": "Mangler koordinater",
+            "verification_status": "Ikke verificeret",
+            "links": {},
+            "possible_visual_risks_to_check": []
+        }
+
+    google_satellite_url = (
+        f"https://www.google.com/maps/@{latitude},{longitude},19z/data=!3m1!1e3"
+    )
+
+    openstreetmap_url = (
+        f"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}"
+        f"#map=19/{latitude}/{longitude}"
+    )
+
+    return {
+        "source": "Visuel luftfoto-/satellitvurdering via eksterne kortlinks",
+        "status": "Klar til manuel visuel vurdering",
+        "address": normalized_address,
+        "latitude": latitude,
+        "longitude": longitude,
+        "radius_m": int(radius_m),
+
+        "links": {
+            "google_maps_satellite": google_satellite_url,
+            "openstreetmap": openstreetmap_url
+        },
+
+        "possible_visual_risks_to_check": [
+            {
+                "risk": "Solceller på tag",
+                "look_for": "Mørke rektangulære paneler i rækker på tagflader",
+                "operational_note": "Hvis muligt observeret: behandles som ikke verificeret indtil bekræftet på stedet eller via officiel kilde"
+            },
+            {
+                "risk": "Oplag på grund",
+                "look_for": "Paller, containere, affald, gasflasker, materialestakke eller udendørs lager",
+                "operational_note": "Kan påvirke brandspredning, adgang og slukningsindsats"
+            },
+            {
+                "risk": "Tanke eller beholdere",
+                "look_for": "Cylindriske tanke, beholdere, tankgårde eller tekniske installationer",
+                "operational_note": "Indhold er ikke verificeret og må ikke gættes"
+            },
+            {
+                "risk": "Smal eller vanskelig adgang",
+                "look_for": "Smal indkørsel, baggård, porte, bomme, ensrettede veje eller begrænset vendeplads",
+                "operational_note": "Tilkørsel skal verificeres lokalt"
+            },
+            {
+                "risk": "Indelukkede gårdrum",
+                "look_for": "Bygninger omkring lukket gård eller svært tilgængelige bagsider",
+                "operational_note": "Kan give lange slangeveje og vanskelig evakuering"
+            },
+            {
+                "risk": "Spredningsrisiko til nabobygninger",
+                "look_for": "Kort afstand mellem bygninger, sammenbyggede tage eller tæt gårdbebyggelse",
+                "operational_note": "Visuel vurdering er ikke nok til endelig risikovurdering"
+            },
+            {
+                "risk": "Tagtype og tagadgang",
+                "look_for": "Fladt tag, skråt tag, store ovenlys, tagterrasser eller tekniske anlæg",
+                "operational_note": "Tagets bæreevne og adgangsforhold er ikke verificeret"
+            }
+        ],
+
+        "gpt_instruction": (
+            "Brug links til manuel visuel vurdering. Skriv aldrig at solceller, tanke, oplag "
+            "eller andre farer er verificeret ud fra luftfoto alene. Brug formuleringer som "
+            "'muligt visuelt tegn på...' eller 'bør kontrolleres på stedet'."
+        ),
+
+        "verification_status": "Visuel vurdering mulig - ikke verificeret"
+    }
+
+
+# -------------------------------------------------------
 # Datafordeler / BBR GraphQL
 # -------------------------------------------------------
 
@@ -831,6 +928,112 @@ def home():
     return "IndsatsBrief API kører"
 
 
+@app.route("/privacy", methods=["GET"])
+def privacy_policy():
+    html = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Privacy Policy - IndsatsBrief Brand</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 850px;
+                margin: 40px auto;
+                padding: 0 20px;
+                line-height: 1.6;
+                color: #222;
+            }
+            h1, h2 {
+                color: #111;
+            }
+            .note {
+                background: #f4f4f4;
+                padding: 12px;
+                border-left: 4px solid #555;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Privacy Policy for IndsatsBrief Brand</h1>
+
+        <p><strong>Last updated:</strong> 23 June 2026</p>
+
+        <p>
+            IndsatsBrief Brand is a custom GPT and API service that helps generate
+            incident briefing information based on address-related public and operationally
+            relevant data.
+        </p>
+
+        <h2>What data is sent to the API</h2>
+        <p>
+            When a user asks for an incident brief, the GPT may send the provided address
+            and selected radius to the IndsatsBrief API.
+        </p>
+
+        <p>The API may use the address to retrieve:</p>
+        <ul>
+            <li>Address and coordinate data</li>
+            <li>Map links</li>
+            <li>Weather and wind data</li>
+            <li>BBR/building register data</li>
+            <li>Possible fire hydrant data from open sources, if available</li>
+            <li>External map links for manual visual assessment</li>
+        </ul>
+
+        <h2>What data is not intentionally collected</h2>
+        <p>
+            The API does not intentionally collect names, phone numbers, CPR numbers,
+            private login information, payment information, or user account credentials.
+        </p>
+
+        <h2>Logging</h2>
+        <p>
+            The hosting provider may process standard technical logs such as request time,
+            endpoint, IP address, and error logs for operation, security, and troubleshooting.
+        </p>
+
+        <h2>Data sharing and third-party services</h2>
+        <p>
+            Data may be processed by third-party services used to provide the response,
+            including:
+        </p>
+
+        <ul>
+            <li>Dataforsyningen/DAWA</li>
+            <li>Datafordeleren/BBR</li>
+            <li>Open-Meteo</li>
+            <li>OpenStreetMap/Overpass</li>
+            <li>Google Maps links</li>
+            <li>Render hosting</li>
+        </ul>
+
+        <h2>Purpose</h2>
+        <p>
+            The data is used only to generate incident briefing information, operate the
+            service, and troubleshoot the API.
+        </p>
+
+        <h2>Important limitation</h2>
+        <div class="note">
+            This service is decision support only. It does not replace verified emergency
+            services systems, local procedures, incident commander assessment, GIS,
+            object plans, official databases, or local operational knowledge.
+        </div>
+
+        <h2>Contact</h2>
+        <p>
+            For questions about this API or privacy policy, contact:<br>
+            <strong>Frederik Racher</strong>
+        </p>
+    </body>
+    </html>
+    """
+
+    return html
+
+
 @app.route("/test-bbr", methods=["GET"])
 def test_bbr():
     result = test_bbr_graphql_connection()
@@ -904,6 +1107,83 @@ def test_hydrants():
     })
 
 
+@app.route("/aerial-check", methods=["GET"])
+def aerial_check_route():
+    address = request.args.get("address", "")
+    radius_m = int(request.args.get("radius_m", 250))
+
+    if not address:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler address parameter"
+        }), 400
+
+    address_data = lookup_address(address)
+
+    if not address_data or "error" in address_data:
+        return jsonify({
+            "status": "error",
+            "message": "Adresse kunne ikke slås op",
+            "address_lookup": address_data
+        }), 400
+
+    aerial_check = get_aerial_check(address_data, radius_m)
+
+    return jsonify({
+        "address_data": address_data,
+        "aerial_check": aerial_check
+    })
+
+
+@app.route("/hazmat", methods=["GET"])
+def hazmat_lookup():
+    query = request.args.get("query", "").strip()
+
+    if not query:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler query parameter. Brug fx /hazmat?query=UN1203 eller /hazmat?query=benzin"
+        }), 400
+
+    cleaned_query = query.upper().replace(" ", "")
+
+    if cleaned_query.startswith("UN"):
+        search_text = cleaned_query
+        un_number = cleaned_query.replace("UN", "")
+    elif cleaned_query.isdigit():
+        search_text = f"UN{cleaned_query}"
+        un_number = cleaned_query
+    else:
+        search_text = query
+        un_number = None
+
+    return jsonify({
+        "query": query,
+        "search_text": search_text,
+        "un_number": un_number,
+
+        "official_lookup": {
+            "source": "Beredskabsstyrelsen Kemikalieberedskab",
+            "url": "https://kemikalieberedskab.dk/",
+            "instruction": f"Åbn linket og søg på: {search_text}"
+        },
+
+        "app_lookup": {
+            "source": "Beredskabsstyrelsens app",
+            "name": "Farlige stoffer",
+            "instruction": f"Brug samme søgetekst i appen: {search_text}"
+        },
+
+        "safety_note": [
+            "Denne API gengiver ikke kemikaliedata direkte fra opslagsværket.",
+            "Brug Kemikalieberedskab.dk, appen Farlige stoffer, ADR-oplysninger, sikkerhedsdatablad eller Kemisk Beredskab til verificeret indsatsinformation.",
+            "Gæt aldrig indsatsafstand, evakueringsafstand, slukningsmiddel, reaktionsfare eller værnemidler ud fra uverificerede data."
+        ],
+
+        "verification_status": "Officielt opslag påkrævet før brug ved indsats"
+    })
+
+
 @app.route("/incident-brief", methods=["GET"])
 def incident_brief():
     address = request.args.get("address", "")
@@ -958,6 +1238,7 @@ def incident_brief():
         building_data = get_building_placeholder(address_data)
 
     water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
+    aerial_check_data = get_aerial_check(address_data, radius_m)
 
     data = {
         "normalized_address": normalized_address,
@@ -977,12 +1258,7 @@ def incident_brief():
             "timestamp": datetime.now().isoformat()
         },
 
-        "aerial_photo": {
-            "image_url": None,
-            "source": "Ikke tilgængeligt i denne version",
-            "year": None,
-            "note": "Luftfoto/ortofoto ikke hentet i denne version"
-        },
+        "aerial_photo": aerial_check_data,
 
         "weather": weather_data,
         "building": building_data,
@@ -996,6 +1272,12 @@ def incident_brief():
             "verification_status": "Ikke verificeret"
         },
 
+        "hazmat": {
+            "source": "Farlige stoffer kan slås op via /hazmat?query=UN1203 eller /hazmat?query=benzin",
+            "official_lookup": "https://kemikalieberedskab.dk/",
+            "verification_status": "Farlige stoffer ikke automatisk verificeret i incident-brief"
+        },
+
         "local_risk_notes": [],
 
         "limitations": [
@@ -1006,8 +1288,11 @@ def incident_brief():
             "BBR GraphQL koblet via husnummer/adgangsadresse-id",
             "BBR-koder er oversat programmatisk, men bør verificeres ved kritisk indsats",
             "Mulige brandhaner forsøgt hentet fra OpenStreetMap/Overpass, men er ikke verificeret",
+            "Luftfoto/satellitlinks er kun til manuel visuel vurdering og må ikke betragtes som verificeret indsatsdata",
+            "Solceller, tanke, oplag, adgangsforhold og andre visuelle farer må kun omtales som mulige, ikke verificerede observationer",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
-            "Gas og el er ikke verificeret"
+            "Gas og el er ikke verificeret",
+            "Farlige stoffer skal verificeres via Kemikalieberedskab.dk, appen Farlige stoffer, ADR/SDS eller Kemisk Beredskab"
         ]
     }
 
@@ -1016,154 +1301,3 @@ def incident_brief():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-@app.route("/hazmat", methods=["GET"])
-def hazmat_lookup():
-    query = request.args.get("query", "").strip()
-
-    if not query:
-        return jsonify({
-            "status": "error",
-            "message": "Mangler query parameter. Brug fx /hazmat?query=UN1203 eller /hazmat?query=benzin"
-        }), 400
-
-    cleaned_query = query.upper().replace(" ", "")
-
-    if cleaned_query.startswith("UN"):
-        search_text = cleaned_query
-        un_number = cleaned_query.replace("UN", "")
-    elif cleaned_query.isdigit():
-        search_text = f"UN{cleaned_query}"
-        un_number = cleaned_query
-    else:
-        search_text = query
-        un_number = None
-
-    return jsonify({
-        "query": query,
-        "search_text": search_text,
-        "un_number": un_number,
-
-        "official_lookup": {
-            "source": "Beredskabsstyrelsen Kemikalieberedskab",
-            "url": "https://kemikalieberedskab.dk/",
-            "instruction": f"Åbn linket og søg på: {search_text}"
-        },
-
-        "app_lookup": {
-            "source": "Beredskabsstyrelsens app",
-            "name": "Farlige stoffer",
-            "instruction": f"Brug samme søgetekst i appen: {search_text}"
-        },
-
-        "safety_note": [
-            "Denne API gengiver ikke kemikaliedata direkte fra opslagsværket.",
-            "Brug Kemikalieberedskab.dk, appen Farlige stoffer, ADR-oplysninger, sikkerhedsdatablad eller Kemisk Beredskab til verificeret indsatsinformation.",
-            "Gæt aldrig indsatsafstand, evakueringsafstand, slukningsmiddel, reaktionsfare eller værnemidler ud fra uverificerede data."
-        ],
-
-        "verification_status": "Officielt opslag påkrævet før brug ved indsats"
-    })
-
-@app.route("/privacy", methods=["GET"])
-def privacy_policy():
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Privacy Policy - IndsatsBrief Brand</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                max-width: 850px;
-                margin: 40px auto;
-                padding: 0 20px;
-                line-height: 1.6;
-                color: #222;
-            }
-            h1, h2 {
-                color: #111;
-            }
-            .note {
-                background: #f4f4f4;
-                padding: 12px;
-                border-left: 4px solid #555;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Privacy Policy for IndsatsBrief Brand</h1>
-
-        <p><strong>Last updated:</strong> 23 June 2026</p>
-
-        <p>
-            IndsatsBrief Brand is a custom GPT and API service that helps generate
-            incident briefing information based on address-related public and operationally
-            relevant data.
-        </p>
-
-        <h2>What data is sent to the API</h2>
-        <p>
-            When a user asks for an incident brief, the GPT may send the provided address
-            and selected radius to the IndsatsBrief API.
-        </p>
-
-        <p>The API may use the address to retrieve:</p>
-        <ul>
-            <li>Address and coordinate data</li>
-            <li>Map links</li>
-            <li>Weather and wind data</li>
-            <li>BBR/building register data</li>
-            <li>Possible fire hydrant data from open sources, if available</li>
-        </ul>
-
-        <h2>What data is not intentionally collected</h2>
-        <p>
-            The API does not intentionally collect names, phone numbers, CPR numbers,
-            private login information, payment information, or user account credentials.
-        </p>
-
-        <h2>Logging</h2>
-        <p>
-            The hosting provider may process standard technical logs such as request time,
-            endpoint, IP address, and error logs for operation, security, and troubleshooting.
-        </p>
-
-        <h2>Data sharing and third-party services</h2>
-        <p>
-            Data may be processed by third-party services used to provide the response,
-            including:
-        </p>
-
-        <ul>
-            <li>Dataforsyningen/DAWA</li>
-            <li>Datafordeleren/BBR</li>
-            <li>Open-Meteo</li>
-            <li>OpenStreetMap/Overpass</li>
-            <li>Render hosting</li>
-        </ul>
-
-        <h2>Purpose</h2>
-        <p>
-            The data is used only to generate incident briefing information, operate the
-            service, and troubleshoot the API.
-        </p>
-
-        <h2>Important limitation</h2>
-        <div class="note">
-            This service is decision support only. It does not replace verified emergency
-            services systems, local procedures, incident commander assessment, GIS,
-            object plans, official databases, or local operational knowledge.
-        </div>
-
-        <h2>Contact</h2>
-        <p>
-            For questions about this API or privacy policy, contact:<br>
-            <strong>Frederik Racher - Kontakt@racher.dk</strong>
-        </p>
-    </body>
-    </html>
-    """
-
-    return html

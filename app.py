@@ -242,16 +242,18 @@ def test_bbr_graphql_sample():
           id_namespace
           husnummer
           datafordelerRowId
-          byg404Koordinat
           kommunekode
           byg007Bygningsnummer
           byg021BygningensAnvendelse
           byg026Opfoerelsesaar
           byg027OmTilbygningsaar
-          byg033Tagdaekningsmateriale
-          byg036AsbestholdigtMateriale
           byg030Vandforsyning
           byg032YdervaeggensMateriale
+          byg033Tagdaekningsmateriale
+          byg036AsbestholdigtMateriale
+          byg038SamletBygningsareal
+          grund
+          jordstykke
           status
         }
       }
@@ -286,7 +288,6 @@ def bbr_address_candidate_queries(access_address_id):
                   id_namespace
                   husnummer
                   datafordelerRowId
-                  byg404Koordinat
                   kommunekode
                   byg007Bygningsnummer
                   byg021BygningensAnvendelse
@@ -297,54 +298,6 @@ def bbr_address_candidate_queries(access_address_id):
                   byg033Tagdaekningsmateriale
                   byg036AsbestholdigtMateriale
                   byg038SamletBygningsareal
-                  byg039BygningensSamledeBoligareal
-                  byg040BygningensSamledeErhvervsareal
-                  grund
-                  jordstykke
-                  status
-                }
-              }
-            }
-            """,
-            "variables": {
-                "tid": now,
-                "husnummerId": access_address_id
-            }
-        },
-        {
-            "name": "husnummer_uuid_eq",
-            "query": """
-            query($tid: DafDateTime!, $husnummerId: UUID!) {
-              BBR_Bygning(
-                first: 10,
-                virkningstid: $tid,
-                registreringstid: $tid,
-                where: {
-                  husnummer: { eq: $husnummerId }
-                }
-              ) {
-                pageInfo {
-                  endCursor
-                  hasNextPage
-                }
-                nodes {
-                  id_lokalId
-                  id_namespace
-                  husnummer
-                  datafordelerRowId
-                  byg404Koordinat
-                  kommunekode
-                  byg007Bygningsnummer
-                  byg021BygningensAnvendelse
-                  byg026Opfoerelsesaar
-                  byg027OmTilbygningsaar
-                  byg030Vandforsyning
-                  byg032YdervaeggensMateriale
-                  byg033Tagdaekningsmateriale
-                  byg036AsbestholdigtMateriale
-                  byg038SamletBygningsareal
-                  byg039BygningensSamledeBoligareal
-                  byg040BygningensSamledeErhvervsareal
                   grund
                   jordstykke
                   status
@@ -378,7 +331,6 @@ def bbr_address_candidate_queries(access_address_id):
                   id_namespace
                   husnummer
                   datafordelerRowId
-                  byg404Koordinat
                   kommunekode
                   byg007Bygningsnummer
                   byg021BygningensAnvendelse
@@ -389,8 +341,6 @@ def bbr_address_candidate_queries(access_address_id):
                   byg033Tagdaekningsmateriale
                   byg036AsbestholdigtMateriale
                   byg038SamletBygningsareal
-                  byg039BygningensSamledeBoligareal
-                  byg040BygningensSamledeErhvervsareal
                   grund
                   jordstykke
                   status
@@ -496,8 +446,6 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
         "renovation_year": building.get("byg027OmTilbygningsaar"),
 
         "area_m2": building.get("byg038SamletBygningsareal"),
-        "residential_area_m2": building.get("byg039BygningensSamledeBoligareal"),
-        "business_area_m2": building.get("byg040BygningensSamledeErhvervsareal"),
 
         "basement": "Ikke verificeret",
         "roof_material": building.get("byg033Tagdaekningsmateriale", "Ikke verificeret"),
@@ -505,7 +453,6 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
         "water_supply": building.get("byg030Vandforsyning", "Ikke verificeret"),
         "asbestos_material": building.get("byg036AsbestholdigtMateriale", "Ikke verificeret"),
 
-        "bbr_coordinate": building.get("byg404Koordinat"),
         "ground": building.get("grund"),
         "cadastre_parcel": building.get("jordstykke"),
         "status": building.get("status"),

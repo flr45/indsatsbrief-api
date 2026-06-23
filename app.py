@@ -162,12 +162,24 @@ def get_weather(latitude, longitude):
 
 
 # -------------------------------------------------------
-# Datafordeler GraphQL
+# Datafordeler helpers
 # -------------------------------------------------------
 
 def get_datafordeler_api_key():
     return os.getenv("DATAFORDELER_API_KEY")
 
+
+def get_datafordeler_username():
+    return os.getenv("DATAFORDELER_USERNAME")
+
+
+def get_datafordeler_password():
+    return os.getenv("DATAFORDELER_PASSWORD")
+
+
+# -------------------------------------------------------
+# BBR GraphQL test
+# -------------------------------------------------------
 
 def call_datafordeler_graphql(register, query, variables=None, version="v3"):
     api_key = get_datafordeler_api_key()
@@ -213,15 +225,6 @@ def call_datafordeler_graphql(register, query, variables=None, version="v3"):
         }
 
 
-def test_dar_graphql_connection():
-    query = """
-    query {
-      __typename
-    }
-    """
-    return call_datafordeler_graphql("DAR", query)
-
-
 def test_bbr_graphql_connection():
     query = """
     query {
@@ -231,92 +234,188 @@ def test_bbr_graphql_connection():
     return call_datafordeler_graphql("BBR", query)
 
 
+def test_dar_graphql_connection():
+    query = """
+    query {
+      __typename
+    }
+    """
+    return call_datafordeler_graphql("DAR", query)
+
+
 # -------------------------------------------------------
-# BBR via DAR Husnummer-relation
+# BBR REST test
 # -------------------------------------------------------
 
-def query_building_via_dar_husnummer(access_address_id):
+def try_bbr_rest_bygning(access_address_id):
+    api_key = get_datafordeler_api_key()
+    username = get_datafordeler_username()
+    password = get_datafordeler_password()
+
+    attempts = []
+
     if not access_address_id:
         return {
             "status": "error",
             "message": "Mangler access_address_id fra adresseopslag"
         }
 
-    query = """
-    query($id: String!) {
-      DAR_Husnummer(
-        where: {
-          id_lokalId: { eq: $id }
-        }
-      ) {
-        nodes {
-          id_lokalId
-          adgangsadressebetegnelse
-          adgangTilBygning
-          husnummerGiverAdgangTilBygning {
-            byg007Bygningsnummer
-            byg021BygningensAnvendelse
-            byg026Opfoerelsesaar
-            byg038SamletBygningsareal
-            byg039BygningensSamledeBoligAreal
-            byg041BebyggetAreal
-            byg054AntalEtager
-            byg033Tagdaekningsmateriale
-          }
-        }
-      }
+    base_urls = [
+        "https://services.datafordeler.dk/BBR/BBRPublic/1/REST/bygning",
+        "https://services.datafordeler.dk/BBR/BBRPublic/1/rest/bygning",
+        "https://services.datafordeler.dk/BBR/BBRPublic/1/REST/Bygning",
+        "https://services.datafordeler.dk/BBR/BBRPublic/1/rest/Bygning"
+    ]
+
+    param_variants = []
+
+    # Test med API-key
+    if api_key:
+        param_variants.append({
+            "name": "apiKey_adgangsadresseid",
+            "params": {
+                "apiKey": api_key,
+                "adgangsadresseid": access_address_id
+            },
+            "auth": None
+        })
+
+        param_variants.append({
+            "name": "apikey_adgangsadresseid_lowercase",
+            "params": {
+                "apikey": api_key,
+                "adgangsadresseid": access_address_id
+            },
+            "auth": None
+        })
+
+    # Test med username/password som query-parametre, hvis de findes
+    if username and password:
+        param_variants.append({
+            "name": "username_password_adgangsadresseid",
+            "params": {
+                "username": username,
+                "password": password,
+                "adgangsadresseid": access_address_id
+            },
+            "auth": None
+        })
+
+        param_variants.append({
+            "name": "basic_auth_adgangsadresseid",
+            "params": {
+                "adgangsadresseid": access_address_id
+            },
+            "auth": (username, password)
+        })
+
+    # Test uden auth, bare for at få fejlbesked fra tjenesten
+    param_variants.append({
+        "name": "no_auth_adgangsadresseid",
+        "params": {
+            "adgangsadresseid": access_address_id
+        },
+        "auth": None
+    })
+
+    for base_url in base_urls:
+        for variant in param_variants:
+            try:
+                response = requests.get(
+                    base_url,
+                    params=variant["params"],
+                    auth=variant["auth"],
+                    timeout=20
+                )
+
+                content_type = response.headers.get("content-type", "")
+
+                try:
+                    response_json = response.json()
+                except Exception:
+                    response_json = None
+
+                # Skjul aldrig nøgle i output: vi returnerer kun URL uden query-parametre.
+                attempt = {
+                    "base_url": base_url,
+                    "variant": variant["name"],
+                    "status_code": response.status_code,
+                    "content_type": content_type,
+                    "response_json": response_json,
+                    "response_text_preview": response.text[:3000]
+                }
+
+                attempts.append(attempt)
+
+                if response.status_code == 200:
+                    return {
+                        "status": "success",
+                        "working_base_url": base_url,
+                        "working_variant": variant["name"],
+                        "result": attempt,
+                        "attempts": attempts
+                    }
+
+            except Exception as e:
+                attempts.append({
+                    "base_url": base_url,
+                    "variant": variant["name"],
+                    "error": str(e)
+                })
+
+    return {
+        "status": "no_rest_candidate_worked",
+        "attempts": attempts
     }
-    """
-
-    variables = {
-        "id": access_address_id
-    }
-
-    return call_datafordeler_graphql("DAR", query, variables, version="v3")
 
 
-def normalize_bbr_building_from_dar(dar_result, address_data):
-    if not dar_result or dar_result.get("status") == "error":
+def normalize_bbr_building_from_rest(rest_result, address_data):
+    if not rest_result or rest_result.get("status") != "success":
         placeholder = get_building_placeholder(address_data)
-        placeholder["source"] = "DAR/BBR GraphQL blev forsøgt, men gav teknisk fejl"
-        placeholder["bbr_query_error"] = dar_result
+        placeholder["source"] = "BBR REST forsøgt, men ingen variant virkede"
+        placeholder["bbr_rest_status"] = rest_result.get("status") if rest_result else None
+        placeholder["verification_status"] = "BBR/bygningsdata ikke verificeret"
         return placeholder
 
-    response_json = dar_result.get("response_json") or {}
+    result = rest_result.get("result", {})
+    response_json = result.get("response_json")
 
-    if response_json.get("errors"):
+    if response_json is None:
         placeholder = get_building_placeholder(address_data)
-        placeholder["source"] = "DAR GraphQL forsøgt, men query gav fejl"
-        placeholder["bbr_query_error"] = response_json.get("errors")
+        placeholder["source"] = "BBR REST svarede, men svaret kunne ikke læses som JSON"
+        placeholder["verification_status"] = "BBR/bygningsdata ikke verificeret"
         return placeholder
 
-    nodes = (
-        response_json
-        .get("data", {})
-        .get("DAR_Husnummer", {})
-        .get("nodes", [])
-    )
-
-    if not nodes:
-        placeholder = get_building_placeholder(address_data)
-        placeholder["source"] = "DAR GraphQL svarede, men fandt intet husnummer"
-        placeholder["verification_status"] = "BBR/bygningsdata ikke fundet"
-        return placeholder
-
-    husnummer = nodes[0]
-    buildings = husnummer.get("husnummerGiverAdgangTilBygning") or []
+    # BBR REST kan returnere enten liste eller objekt. Vi forsøger at finde første bygning.
+    if isinstance(response_json, list):
+        buildings = response_json
+    elif isinstance(response_json, dict):
+        if "features" in response_json and isinstance(response_json["features"], list):
+            buildings = response_json["features"]
+        elif "data" in response_json and isinstance(response_json["data"], list):
+            buildings = response_json["data"]
+        else:
+            buildings = [response_json]
+    else:
+        buildings = []
 
     if not buildings:
         placeholder = get_building_placeholder(address_data)
-        placeholder["source"] = "DAR Husnummer fundet, men ingen bygning relation returneret"
+        placeholder["source"] = "BBR REST svarede, men ingen bygning fundet"
         placeholder["verification_status"] = "BBR/bygningsdata ikke fundet"
         return placeholder
 
-    building = buildings[0]
+    raw = buildings[0]
+
+    # Hvis GeoJSON-like feature
+    if isinstance(raw, dict) and "properties" in raw:
+        building = raw.get("properties", {})
+    else:
+        building = raw if isinstance(raw, dict) else {}
 
     return {
-        "source": "DAR GraphQL → BBR bygning via Datafordeleren",
-        "bbr_id": building.get("byg007Bygningsnummer"),
+        "source": "BBR REST via Datafordeleren",
+        "bbr_id": building.get("byg007Bygningsnummer") or building.get("bygningsnummer") or building.get("id_lokalId"),
         "access_address_id": address_data.get("access_address_id") if address_data else None,
         "address_id": address_data.get("address_id") if address_data else None,
 
@@ -329,17 +428,11 @@ def normalize_bbr_building_from_dar(dar_result, address_data):
         "floors": building.get("byg054AntalEtager"),
         "basement": "Ikke verificeret",
         "roof_material": building.get("byg033Tagdaekningsmateriale", "Ikke verificeret"),
-        "outer_wall_material": "Ikke verificeret",
-        "water_supply": "Ikke verificeret",
-        "drainage": "Ikke verificeret",
+        "outer_wall_material": building.get("byg032YdervaeggenesMateriale", "Ikke verificeret"),
+        "water_supply": building.get("byg030Vandforsyning", "Ikke verificeret"),
+        "drainage": building.get("byg031Afloebsforhold", "Ikke verificeret"),
         "heating_installation": "Ikke verificeret",
         "technical_installations": [],
-
-        "raw_dar_husnummer": {
-            "id_lokalId": husnummer.get("id_lokalId"),
-            "adgangsadressebetegnelse": husnummer.get("adgangsadressebetegnelse"),
-            "adgangTilBygning": husnummer.get("adgangTilBygning")
-        },
 
         "raw_bbr_building": building,
 
@@ -348,7 +441,7 @@ def normalize_bbr_building_from_dar(dar_result, address_data):
             "Kælder, tekniske anlæg, ABA, nøgleboks, stigrør og aktuelle adgangsforhold er ikke verificeret af denne query"
         ],
 
-        "verification_status": "BBR/bygningsdata forsøgt hentet via Datafordeleren"
+        "verification_status": "BBR/bygningsdata forsøgt hentet via BBR REST"
     }
 
 
@@ -429,13 +522,13 @@ def test_bbr():
     dar_result = test_dar_graphql_connection()
 
     return jsonify({
-        "bbr_connection": bbr_result,
-        "dar_connection": dar_result
+        "bbr_graphql_connection": bbr_result,
+        "dar_graphql_connection": dar_result
     })
 
 
-@app.route("/test-bbr-address", methods=["GET"])
-def test_bbr_address():
+@app.route("/test-bbr-rest-address", methods=["GET"])
+def test_bbr_rest_address():
     address = request.args.get("address", "")
 
     if not address:
@@ -454,12 +547,12 @@ def test_bbr_address():
         }), 400
 
     access_address_id = address_data.get("access_address_id")
-    dar_bbr_result = query_building_via_dar_husnummer(access_address_id)
+    rest_result = try_bbr_rest_bygning(access_address_id)
 
     return jsonify({
         "address_data": address_data,
-        "dar_bbr_result": dar_bbr_result,
-        "normalized_building": normalize_bbr_building_from_dar(dar_bbr_result, address_data)
+        "bbr_rest_result": rest_result,
+        "normalized_building": normalize_bbr_building_from_rest(rest_result, address_data)
     })
 
 
@@ -511,8 +604,8 @@ def incident_brief():
         }
 
     if address_data and address_data.get("access_address_id"):
-        dar_bbr_result = query_building_via_dar_husnummer(address_data.get("access_address_id"))
-        building_data = normalize_bbr_building_from_dar(dar_bbr_result, address_data)
+        rest_result = try_bbr_rest_bygning(address_data.get("access_address_id"))
+        building_data = normalize_bbr_building_from_rest(rest_result, address_data)
     else:
         building_data = get_building_placeholder(address_data)
 
@@ -568,7 +661,7 @@ def incident_brief():
             "Vejnavn og husnummer forsøgt hentet via Dataforsyningen/DAWA",
             "Kortlink genereret via OpenStreetMap",
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
-            "BBR-bygningsdata forsøgt hentet via DAR GraphQL relation til BBR Bygning",
+            "BBR-bygningsdata forsøgt hentet via BBR REST",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
             "Brandhaner, gas og el er ikke verificeret"
         ]

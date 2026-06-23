@@ -1112,7 +1112,7 @@ def privacy_policy():
         <h2>Contact</h2>
         <p>
             For questions about this API or privacy policy, contact:<br>
-            <strong>Frederik Racher</strong>
+            <strong>Frederik Racher - Kontakt@racher.dk</strong>
         </p>
     </body>
     </html>

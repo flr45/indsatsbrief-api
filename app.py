@@ -1,10 +1,15 @@
 from flask import Flask, request, jsonify
 from datetime import datetime
 import requests
+import os
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
 
+
+# -------------------------------------------------------
+# Retningshjælp
+# -------------------------------------------------------
 
 def direction_from_degrees(deg):
     if deg is None:
@@ -27,6 +32,10 @@ def opposite_direction_text(deg):
     return direction_from_degrees(opposite)
 
 
+# -------------------------------------------------------
+# Adresseopslag via Dataforsyningen/DAWA
+# -------------------------------------------------------
+
 def lookup_address(address):
     url = "https://api.dataforsyningen.dk/adresser"
 
@@ -44,6 +53,7 @@ def lookup_address(address):
             return None
 
         item = results[0]
+
         adgangsadresse = item.get("adgangsadresse", {})
         adgangs_point = adgangsadresse.get("adgangspunkt", {})
         coords = adgangs_point.get("koordinater", None)
@@ -52,13 +62,40 @@ def lookup_address(address):
         longitude = coords[0] if coords else None
         latitude = coords[1] if coords else None
 
+        kommune = adgangsadresse.get("kommune", {})
+        postnummer = adgangsadresse.get("postnummer", {})
+        vejstykke = adgangsadresse.get("vejstykke", {})
+        matrikel = adgangsadresse.get("matrikel", {})
+        ejerlav = matrikel.get("ejerlav", {}) if matrikel else {}
+
         return {
             "normalized_address": item.get("adressebetegnelse", address),
-            "municipality": adgangsadresse.get("kommune", {}).get("navn", "Ikke verificeret"),
-            "postal_code": adgangsadresse.get("postnummer", {}).get("nr", "Ikke verificeret"),
-            "city": adgangsadresse.get("postnummer", {}).get("navn", "Ikke verificeret"),
+            "address_id": item.get("id"),
+            "access_address_id": adgangsadresse.get("id"),
+
+            "street_name": vejstykke.get("navn", "Ikke verificeret"),
+            "street_code": vejstykke.get("kode"),
+            "house_number": adgangsadresse.get("husnr", "Ikke verificeret"),
+            "floor": item.get("etage", None),
+            "door": item.get("dør", None),
+
+            "municipality": kommune.get("navn", "Ikke verificeret"),
+            "municipality_code": kommune.get("kode"),
+            "postal_code": postnummer.get("nr", "Ikke verificeret"),
+            "city": postnummer.get("navn", "Ikke verificeret"),
+
             "latitude": latitude,
-            "longitude": longitude
+            "longitude": longitude,
+
+            "cadastre": {
+                "matrikelnummer": matrikel.get("matrikelnummer") if matrikel else None,
+                "ejerlav_navn": ejerlav.get("navn") if ejerlav else None,
+                "ejerlav_kode": ejerlav.get("kode") if ejerlav else None,
+                "status": "Ikke verificeret som indsatsdata"
+            },
+
+            "source": "Dataforsyningen/DAWA adresseopslag",
+            "verification_status": "Adresse og koordinater forsøgt verificeret via Dataforsyningen/DAWA"
         }
 
     except Exception as e:
@@ -66,6 +103,10 @@ def lookup_address(address):
             "error": str(e)
         }
 
+
+# -------------------------------------------------------
+# Vejrdata via Open-Meteo testintegration
+# -------------------------------------------------------
 
 def get_weather(latitude, longitude):
     if latitude is None or longitude is None:
@@ -121,9 +162,124 @@ def get_weather(latitude, longitude):
         }
 
 
+# -------------------------------------------------------
+# BBR test via Datafordeler GraphQL
+# -------------------------------------------------------
+
+def test_bbr_graphql_connection():
+    api_key = os.getenv("DATAFORDELER_API_KEY")
+
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "DATAFORDELER_API_KEY mangler som environment variable"
+        }
+
+    url = f"https://graphql.datafordeler.dk/BBR/v3?apiKey={api_key}"
+
+    query = """
+    query {
+      __typename
+    }
+    """
+
+    try:
+        response = requests.post(
+            url,
+            json={"query": query},
+            timeout=15
+        )
+
+        return {
+            "status": "ok",
+            "status_code": response.status_code,
+            "response_text": response.text[:1000]
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+# -------------------------------------------------------
+# BBR-klar placeholder
+# -------------------------------------------------------
+
+def get_building_placeholder(address_data):
+    return {
+        "source": "BBR ikke koblet på endnu",
+        "bbr_id": None,
+        "access_address_id": address_data.get("access_address_id") if address_data else None,
+        "address_id": address_data.get("address_id") if address_data else None,
+
+        "usage": "Ikke verificeret",
+        "building_type": "Ikke verificeret",
+        "construction_year": None,
+        "area_m2": None,
+        "built_area_m2": None,
+        "floors": None,
+        "basement": "Ikke verificeret",
+        "roof_material": "Ikke verificeret",
+        "outer_wall_material": "Ikke verificeret",
+        "heating_installation": "Ikke verificeret",
+        "technical_installations": [],
+
+        "fire_relevant_notes": [
+            "BBR/bygningsdata er ikke koblet på endnu",
+            "Bygningstype, areal, etager, kælder, tag og tekniske anlæg skal verificeres i BBR/beredskabets egne systemer"
+        ],
+
+        "verification_status": "BBR/bygningsdata ikke verificeret"
+    }
+
+
+# -------------------------------------------------------
+# Vejdata-klar placeholder
+# -------------------------------------------------------
+
+def get_road_placeholder(address_data):
+    street_name = address_data.get("street_name", "Ikke verificeret") if address_data else "Ikke verificeret"
+    house_number = address_data.get("house_number", "Ikke verificeret") if address_data else "Ikke verificeret"
+
+    return {
+        "source": "Vejdata/trafikdata ikke koblet på endnu",
+
+        "street_name": street_name,
+        "house_number": house_number,
+        "roadworks": [],
+        "traffic_events": [],
+        "closures": [],
+        "access_notes": [],
+
+        "preliminary_access_assessment": [
+            f"Adresse ligger på/ved {street_name} {house_number}" if street_name != "Ikke verificeret" else "Vejnavn ikke verificeret",
+            "Tilkørsel, spærringer, ensretning, bomme, bredde og opstillingsmuligheder er ikke verificeret"
+        ],
+
+        "verification_status": "Vejdata/trafikale forhold ikke verificeret"
+    }
+
+
+# -------------------------------------------------------
+# Flask routes
+# -------------------------------------------------------
+
 @app.route("/")
 def home():
     return "IndsatsBrief API kører"
+
+
+@app.route("/test-bbr", methods=["GET"])
+def test_bbr():
+    result = test_bbr_graphql_connection()
+    status_code = result.get("status_code", 500)
+
+    if result.get("status") == "error":
+        return jsonify(result), 500
+
+    return jsonify(result), status_code
 
 
 @app.route("/incident-brief", methods=["GET"])
@@ -144,6 +300,7 @@ def incident_brief():
         latitude = address_data["latitude"]
         longitude = address_data["longitude"]
     else:
+        address_data = {}
         normalized_address = address
         municipality = "Ikke verificeret"
         postal_code = "Ikke verificeret"
@@ -180,6 +337,8 @@ def incident_brief():
         "latitude": latitude,
         "longitude": longitude,
 
+        "address_details": address_data,
+
         "map": {
             "map_url": map_url,
             "image_url": None,
@@ -192,33 +351,14 @@ def incident_brief():
             "image_url": None,
             "source": "Ikke tilgængeligt i denne version",
             "year": None,
-            "note": "Luftfoto ikke hentet i denne version"
+            "note": "Luftfoto/ortofoto ikke hentet i denne version"
         },
 
         "weather": weather_data,
 
-        "building": {
-            "source": "Ikke tilgængeligt i denne version",
-            "bbr_id": None,
-            "usage": "Ikke verificeret",
-            "building_type": "Ikke verificeret",
-            "construction_year": None,
-            "area_m2": None,
-            "floors": None,
-            "basement": "Ikke verificeret",
-            "roof_material": "Ikke verificeret",
-            "outer_wall_material": "Ikke verificeret",
-            "technical_installations": [],
-            "verification_status": "Ikke verificeret"
-        },
+        "building": get_building_placeholder(address_data),
 
-        "road": {
-            "source": "Ikke tilgængeligt i denne version",
-            "roadworks": [],
-            "traffic_events": [],
-            "access_notes": [],
-            "verification_status": "Ikke verificeret"
-        },
+        "road": get_road_placeholder(address_data),
 
         "water_supply": {
             "source": "Ikke tilgængeligt",
@@ -238,9 +378,12 @@ def incident_brief():
 
         "limitations": [
             "Adresse og koordinater forsøgt hentet via Dataforsyningen/DAWA",
+            "Vejnavn og husnummer forsøgt hentet via Dataforsyningen/DAWA",
             "Kortlink genereret via OpenStreetMap",
             "Vejr/vind forsøgt hentet via Open-Meteo testintegration",
-            "BBR, vejdata, brandhaner, gas og el er endnu ikke verificeret"
+            "BBR er strukturelt klargjort, men ikke koblet på endnu",
+            "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
+            "Brandhaner, gas og el er ikke verificeret"
         ]
     }
 

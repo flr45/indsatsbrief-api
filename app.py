@@ -1,8 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from datetime import datetime, timezone
 import requests
 import os
 import math
+import base64
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -298,7 +299,7 @@ def lookup_address(address):
 
 
 # -------------------------------------------------------
-# Vejrdata via Open-Meteo testintegration
+# Vejrdata via Open-Meteo
 # -------------------------------------------------------
 
 def get_weather(latitude, longitude):
@@ -512,8 +513,13 @@ def get_aerial_check(address_data, radius_m=250):
         f"#map=19/{latitude}/{longitude}"
     )
 
+    public_image_url = (
+        f"https://indsatsbrief-api.onrender.com/aerial-image.jpg"
+        f"?address={requests.utils.quote(normalized_address)}"
+    )
+
     return {
-        "source": "Visuel luftfoto-/satellitvurdering via eksterne kortlinks",
+        "source": "Visuel luftfoto-/satellitvurdering via eksterne kortlinks og forsøgt ortofoto",
         "status": "Klar til manuel visuel vurdering",
         "address": normalized_address,
         "latitude": latitude,
@@ -522,7 +528,8 @@ def get_aerial_check(address_data, radius_m=250):
 
         "links": {
             "google_maps_satellite": google_satellite_url,
-            "openstreetmap": openstreetmap_url
+            "openstreetmap": openstreetmap_url,
+            "attempted_ortofoto_image": public_image_url
         },
 
         "possible_visual_risks_to_check": [
@@ -574,12 +581,166 @@ def get_aerial_check(address_data, radius_m=250):
 
 
 # -------------------------------------------------------
-# Datafordeler / BBR GraphQL
+# Ortofoto WMS via Datafordeleren
 # -------------------------------------------------------
 
 def get_datafordeler_api_key():
     return os.getenv("DATAFORDELER_API_KEY")
 
+
+def build_ortofoto_wms_url(latitude, longitude, width=900, height=900, bbox_degrees=0.0012):
+    """
+    Bygger et WMS GetMap-link til GeoDanmark Ortofoto Forår.
+
+    VIGTIGT:
+    URL’en indeholder API-key og må derfor ikke returneres direkte til brugeren.
+    Denne funktion bruges kun internt.
+    """
+
+    api_key = get_datafordeler_api_key()
+
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "DATAFORDELER_API_KEY mangler som environment variable",
+            "url": None
+        }
+
+    min_lon = longitude - bbox_degrees
+    max_lon = longitude + bbox_degrees
+    min_lat = latitude - bbox_degrees
+    max_lat = latitude + bbox_degrees
+
+    base_url = "https://services.datafordeler.dk/GeoDanmarkOrto/orto_foraar/1.0.0/WMS"
+
+    params = {
+        "apikey": api_key,
+        "SERVICE": "WMS",
+        "VERSION": "1.3.0",
+        "REQUEST": "GetMap",
+        "LAYERS": "orto_foraar",
+        "STYLES": "",
+        "CRS": "EPSG:4326",
+        "BBOX": f"{min_lat},{min_lon},{max_lat},{max_lon}",
+        "WIDTH": str(width),
+        "HEIGHT": str(height),
+        "FORMAT": "image/jpeg",
+        "TRANSPARENT": "FALSE"
+    }
+
+    prepared = requests.Request("GET", base_url, params=params).prepare()
+
+    return {
+        "status": "ready",
+        "url": prepared.url,
+        "bbox": {
+            "min_lat": min_lat,
+            "min_lon": min_lon,
+            "max_lat": max_lat,
+            "max_lon": max_lon
+        },
+        "crs": "EPSG:4326",
+        "width": width,
+        "height": height,
+        "source": "GeoDanmark Ortofoto Forår WMS / Datafordeleren"
+    }
+
+
+def fetch_ortofoto_image(latitude, longitude):
+    """
+    Forsøger at hente ortofoto.
+    Returnerer metadata og base64-preview, men IKKE WMS-url med API-key.
+    """
+
+    if latitude is None or longitude is None:
+        return {
+            "status": "error",
+            "message": "Mangler koordinater",
+            "verification_status": "Ortofoto ikke hentet"
+        }
+
+    wms = build_ortofoto_wms_url(latitude, longitude)
+
+    if wms.get("status") != "ready":
+        return wms
+
+    try:
+        response = requests.get(wms["url"], timeout=30)
+        content_type = response.headers.get("Content-Type", "")
+
+        result = {
+            "status_code": response.status_code,
+            "content_type": content_type,
+            "source": wms.get("source"),
+            "crs": wms.get("crs"),
+            "bbox": wms.get("bbox"),
+            "width": wms.get("width"),
+            "height": wms.get("height"),
+            "verification_status": "Ortofoto forsøgt hentet - ikke automatisk analyseret"
+        }
+
+        if response.status_code != 200:
+            result["status"] = "error"
+            result["message"] = "WMS returnerede ikke HTTP 200"
+            result["response_preview"] = response.text[:1000]
+            return result
+
+        if "image" not in content_type.lower():
+            result["status"] = "error"
+            result["message"] = "WMS returnerede ikke et billede"
+            result["response_preview"] = response.text[:1000]
+            return result
+
+        image_base64 = base64.b64encode(response.content).decode("utf-8")
+
+        result["status"] = "success"
+        result["image_base64_preview"] = image_base64[:500]
+        result["image_size_bytes"] = len(response.content)
+        result["note"] = (
+            "Ortofoto blev hentet. API’en laver endnu ikke automatisk visuel analyse "
+            "af solceller, tanke, oplag eller adgangsforhold."
+        )
+
+        return result
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "source": wms.get("source"),
+            "verification_status": "Ortofoto kunne ikke hentes"
+        }
+
+
+def get_ortofoto_image_bytes(latitude, longitude):
+    """
+    Returnerer rå billedbytes til /aerial-image.jpg.
+    """
+
+    wms = build_ortofoto_wms_url(latitude, longitude)
+
+    if wms.get("status") != "ready":
+        return None, "text/plain", wms.get("message", "WMS kunne ikke bygges")
+
+    try:
+        response = requests.get(wms["url"], timeout=30)
+        content_type = response.headers.get("Content-Type", "text/plain")
+
+        if response.status_code != 200:
+            return None, "text/plain", response.text[:1000]
+
+        if "image" not in content_type.lower():
+            return None, "text/plain", response.text[:1000]
+
+        return response.content, content_type, None
+
+    except Exception as e:
+        return None, "text/plain", str(e)
+
+
+# -------------------------------------------------------
+# Datafordeler / BBR GraphQL
+# -------------------------------------------------------
 
 def current_graphql_time():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -979,7 +1140,7 @@ def privacy_policy():
             <li>Weather and wind data</li>
             <li>BBR/building register data</li>
             <li>Possible fire hydrant data from open sources, if available</li>
-            <li>External map links for manual visual assessment</li>
+            <li>External map links and attempted ortofoto image links for manual visual assessment</li>
         </ul>
 
         <h2>What data is not intentionally collected</h2>
@@ -1003,6 +1164,7 @@ def privacy_policy():
         <ul>
             <li>Dataforsyningen/DAWA</li>
             <li>Datafordeleren/BBR</li>
+            <li>Datafordeleren/GeoDanmark Ortofoto, if available</li>
             <li>Open-Meteo</li>
             <li>OpenStreetMap/Overpass</li>
             <li>Google Maps links</li>
@@ -1133,6 +1295,74 @@ def aerial_check_route():
         "address_data": address_data,
         "aerial_check": aerial_check
     })
+
+
+@app.route("/aerial-image", methods=["GET"])
+def aerial_image_route():
+    address = request.args.get("address", "")
+
+    if not address:
+        return jsonify({
+            "status": "error",
+            "message": "Mangler address parameter"
+        }), 400
+
+    address_data = lookup_address(address)
+
+    if not address_data or "error" in address_data:
+        return jsonify({
+            "status": "error",
+            "message": "Adresse kunne ikke slås op",
+            "address_lookup": address_data
+        }), 400
+
+    latitude = address_data.get("latitude")
+    longitude = address_data.get("longitude")
+
+    ortofoto_result = fetch_ortofoto_image(latitude, longitude)
+
+    public_image_url = (
+        f"https://indsatsbrief-api.onrender.com/aerial-image.jpg"
+        f"?address={requests.utils.quote(address_data.get('normalized_address', address))}"
+    )
+
+    return jsonify({
+        "address_data": address_data,
+        "ortofoto": ortofoto_result,
+        "public_image_url": public_image_url,
+        "visual_analysis": {
+            "status": "not_performed",
+            "note": "Automatisk analyse af solceller, tanke, oplag mv. er ikke bygget endnu.",
+            "verification_status": "Ingen visuel konklusion"
+        }
+    })
+
+
+@app.route("/aerial-image.jpg", methods=["GET"])
+def aerial_image_jpg_route():
+    address = request.args.get("address", "")
+
+    if not address:
+        return Response("Mangler address parameter", status=400, mimetype="text/plain")
+
+    address_data = lookup_address(address)
+
+    if not address_data or "error" in address_data:
+        return Response("Adresse kunne ikke slås op", status=400, mimetype="text/plain")
+
+    latitude = address_data.get("latitude")
+    longitude = address_data.get("longitude")
+
+    image_bytes, content_type, error = get_ortofoto_image_bytes(latitude, longitude)
+
+    if error or not image_bytes:
+        return Response(
+            f"Ortofoto kunne ikke hentes: {error}",
+            status=502,
+            mimetype="text/plain"
+        )
+
+    return Response(image_bytes, status=200, mimetype=content_type)
 
 
 @app.route("/hazmat", methods=["GET"])
@@ -1288,7 +1518,7 @@ def incident_brief():
             "BBR GraphQL koblet via husnummer/adgangsadresse-id",
             "BBR-koder er oversat programmatisk, men bør verificeres ved kritisk indsats",
             "Mulige brandhaner forsøgt hentet fra OpenStreetMap/Overpass, men er ikke verificeret",
-            "Luftfoto/satellitlinks er kun til manuel visuel vurdering og må ikke betragtes som verificeret indsatsdata",
+            "Luftfoto/satellitlinks og ortofoto er kun til manuel visuel vurdering og må ikke betragtes som verificeret indsatsdata",
             "Solceller, tanke, oplag, adgangsforhold og andre visuelle farer må kun omtales som mulige, ikke verificerede observationer",
             "Vejdata/trafikhændelser er strukturelt klargjort, men ikke koblet på endnu",
             "Gas og el er ikke verificeret",

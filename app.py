@@ -162,6 +162,31 @@ BBR_HEATING_FUEL = {
     "9": "Andet",
 }
 
+BBR_HEATING_INSTALLATION = {
+    "1": "Fjernvarme/blokvarme",
+    "2": "Centralvarme fra eget anlæg",
+    "3": "Ovne, herunder kakkelovne, kamin og brændeovne",
+    "5": "Varmepumpe",
+    "6": "Centralvarme med to fyringsenheder",
+    "7": "Elovne/elpaneler",
+    "8": "Gasradiatorer",
+    "9": "Ingen varmeinstallation",
+    "99": "Blandet varmeinstallation",
+}
+
+BBR_SUPPLEMENTARY_HEATING = {
+    "1": "Varmepumpe",
+    "2": "Ovne til fast brændsel",
+    "3": "Ovne til flydende brændsel",
+    "4": "Solpaneler",
+    "5": "Pejs",
+    "6": "Gasradiator",
+    "7": "Elovne",
+    "10": "Biogasanlæg",
+    "80": "Andet",
+    "90": "Ingen supplerende varme",
+}
+
 BBR_STATUS = {
     "1": "Bygning under opførelse",
     "2": "Bygning færdigmeldt",
@@ -335,7 +360,23 @@ def lookup_address(address):
 
 def get_weather(latitude, longitude):
     if latitude is None or longitude is None:
-        return None
+        return {
+            "source": "Open-Meteo ikke forsøgt - mangler koordinater",
+            "timestamp": datetime.now().isoformat(),
+            "temperature_c": None,
+            "wind_direction_degrees": None,
+            "wind_direction_text": "Ikke verificeret",
+            "wind_speed_ms": None,
+            "wind_gust_ms": None,
+            "precipitation": None,
+            "smoke_direction_text": "Ikke verificeret",
+            "tactical_note": "Vejr/vind kan ikke hentes uden koordinater",
+            "error": "missing_coordinates",
+            "debug": {
+                "latitude": latitude,
+                "longitude": longitude
+            }
+        }
 
     url = "https://api.open-meteo.com/v1/forecast"
 
@@ -349,10 +390,36 @@ def get_weather(latitude, longitude):
 
     try:
         response = requests.get(url, params=params, timeout=10)
+
+        debug = {
+            "url": url,
+            "params": params,
+            "status_code": response.status_code,
+            "response_text_preview": response.text[:1000]
+        }
+
         response.raise_for_status()
-        result = response.json()
+
+        try:
+            result = response.json()
+        except Exception as e:
+            return {
+                "source": "Open-Meteo",
+                "timestamp": datetime.now().isoformat(),
+                "temperature_c": None,
+                "wind_direction_degrees": None,
+                "wind_direction_text": "Ikke verificeret",
+                "wind_speed_ms": None,
+                "wind_gust_ms": None,
+                "precipitation": None,
+                "smoke_direction_text": "Ikke verificeret",
+                "tactical_note": "Open-Meteo svarede, men JSON kunne ikke læses",
+                "error": str(e),
+                "debug": debug
+            }
 
         current = result.get("current", {})
+        debug["current_keys"] = list(current.keys()) if isinstance(current, dict) else []
 
         wind_deg = current.get("wind_direction_10m")
         wind_from_text = direction_from_degrees(wind_deg)
@@ -368,12 +435,14 @@ def get_weather(latitude, longitude):
             "wind_gust_ms": current.get("wind_gusts_10m"),
             "precipitation": current.get("precipitation"),
             "smoke_direction_text": f"Røg forventes at drive mod {smoke_to_text}" if smoke_to_text != "Ikke verificeret" else "Ikke verificeret",
-            "tactical_note": f"Overvej opstilling på vindsiden. Røg kan påvirke området mod {smoke_to_text}." if smoke_to_text != "Ikke verificeret" else "Ikke verificeret"
+            "tactical_note": f"Overvej opstilling på vindsiden. Røg kan påvirke området mod {smoke_to_text}." if smoke_to_text != "Ikke verificeret" else "Ikke verificeret",
+            "error": None,
+            "debug": debug
         }
 
     except Exception as e:
         return {
-            "source": "Vejrdata kunne ikke hentes",
+            "source": "Open-Meteo kunne ikke hentes",
             "error": str(e),
             "timestamp": datetime.now().isoformat(),
             "temperature_c": None,
@@ -381,9 +450,13 @@ def get_weather(latitude, longitude):
             "wind_direction_text": "Ikke verificeret",
             "wind_speed_ms": None,
             "wind_gust_ms": None,
-            "precipitation": "Ikke verificeret",
+            "precipitation": None,
             "smoke_direction_text": "Ikke verificeret",
-            "tactical_note": "Live vejrdata ikke tilgængeligt i denne rapport"
+            "tactical_note": "Open-Meteo-data kunne ikke hentes",
+            "debug": {
+                "url": url,
+                "params": params
+            }
         }
 
 
@@ -1144,7 +1217,9 @@ def bbr_address_candidate_queries(access_address_id):
                   byg033Tagdaekningsmateriale
                   byg036AsbestholdigtMateriale
                   byg038SamletBygningsareal
+                  byg056Varmeinstallation
                   byg057Opvarmningsmiddel
+                  byg058SupplerendeVarme
                   grund
                   jordstykke
                   status
@@ -1239,6 +1314,58 @@ def select_best_bbr_building(nodes):
     return sorted(nodes, key=score, reverse=True)[0]
 
 
+def normalize_secondary_bbr_building(node):
+    usage_code = node.get("byg021BygningensAnvendelse")
+    outer_wall_code = node.get("byg032YdervaeggensMateriale")
+    roof_code = node.get("byg033Tagdaekningsmateriale")
+    status_code = node.get("status")
+
+    return {
+        "usage": usage_code,
+        "usage_text": translate_bbr_code(usage_code, BBR_BUILDING_USAGE),
+
+        "building_type": usage_code,
+        "building_type_text": translate_bbr_code(usage_code, BBR_BUILDING_USAGE),
+
+        "construction_year": node.get("byg026Opfoerelsesaar"),
+        "renovation_year": node.get("byg027OmTilbygningsaar"),
+        "area_m2": node.get("byg038SamletBygningsareal"),
+
+        "roof_material": roof_code,
+        "roof_material_text": translate_bbr_code(roof_code, BBR_ROOF_MATERIAL),
+
+        "outer_wall_material": outer_wall_code,
+        "outer_wall_material_text": translate_bbr_code(outer_wall_code, BBR_OUTER_WALL_MATERIAL),
+
+        "bbr_id": node.get("byg007Bygningsnummer"),
+        "status": status_code,
+        "status_text": translate_bbr_code(status_code, BBR_STATUS)
+    }
+
+
+def build_secondary_bbr_buildings(nodes, main_building):
+    secondary_buildings = []
+    main_identifier = (
+        main_building.get("id_lokalId"),
+        main_building.get("datafordelerRowId"),
+        main_building.get("byg007Bygningsnummer")
+    ) if main_building else None
+
+    for node in nodes or []:
+        node_identifier = (
+            node.get("id_lokalId"),
+            node.get("datafordelerRowId"),
+            node.get("byg007Bygningsnummer")
+        )
+
+        if main_identifier and node_identifier == main_identifier:
+            continue
+
+        secondary_buildings.append(normalize_secondary_bbr_building(node))
+
+    return secondary_buildings
+
+
 def normalize_bbr_building_from_graphql(address_result, address_data):
     if not address_result or address_result.get("status") not in ["success", "query_worked_but_no_nodes"]:
         placeholder = get_building_placeholder(address_data)
@@ -1255,13 +1382,16 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
         return placeholder
 
     building = select_best_bbr_building(nodes)
+    secondary_buildings = build_secondary_bbr_buildings(nodes, building)
 
     usage_code = building.get("byg021BygningensAnvendelse")
     outer_wall_code = building.get("byg032YdervaeggensMateriale")
     roof_code = building.get("byg033Tagdaekningsmateriale")
     water_code = building.get("byg030Vandforsyning")
     asbestos_code = building.get("byg036AsbestholdigtMateriale")
+    heating_installation_code = building.get("byg056Varmeinstallation")
     heating_fuel_code = building.get("byg057Opvarmningsmiddel")
+    supplementary_heating_code = building.get("byg058SupplerendeVarme")
     status_code = building.get("status")
 
     return {
@@ -1303,8 +1433,14 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
         "asbestos_material": asbestos_code,
         "asbestos_material_text": translate_bbr_code(asbestos_code, BBR_ASBEST_MATERIAL),
 
+        "heating_installation": heating_installation_code,
+        "heating_installation_text": translate_bbr_code(heating_installation_code, BBR_HEATING_INSTALLATION),
+
         "heating_fuel": heating_fuel_code,
         "heating_fuel_text": translate_bbr_code(heating_fuel_code, BBR_HEATING_FUEL),
+
+        "supplementary_heating": supplementary_heating_code,
+        "supplementary_heating_text": translate_bbr_code(supplementary_heating_code, BBR_SUPPLEMENTARY_HEATING),
 
         "ground": building.get("grund"),
         "cadastre_parcel": building.get("jordstykke"),
@@ -1314,6 +1450,7 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
 
         "raw_bbr_building": building,
         "all_bbr_nodes_for_address": nodes,
+        "secondary_buildings": secondary_buildings,
 
         "fire_relevant_notes": [
             "BBR-data er registerdata og skal vurderes kritisk ved indsats",
@@ -1341,7 +1478,9 @@ def bbr_building_has_real_data(building_data):
         "area_m2",
         "outer_wall_material_text",
         "roof_material_text",
+        "heating_installation_text",
         "heating_fuel_text",
+        "supplementary_heating_text",
         "asbestos_material_text",
     ]
 
@@ -1700,8 +1839,16 @@ def get_building_placeholder(address_data):
         "asbestos_material": "Ikke verificeret",
         "asbestos_material_text": "Ikke verificeret",
 
+        "heating_installation": "Ikke verificeret",
+        "heating_installation_text": "Ikke verificeret",
+
         "heating_fuel": "Ikke verificeret",
         "heating_fuel_text": "Ikke verificeret",
+
+        "supplementary_heating": "Ikke verificeret",
+        "supplementary_heating_text": "Ikke verificeret",
+
+        "secondary_buildings": [],
 
         "technical_installations": [],
 
@@ -1880,12 +2027,40 @@ def test_bbr_graphql_address_route():
     normalized_building = normalize_bbr_building_from_graphql(bbr_address_result, address_data)
     fallback_building = get_bbr_with_fallback(address_data)
 
+    heating_debug_nodes = []
+    for node in bbr_address_result.get("nodes") or []:
+        heating_debug_nodes.append({
+            "id_lokalId": node.get("id_lokalId"),
+            "byg056Varmeinstallation": node.get("byg056Varmeinstallation"),
+            "byg057Opvarmningsmiddel": node.get("byg057Opvarmningsmiddel"),
+            "byg058SupplerendeVarme": node.get("byg058SupplerendeVarme")
+        })
+
     return jsonify({
         "address_data": address_data,
         "bbr_address_result": bbr_address_result,
         "normalized_building": normalized_building,
         "fallback_building": fallback_building,
-        "fallback_debug": fallback_building.get("bbr_fallback", {})
+        "fallback_debug": fallback_building.get("bbr_fallback", {}),
+        "heating_debug": {
+            "original_nodes": heating_debug_nodes,
+            "normalized": {
+                "heating_installation": normalized_building.get("heating_installation"),
+                "heating_installation_text": normalized_building.get("heating_installation_text"),
+                "heating_fuel": normalized_building.get("heating_fuel"),
+                "heating_fuel_text": normalized_building.get("heating_fuel_text"),
+                "supplementary_heating": normalized_building.get("supplementary_heating"),
+                "supplementary_heating_text": normalized_building.get("supplementary_heating_text")
+            },
+            "fallback": {
+                "heating_installation": fallback_building.get("heating_installation"),
+                "heating_installation_text": fallback_building.get("heating_installation_text"),
+                "heating_fuel": fallback_building.get("heating_fuel"),
+                "heating_fuel_text": fallback_building.get("heating_fuel_text"),
+                "supplementary_heating": fallback_building.get("supplementary_heating"),
+                "supplementary_heating_text": fallback_building.get("supplementary_heating_text")
+            }
+        }
     })
 
 
@@ -2131,18 +2306,22 @@ def incident_brief():
 
     weather_data = get_weather(latitude, longitude)
 
-    if not weather_data:
+    if not isinstance(weather_data, dict):
         weather_data = {
-            "source": "Ikke tilgængeligt i denne version",
+            "source": "Open-Meteo ikke forsøgt",
             "timestamp": datetime.now().isoformat(),
             "temperature_c": None,
             "wind_direction_degrees": None,
             "wind_direction_text": "Ikke verificeret",
             "wind_speed_ms": None,
             "wind_gust_ms": None,
-            "precipitation": "Ikke verificeret",
+            "precipitation": None,
             "smoke_direction_text": "Ikke verificeret",
-            "tactical_note": "Live vejrdata ikke tilgængeligt i denne rapport"
+            "tactical_note": "Vejrdata kunne ikke bygges",
+            "error": "invalid_weather_response",
+            "debug": {
+                "weather_response_type": str(type(weather_data))
+            }
         }
 
     if address_data and address_data.get("access_address_id"):

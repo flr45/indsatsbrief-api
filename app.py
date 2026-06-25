@@ -1495,6 +1495,261 @@ def bbr_building_has_real_data(building_data):
     return False
 
 
+def is_positive_report_value(value):
+    if value is None:
+        return False
+
+    if isinstance(value, str):
+        stripped = value.strip()
+
+        if not stripped:
+            return False
+
+        bad_parts = [
+            "Ikke verificeret",
+            "Ikke oplyst",
+            "Ukendt",
+            "ikke fundet",
+            "ikke tilgængeligt",
+        ]
+
+        return not any(part.lower() in stripped.lower() for part in bad_parts)
+
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) > 0
+
+    return True
+
+
+def add_positive_field(target, source, source_key, target_key=None):
+    value = source.get(source_key) if source else None
+
+    if is_positive_report_value(value):
+        target[target_key or source_key] = value
+
+
+def prune_positive_report_data(value):
+    if isinstance(value, dict):
+        cleaned = {}
+
+        for key, item in value.items():
+            pruned = prune_positive_report_data(item)
+
+            if is_positive_report_value(pruned):
+                cleaned[key] = pruned
+
+        return cleaned
+
+    if isinstance(value, list):
+        cleaned = []
+
+        for item in value:
+            pruned = prune_positive_report_data(item)
+
+            if is_positive_report_value(pruned):
+                cleaned.append(pruned)
+
+        return cleaned
+
+    return value if is_positive_report_value(value) else None
+
+
+def build_short_report_address(address, normalized_address, municipality, postal_code, city):
+    address_section = {
+        "requested_address": address,
+        "matched_address": normalized_address,
+        "municipality": municipality,
+        "postal_code": postal_code,
+        "city": city
+    }
+
+    if (
+        is_positive_report_value(address)
+        and is_positive_report_value(normalized_address)
+        and normalize_match_text(address) != normalize_match_text(normalized_address)
+    ):
+        address_section["note"] = "Adresseopslag matchede nærmeste registrerede adresse"
+
+    return prune_positive_report_data(address_section)
+
+
+def build_short_report_building(building_data):
+    building = {}
+
+    text_linked_fields = [
+        ("usage", "usage_text"),
+        ("building_type", "building_type_text"),
+        ("outer_wall_material", "outer_wall_material_text"),
+        ("roof_material", "roof_material_text"),
+        ("water_supply", "water_supply_text"),
+        ("asbestos_material", "asbestos_material_text"),
+        ("heating_installation", "heating_installation_text"),
+        ("heating_fuel", "heating_fuel_text"),
+        ("supplementary_heating", "supplementary_heating_text"),
+        ("status", "status_text"),
+    ]
+
+    for code_key, text_key in text_linked_fields:
+        text_value = building_data.get(text_key) if building_data else None
+
+        if not is_positive_report_value(text_value):
+            continue
+
+        add_positive_field(building, building_data, code_key)
+        building[text_key] = text_value
+
+    for field in [
+        "bbr_id",
+        "construction_year",
+        "renovation_year",
+        "area_m2",
+        "municipality_code",
+        "husnummer",
+    ]:
+        add_positive_field(building, building_data, field)
+
+    secondary_buildings = []
+
+    for secondary in building_data.get("secondary_buildings", []) if building_data else []:
+        normalized_secondary = {}
+
+        for code_key, text_key in [
+            ("usage", "usage_text"),
+            ("building_type", "building_type_text"),
+            ("outer_wall_material", "outer_wall_material_text"),
+            ("roof_material", "roof_material_text"),
+            ("status", "status_text"),
+        ]:
+            text_value = secondary.get(text_key)
+
+            if not is_positive_report_value(text_value):
+                continue
+
+            add_positive_field(normalized_secondary, secondary, code_key)
+            normalized_secondary[text_key] = text_value
+
+        for field in [
+            "bbr_id",
+            "construction_year",
+            "renovation_year",
+            "area_m2",
+        ]:
+            add_positive_field(normalized_secondary, secondary, field)
+
+        normalized_secondary = prune_positive_report_data(normalized_secondary)
+
+        if normalized_secondary:
+            secondary_buildings.append(normalized_secondary)
+
+    if secondary_buildings:
+        building["secondary_buildings"] = secondary_buildings
+
+    return prune_positive_report_data(building)
+
+
+def build_short_report_osm_summary(osm_risk_check_data):
+    summary = []
+
+    for item in osm_risk_check_data.get("osm_risk_summary", []) if osm_risk_check_data else []:
+        cleaned_item = {}
+
+        for field in [
+            "category",
+            "count",
+            "nearest_distance_m",
+            "risk_level",
+        ]:
+            add_positive_field(cleaned_item, item, field)
+
+        cleaned_item = prune_positive_report_data(cleaned_item)
+
+        if cleaned_item:
+            summary.append(cleaned_item)
+
+    return summary
+
+
+def build_short_report_weather(weather_data):
+    if not weather_data or weather_data.get("error"):
+        return {}
+
+    weather = {}
+
+    for field in [
+        "temperature_c",
+        "wind_direction_degrees",
+        "wind_direction_text",
+        "wind_speed_ms",
+        "wind_gust_ms",
+        "precipitation",
+        "smoke_direction_text",
+    ]:
+        add_positive_field(weather, weather_data, field)
+
+    return prune_positive_report_data(weather)
+
+
+def build_short_report_data(
+    address,
+    normalized_address,
+    municipality,
+    postal_code,
+    city,
+    latitude,
+    longitude,
+    map_url,
+    aerial_check_data,
+    building_data,
+    osm_risk_check_data,
+    weather_data
+):
+    short_report_data = {
+        "address": build_short_report_address(
+            address,
+            normalized_address,
+            municipality,
+            postal_code,
+            city
+        )
+    }
+
+    coordinates = prune_positive_report_data({
+        "latitude": latitude,
+        "longitude": longitude
+    })
+
+    if coordinates:
+        short_report_data["coordinates"] = coordinates
+
+    if is_positive_report_value(map_url):
+        short_report_data["map_url"] = map_url
+
+    google_maps_satellite = (
+        aerial_check_data.get("links", {}).get("google_maps_satellite")
+        if aerial_check_data else None
+    )
+
+    if is_positive_report_value(google_maps_satellite):
+        short_report_data["google_maps_satellite"] = google_maps_satellite
+
+    building = build_short_report_building(building_data)
+
+    if building:
+        short_report_data["building"] = building
+
+    osm_risk_summary = build_short_report_osm_summary(osm_risk_check_data)
+
+    if osm_risk_summary:
+        short_report_data["osm_risk_summary"] = osm_risk_summary
+
+    weather = build_short_report_weather(weather_data)
+
+    if weather:
+        short_report_data["weather"] = weather
+
+    return prune_positive_report_data(short_report_data)
+
+
 def get_base_house_number(house_number):
     if not house_number:
         return None
@@ -2332,6 +2587,20 @@ def incident_brief():
     water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
     aerial_check_data = get_aerial_check(address_data, radius_m)
     osm_risk_check_data = get_osm_risk_check(latitude, longitude, radius_m)
+    short_report_data = build_short_report_data(
+        address,
+        normalized_address,
+        municipality,
+        postal_code,
+        city,
+        latitude,
+        longitude,
+        map_url,
+        aerial_check_data,
+        building_data,
+        osm_risk_check_data,
+        weather_data
+    )
 
     data = {
         "normalized_address": normalized_address,
@@ -2352,6 +2621,7 @@ def incident_brief():
         },
 
         "aerial_photo": aerial_check_data,
+        "short_report_data": short_report_data,
 
         "weather": weather_data,
         "building": building_data,

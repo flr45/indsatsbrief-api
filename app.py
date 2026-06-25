@@ -1368,53 +1368,189 @@ def get_base_house_number(house_number):
     return match.group(1)
 
 
-def build_bbr_fallback_address_queries(address_data):
+def normalize_match_text(value):
+    if value is None:
+        return None
+
+    return re.sub(r"\s+", " ", str(value).strip().lower())
+
+
+def normalize_dawa_access_address(item, source_address_data=None):
+    if not item:
+        return None
+
+    adgangsadresse = item.get("adgangsadresse") or item
+    adgangs_point = adgangsadresse.get("adgangspunkt", {}) or {}
+    coords = adgangs_point.get("koordinater", None)
+
+    longitude = coords[0] if coords else None
+    latitude = coords[1] if coords else None
+
+    kommune = adgangsadresse.get("kommune", {}) or {}
+    postnummer = adgangsadresse.get("postnummer", {}) or {}
+    vejstykke = adgangsadresse.get("vejstykke", {}) or {}
+    matrikel = adgangsadresse.get("matrikel", {}) or {}
+    ejerlav = matrikel.get("ejerlav", {}) if matrikel else {}
+
+    return {
+        "normalized_address": (
+            item.get("adressebetegnelse")
+            or adgangsadresse.get("adressebetegnelse")
+            or f"{vejstykke.get('navn', '')} {adgangsadresse.get('husnr', '')}".strip()
+        ),
+        "address_id": item.get("id") if item.get("adgangsadresse") else None,
+        "access_address_id": adgangsadresse.get("id"),
+
+        "street_name": vejstykke.get("navn", "Ikke verificeret"),
+        "street_code": vejstykke.get("kode"),
+        "house_number": adgangsadresse.get("husnr", "Ikke verificeret"),
+        "floor": None,
+        "door": None,
+
+        "municipality": kommune.get("navn", "Ikke verificeret"),
+        "municipality_code": kommune.get("kode"),
+        "postal_code": postnummer.get("nr", "Ikke verificeret"),
+        "city": postnummer.get("navn", "Ikke verificeret"),
+
+        "latitude": latitude,
+        "longitude": longitude,
+        "distance_m": distance_meters(
+            source_address_data.get("latitude") if source_address_data else None,
+            source_address_data.get("longitude") if source_address_data else None,
+            latitude,
+            longitude
+        ),
+
+        "cadastre": {
+            "matrikelnummer": matrikel.get("matrikelnummer") if matrikel else None,
+            "ejerlav_navn": ejerlav.get("navn") if ejerlav else None,
+            "ejerlav_kode": ejerlav.get("kode") if ejerlav else None,
+            "status": "Ikke verificeret som indsatsdata"
+        },
+
+        "source": "Dataforsyningen/DAWA adgangsadresseopslag",
+        "verification_status": "Nærliggende adgangsadresse forsøgt verificeret via Dataforsyningen/DAWA"
+    }
+
+
+def get_nearby_dawa_access_addresses(address_data, radius_m=75, per_side=50):
     if not address_data:
-        return []
+        return {
+            "status": "skipped",
+            "message": "Mangler adressegrundlag",
+            "addresses": []
+        }
 
-    street_name = address_data.get("street_name")
-    house_number = address_data.get("house_number")
-    postal_code = address_data.get("postal_code")
-    city = address_data.get("city")
-    normalized_address = address_data.get("normalized_address")
+    latitude = address_data.get("latitude")
+    longitude = address_data.get("longitude")
 
-    queries = []
+    if latitude is None or longitude is None:
+        return {
+            "status": "skipped",
+            "message": "Mangler koordinater til nærliggende DAWA-adgangsadresser",
+            "addresses": []
+        }
 
-    def add_query(label, query):
-        if not query:
-            return
+    params = {
+        "cirkel": f"{longitude},{latitude},{int(radius_m)}",
+        "per_side": int(per_side)
+    }
 
-        query = str(query).strip()
+    try:
+        response = requests.get(
+            "https://api.dataforsyningen.dk/adgangsadresser",
+            params=params,
+            timeout=10
+        )
+        response.raise_for_status()
+        results = response.json()
 
-        if not query:
-            return
+        addresses = []
+        for item in results:
+            candidate = normalize_dawa_access_address(item, address_data)
+            if candidate:
+                addresses.append(candidate)
 
-        for existing in queries:
-            if existing["query"].lower() == query.lower():
-                return
+        addresses = sorted(
+            addresses,
+            key=lambda candidate: (
+                candidate.get("distance_m") is None,
+                candidate.get("distance_m") if candidate.get("distance_m") is not None else 999999
+            )
+        )
 
-        queries.append({
-            "label": label,
-            "query": query
+        return {
+            "status": "success",
+            "radius_m": int(radius_m),
+            "per_side": int(per_side),
+            "count": len(addresses),
+            "addresses": addresses
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "radius_m": int(radius_m),
+            "per_side": int(per_side),
+            "addresses": []
+        }
+
+
+def build_nearby_bbr_fallback_candidates(address_data, radius_m=75, per_side=50):
+    nearby_result = get_nearby_dawa_access_addresses(address_data, radius_m, per_side)
+    original_street_name = normalize_match_text(address_data.get("street_name"))
+    original_base_house_number = get_base_house_number(address_data.get("house_number"))
+
+    candidates = []
+    skipped = []
+
+    for candidate in nearby_result.get("addresses") or []:
+        candidate_street_name = normalize_match_text(candidate.get("street_name"))
+        candidate_base_house_number = get_base_house_number(candidate.get("house_number"))
+
+        skip_reason = None
+
+        if original_street_name and candidate_street_name != original_street_name:
+            skip_reason = "different_street_name"
+        elif original_base_house_number and candidate_base_house_number != original_base_house_number:
+            skip_reason = "different_base_house_number"
+
+        candidate_debug = {
+            "matched_address": candidate.get("normalized_address"),
+            "access_address_id": candidate.get("access_address_id"),
+            "street_name": candidate.get("street_name"),
+            "house_number": candidate.get("house_number"),
+            "base_house_number": candidate_base_house_number,
+            "distance_m": candidate.get("distance_m")
+        }
+
+        if skip_reason:
+            candidate_debug["skip_reason"] = skip_reason
+            skipped.append(candidate_debug)
+            continue
+
+        candidates.append({
+            "label": "nearby_dawa_access_address",
+            "address_data": candidate,
+            "debug": candidate_debug
         })
 
-    add_query("original_normalized_address", normalized_address)
-
-    if street_name and house_number and postal_code and city:
-        add_query(
-            "street_house_postal_city",
-            f"{street_name} {house_number}, {postal_code} {city}"
-        )
-
-    base_house_number = get_base_house_number(house_number)
-
-    if street_name and base_house_number and postal_code and city:
-        add_query(
-            "base_house_number_without_letter_or_floor",
-            f"{street_name} {base_house_number}, {postal_code} {city}"
-        )
-
-    return queries
+    return {
+        "nearby_lookup": {
+            "status": nearby_result.get("status"),
+            "message": nearby_result.get("message"),
+            "radius_m": nearby_result.get("radius_m"),
+            "per_side": nearby_result.get("per_side"),
+            "count": nearby_result.get("count", 0)
+        },
+        "filter": {
+            "street_name": address_data.get("street_name"),
+            "base_house_number": original_base_house_number
+        },
+        "candidates": candidates,
+        "skipped": skipped
+    }
 
 
 def get_bbr_with_fallback(address_data):
@@ -1434,7 +1570,8 @@ def get_bbr_with_fallback(address_data):
             "query": address_data.get("normalized_address"),
             "access_address_id": original_access_address_id,
             "bbr_status": original_result.get("status"),
-            "nodes_count": len(original_result.get("nodes") or [])
+            "nodes_count": len(original_result.get("nodes") or []),
+            "bbr_attempts": original_result.get("attempts", [])
         })
 
         if bbr_building_has_real_data(original_building):
@@ -1445,41 +1582,40 @@ def get_bbr_with_fallback(address_data):
             }
             return original_building
 
-    fallback_queries = build_bbr_fallback_address_queries(address_data)
-
     seen_access_ids = set()
     if original_access_address_id:
         seen_access_ids.add(original_access_address_id)
 
-    for candidate in fallback_queries:
-        candidate_address_data = lookup_address(candidate["query"])
+    fallback_candidates = build_nearby_bbr_fallback_candidates(address_data)
 
-        if not candidate_address_data or "error" in candidate_address_data:
-            attempts.append({
-                "label": candidate["label"],
-                "query": candidate["query"],
-                "address_lookup_status": "failed",
-                "address_lookup": candidate_address_data
-            })
-            continue
+    attempts.append({
+        "label": "nearby_dawa_access_addresses",
+        "address_lookup_status": fallback_candidates["nearby_lookup"].get("status"),
+        "nearby_lookup": fallback_candidates["nearby_lookup"],
+        "filter": fallback_candidates["filter"],
+        "skipped_candidates": fallback_candidates["skipped"],
+        "candidate_count": len(fallback_candidates["candidates"])
+    })
 
+    for candidate in fallback_candidates["candidates"]:
+        candidate_address_data = candidate["address_data"]
         candidate_access_address_id = candidate_address_data.get("access_address_id")
+        candidate_debug = candidate["debug"]
 
         if not candidate_access_address_id:
             attempts.append({
                 "label": candidate["label"],
-                "query": candidate["query"],
                 "address_lookup_status": "no_access_address_id",
-                "candidate_address_data": candidate_address_data
+                "candidate": candidate_debug
             })
             continue
 
         if candidate_access_address_id in seen_access_ids:
             attempts.append({
                 "label": candidate["label"],
-                "query": candidate["query"],
                 "address_lookup_status": "duplicate_access_address_id",
-                "access_address_id": candidate_access_address_id
+                "access_address_id": candidate_access_address_id,
+                "candidate": candidate_debug
             })
             continue
 
@@ -1490,11 +1626,13 @@ def get_bbr_with_fallback(address_data):
 
         attempts.append({
             "label": candidate["label"],
-            "query": candidate["query"],
             "matched_address": candidate_address_data.get("normalized_address"),
             "access_address_id": candidate_access_address_id,
+            "distance_m": candidate_address_data.get("distance_m"),
             "bbr_status": bbr_result.get("status"),
-            "nodes_count": len(bbr_result.get("nodes") or [])
+            "nodes_count": len(bbr_result.get("nodes") or []),
+            "has_real_bbr_data": bbr_building_has_real_data(building),
+            "bbr_attempts": bbr_result.get("attempts", [])
         })
 
         if bbr_building_has_real_data(building):
@@ -1504,6 +1642,8 @@ def get_bbr_with_fallback(address_data):
                 "matched_on": candidate["label"],
                 "original_address": address_data.get("normalized_address"),
                 "matched_address": candidate_address_data.get("normalized_address"),
+                "matched_access_address_id": candidate_access_address_id,
+                "matched_distance_m": candidate_address_data.get("distance_m"),
                 "attempts": attempts,
                 "note": "BBR-data er fundet via fallback-adresse. Skal verificeres ved operativ brug."
             }
@@ -1744,7 +1884,8 @@ def test_bbr_graphql_address_route():
         "address_data": address_data,
         "bbr_address_result": bbr_address_result,
         "normalized_building": normalized_building,
-        "fallback_building": fallback_building
+        "fallback_building": fallback_building,
+        "fallback_debug": fallback_building.get("bbr_fallback", {})
     })
 
 

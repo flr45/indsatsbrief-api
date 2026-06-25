@@ -1511,6 +1511,14 @@ def is_positive_report_value(value):
             "Ukendt",
             "ikke fundet",
             "ikke tilgængeligt",
+            "skal verificeres",
+            "ikke verificeret operativt",
+            "kritiske mangler",
+            "kritisk mangel",
+            "første taktiske fokus",
+            "taktisk fokus",
+            "ansvarsfraskrivelse",
+            "ansvarsfraskrivelser",
         ]
 
         return not any(part.lower() in stripped.lower() for part in bad_parts)
@@ -1521,8 +1529,43 @@ def is_positive_report_value(value):
     return True
 
 
+def clean_short_report_text(value):
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        return value
+
+    cleaned = value.strip()
+
+    if not cleaned:
+        return None
+
+    cut_patterns = [
+        r"\s+ifølge\s+BBR\b.*$",
+        r"\s+ifølge\s+[^–-]+[–-]\s*ikke\s+verificeret.*$",
+        r"\s+ifølge\s+[^–-]+[–-]\s*skal\s+verificeres.*$",
+        r"\s+[–-]\s*ikke\s+verificeret.*$",
+        r"\s+[–-]\s*skal\s+verificeres.*$",
+        r"\s+skal\s+verificeres.*$",
+        r"\s+ikke\s+verificeret.*$",
+        r"\s+ikke\s+verificeret\s+operativt.*$",
+    ]
+
+    for pattern in cut_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -–")
+
+    if not is_positive_report_value(cleaned):
+        return None
+
+    return cleaned
+
+
 def add_positive_field(target, source, source_key, target_key=None):
     value = source.get(source_key) if source else None
+    value = clean_short_report_text(value)
 
     if is_positive_report_value(value):
         target[target_key or source_key] = value
@@ -1551,7 +1594,9 @@ def prune_positive_report_data(value):
 
         return cleaned
 
-    return value if is_positive_report_value(value) else None
+    cleaned_value = clean_short_report_text(value)
+
+    return cleaned_value if is_positive_report_value(cleaned_value) else None
 
 
 def build_short_report_address(address, normalized_address, municipality, postal_code, city):
@@ -1576,27 +1621,21 @@ def build_short_report_address(address, normalized_address, municipality, postal
 def build_short_report_building(building_data):
     building = {}
 
-    text_linked_fields = [
-        ("usage", "usage_text"),
-        ("building_type", "building_type_text"),
-        ("outer_wall_material", "outer_wall_material_text"),
-        ("roof_material", "roof_material_text"),
-        ("water_supply", "water_supply_text"),
-        ("asbestos_material", "asbestos_material_text"),
-        ("heating_installation", "heating_installation_text"),
-        ("heating_fuel", "heating_fuel_text"),
-        ("supplementary_heating", "supplementary_heating_text"),
-        ("status", "status_text"),
+    text_fields = [
+        "usage_text",
+        "building_type_text",
+        "outer_wall_material_text",
+        "roof_material_text",
+        "water_supply_text",
+        "asbestos_material_text",
+        "heating_installation_text",
+        "heating_fuel_text",
+        "supplementary_heating_text",
+        "status_text",
     ]
 
-    for code_key, text_key in text_linked_fields:
-        text_value = building_data.get(text_key) if building_data else None
-
-        if not is_positive_report_value(text_value):
-            continue
-
-        add_positive_field(building, building_data, code_key)
-        building[text_key] = text_value
+    for field in text_fields:
+        add_positive_field(building, building_data, field)
 
     for field in [
         "bbr_id",
@@ -1613,20 +1652,14 @@ def build_short_report_building(building_data):
     for secondary in building_data.get("secondary_buildings", []) if building_data else []:
         normalized_secondary = {}
 
-        for code_key, text_key in [
-            ("usage", "usage_text"),
-            ("building_type", "building_type_text"),
-            ("outer_wall_material", "outer_wall_material_text"),
-            ("roof_material", "roof_material_text"),
-            ("status", "status_text"),
+        for field in [
+            "usage_text",
+            "building_type_text",
+            "outer_wall_material_text",
+            "roof_material_text",
+            "status_text",
         ]:
-            text_value = secondary.get(text_key)
-
-            if not is_positive_report_value(text_value):
-                continue
-
-            add_positive_field(normalized_secondary, secondary, code_key)
-            normalized_secondary[text_key] = text_value
+            add_positive_field(normalized_secondary, secondary, field)
 
         for field in [
             "bbr_id",
@@ -1639,6 +1672,24 @@ def build_short_report_building(building_data):
         normalized_secondary = prune_positive_report_data(normalized_secondary)
 
         if normalized_secondary:
+            display_text_parts = []
+            secondary_type = (
+                normalized_secondary.get("building_type_text")
+                or normalized_secondary.get("usage_text")
+            )
+
+            if secondary_type:
+                display_text_parts.append(secondary_type)
+
+            if normalized_secondary.get("construction_year"):
+                display_text_parts.append(f"fra {normalized_secondary['construction_year']}")
+
+            if normalized_secondary.get("roof_material_text"):
+                display_text_parts.append(f"tag {normalized_secondary['roof_material_text']}")
+
+            if display_text_parts:
+                normalized_secondary["display_text"] = ", ".join(display_text_parts)
+
             secondary_buildings.append(normalized_secondary)
 
     if secondary_buildings:
@@ -1689,6 +1740,38 @@ def build_short_report_weather(weather_data):
     return prune_positive_report_data(weather)
 
 
+def build_short_report_water_supply(water_supply_data):
+    if not water_supply_data or not water_supply_data.get("hydrant_count"):
+        return {}
+
+    hydrants = []
+
+    for hydrant in water_supply_data.get("hydrants", []):
+        cleaned_hydrant = {}
+
+        for field in [
+            "distance_m",
+            "map_url",
+            "hydrant_type",
+            "position",
+            "diameter",
+            "pressure",
+            "ref",
+            "operator",
+        ]:
+            add_positive_field(cleaned_hydrant, hydrant, field)
+
+        cleaned_hydrant = prune_positive_report_data(cleaned_hydrant)
+
+        if cleaned_hydrant:
+            hydrants.append(cleaned_hydrant)
+
+    return prune_positive_report_data({
+        "hydrant_count": water_supply_data.get("hydrant_count"),
+        "hydrants": hydrants
+    })
+
+
 def build_short_report_data(
     address,
     normalized_address,
@@ -1701,7 +1784,8 @@ def build_short_report_data(
     aerial_check_data,
     building_data,
     osm_risk_check_data,
-    weather_data
+    weather_data,
+    water_supply_data
 ):
     short_report_data = {
         "address": build_short_report_address(
@@ -1746,6 +1830,11 @@ def build_short_report_data(
 
     if weather:
         short_report_data["weather"] = weather
+
+    water_supply = build_short_report_water_supply(water_supply_data)
+
+    if water_supply:
+        short_report_data["water_supply"] = water_supply
 
     return prune_positive_report_data(short_report_data)
 
@@ -2599,7 +2688,8 @@ def incident_brief():
         aerial_check_data,
         building_data,
         osm_risk_check_data,
-        weather_data
+        weather_data,
+        water_supply_data
     )
 
     data = {
@@ -2622,6 +2712,11 @@ def incident_brief():
 
         "aerial_photo": aerial_check_data,
         "short_report_data": short_report_data,
+        "gpt_short_report_instruction": (
+            "Brug short_report_data til kort rapport. Du må gerne analysere rå data, "
+            "men skriv ikke taktisk fokus, kritiske mangler eller ikke-verificeret-tekster "
+            "efter hvert fund. Brug kun én samlet forbeholdslinje nederst."
+        ),
 
         "weather": weather_data,
         "building": building_data,

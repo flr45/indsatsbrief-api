@@ -187,6 +187,13 @@ BBR_SUPPLEMENTARY_HEATING = {
     "90": "Ingen supplerende varme",
 }
 
+BBR_PRESERVATION_STATUS = {
+    "1": "Fredet",
+    "2": "Bevaringsværdig",
+    "3": "Ikke fredet",
+    "4": "Ikke bevaringsværdig",
+}
+
 BBR_STATUS = {
     "1": "Bygning under opførelse",
     "2": "Bygning færdigmeldt",
@@ -1182,6 +1189,136 @@ def test_bbr_graphql_connection():
     return call_bbr_graphql(query)
 
 
+def bbr_etage_candidate_queries(building_id):
+    now = current_graphql_time()
+
+    return [
+        {
+            "name": "etage_bygning_string_eq",
+            "query": """
+            query($tid: DafDateTime!, $bygningId: String!) {
+              BBR_Etage(
+                first: 50,
+                virkningstid: $tid,
+                registreringstid: $tid,
+                where: {
+                  bygning: { eq: $bygningId }
+                }
+              ) {
+                nodes {
+                  id_lokalId
+                  id_namespace
+                  datafordelerRowId
+                  datafordelerOpdateringstid
+                  bygning
+                  eta006BygningensEtagebetegnelse
+                  eta020SamletArealAfEtage
+                  eta021ArealAfUdnyttetDelAfTagetage
+                  eta022Kaelderareal
+                  eta023ArealAfLovligBeboelseIKaelder
+                  eta024EtagensAdgangsareal
+                  eta025Etagetype
+                  eta026ErhvervIKaelder
+                  eta500Notatlinjer
+                  status
+                }
+              }
+            }
+            """,
+            "variables": {
+                "tid": now,
+                "bygningId": building_id
+            }
+        }
+    ]
+
+
+def test_bbr_graphql_etage(building_id):
+    attempts = []
+
+    if not building_id:
+        return {
+            "status": "error",
+            "message": "Mangler bygning id_lokalId",
+            "nodes": [],
+            "attempts": attempts
+        }
+
+    for candidate in bbr_etage_candidate_queries(building_id):
+        result = call_bbr_graphql(candidate["query"], candidate["variables"])
+        response_json = result.get("response_json") or {}
+        errors = response_json.get("errors")
+        data = response_json.get("data")
+
+        nodes = []
+        if data and data.get("BBR_Etage"):
+            nodes = data.get("BBR_Etage", {}).get("nodes", []) or []
+
+        attempt = {
+            "name": candidate["name"],
+            "building_id": building_id,
+            "status_code": result.get("status_code"),
+            "errors": errors,
+            "nodes_count": len(nodes),
+            "data_preview": data,
+            "response_text_preview": result.get("response_text", "")[:4000]
+        }
+
+        attempts.append(attempt)
+
+        if result.get("status_code") == 200 and not errors:
+            return {
+                "status": "success" if nodes else "query_worked_but_no_nodes",
+                "working_candidate": candidate["name"],
+                "nodes": nodes,
+                "attempts": attempts
+            }
+
+    return {
+        "status": "no_candidate_worked",
+        "nodes": [],
+        "attempts": attempts
+    }
+
+
+def test_bbr_graphql_floors_for_building(building):
+    building_id = building.get("id_lokalId") if building else None
+
+    return test_bbr_graphql_etage(building_id)
+
+
+def enrich_bbr_result_with_etage(address_result):
+    if not address_result or address_result.get("status") not in ["success", "query_worked_but_no_nodes"]:
+        return address_result
+
+    nodes = address_result.get("nodes") or []
+    etage_by_building_id = {}
+    etage_attempts = []
+    seen_building_ids = set()
+
+    for node in nodes:
+        building_id = node.get("id_lokalId")
+
+        if not building_id or building_id in seen_building_ids:
+            continue
+
+        seen_building_ids.add(building_id)
+        etage_result = test_bbr_graphql_floors_for_building(node)
+        etage_by_building_id[building_id] = etage_result.get("nodes") or []
+        etage_attempts.append({
+            "building_id": building_id,
+            "status": etage_result.get("status"),
+            "working_candidate": etage_result.get("working_candidate"),
+            "nodes_count": len(etage_result.get("nodes") or []),
+            "attempts": etage_result.get("attempts", [])
+        })
+
+    address_result["etage_nodes_by_building_id"] = etage_by_building_id
+    address_result["bbr_etage_attempts"] = etage_attempts
+
+    return address_result
+
+
 def bbr_address_candidate_queries(access_address_id):
     now = current_graphql_time()
 
@@ -1210,6 +1347,8 @@ def bbr_address_candidate_queries(access_address_id):
                   kommunekode
                   byg007Bygningsnummer
                   byg021BygningensAnvendelse
+                  byg024AntalLejlighederMedKoekken
+                  byg025AntalLejlighederUdenKoekken
                   byg026Opfoerelsesaar
                   byg027OmTilbygningsaar
                   byg030Vandforsyning
@@ -1217,9 +1356,21 @@ def bbr_address_candidate_queries(access_address_id):
                   byg033Tagdaekningsmateriale
                   byg036AsbestholdigtMateriale
                   byg038SamletBygningsareal
+                  byg039BygningensSamledeBoligAreal
+                  byg040BygningensSamledeErhvervsAreal
+                  byg041BebyggetAreal
+                  byg042ArealIndbyggetGarage
+                  byg043ArealIndbyggetCarport
+                  byg044ArealIndbyggetUdhus
+                  byg048AndetAreal
+                  byg051Adgangsareal
+                  byg054AntalEtager
                   byg056Varmeinstallation
                   byg057Opvarmningsmiddel
                   byg058SupplerendeVarme
+                  byg070Fredning
+                  byg071BevaringsvaerdighedReference
+                  byg500Notatlinjer
                   grund
                   jordstykke
                   status
@@ -1268,20 +1419,20 @@ def test_bbr_graphql_address(access_address_id):
         attempts.append(attempt)
 
         if result.get("status_code") == 200 and not errors and len(nodes) > 0:
-            return {
+            return enrich_bbr_result_with_etage({
                 "status": "success",
                 "working_candidate": candidate["name"],
                 "nodes": nodes,
                 "attempts": attempts
-            }
+            })
 
         if result.get("status_code") == 200 and not errors:
-            return {
+            return enrich_bbr_result_with_etage({
                 "status": "query_worked_but_no_nodes",
                 "working_candidate": candidate["name"],
                 "nodes": nodes,
                 "attempts": attempts
-            }
+            })
 
     return {
         "status": "no_candidate_worked",
@@ -1366,6 +1517,175 @@ def build_secondary_bbr_buildings(nodes, main_building):
     return secondary_buildings
 
 
+def parse_positive_number(value):
+    if value is None:
+        return None
+
+    try:
+        number = float(str(value).replace(",", "."))
+    except Exception:
+        return None
+
+    if number <= 0:
+        return None
+
+    if number.is_integer():
+        return int(number)
+
+    return number
+
+
+def get_first_present(source, keys):
+    if not source:
+        return None
+
+    for key in keys:
+        if key in source and source.get(key) is not None:
+            return source.get(key)
+
+    return None
+
+
+def normalize_bbr_basement_data(building, address_result):
+    building_id = building.get("id_lokalId") if building else None
+    etage_nodes_by_building_id = (
+        address_result.get("etage_nodes_by_building_id", {})
+        if address_result else {}
+    )
+    etage_nodes = etage_nodes_by_building_id.get(building_id, []) if building_id else []
+
+    basement_raw = {
+        "building_id": building_id,
+        "checked_entities": ["BBR_Etage"],
+        "etage_nodes": etage_nodes,
+        "etage_attempts": address_result.get("bbr_etage_attempts", []) if address_result else []
+    }
+
+    basement_area_m2 = 0
+    basement_living_area_m2 = 0
+    basement_commercial_area_m2 = 0
+    attic_used_area_m2 = 0
+    basement_label_nodes = []
+    floors_summary = []
+
+    for node in etage_nodes:
+        area = parse_positive_number(
+            get_first_present(node, [
+                "eta022Kaelderareal",
+                "eta022Kælderareal",
+                "kælderareal",
+                "kaelderareal"
+            ])
+        )
+        living_area = parse_positive_number(
+            get_first_present(node, [
+                "eta023ArealAfLovligBeboelseIKaelder",
+                "eta023ArealAfLovligBeboelseIKælder"
+            ])
+        )
+        commercial_area = parse_positive_number(
+            get_first_present(node, [
+                "eta026ErhvervIKaelder",
+                "eta026ErhvervIKælder"
+            ])
+        )
+        attic_area = parse_positive_number(node.get("eta021ArealAfUdnyttetDelAfTagetage"))
+        floor_area = parse_positive_number(node.get("eta020SamletArealAfEtage"))
+        access_area = parse_positive_number(node.get("eta024EtagensAdgangsareal"))
+
+        if area:
+            basement_area_m2 += area
+
+        if living_area:
+            basement_living_area_m2 += living_area
+
+        if commercial_area:
+            basement_commercial_area_m2 += commercial_area
+
+        if attic_area:
+            attic_used_area_m2 += attic_area
+
+        etage_label = str(node.get("eta006BygningensEtagebetegnelse") or "").strip().lower()
+        floor_type = str(node.get("eta025Etagetype") or "").strip().lower()
+
+        if (
+            "kælder" in etage_label
+            or "kaelder" in etage_label
+            or "kælder" in floor_type
+            or "kaelder" in floor_type
+            or etage_label in ["kl", "kld", "k"]
+            or floor_type in ["kl", "kld", "k"]
+        ):
+            basement_label_nodes.append(node)
+
+        floor_summary = {
+            "floor_label": node.get("eta006BygningensEtagebetegnelse"),
+            "floor_type": node.get("eta025Etagetype"),
+            "floor_area_m2": floor_area,
+            "attic_used_area_m2": attic_area,
+            "basement_area_m2": area,
+            "basement_living_area_m2": living_area,
+            "basement_commercial_area_m2": commercial_area,
+            "access_area_m2": access_area
+        }
+        floor_summary = {
+            key: value
+            for key, value in floor_summary.items()
+            if value is not None
+        }
+
+        if floor_summary:
+            floors_summary.append(floor_summary)
+
+    basement_present = None
+    basement_source = "BBR_Etage forsøgt, men kælderdata ikke fundet"
+
+    if basement_area_m2 > 0:
+        basement_present = True
+        basement_source = "BBR_Etage.eta022Kaelderareal"
+    elif basement_living_area_m2 > 0:
+        basement_present = True
+        basement_source = "BBR_Etage.eta023ArealAfLovligBeboelseIKaelder"
+    elif basement_commercial_area_m2 > 0:
+        basement_present = True
+        basement_source = "BBR_Etage.eta026ErhvervIKaelder"
+    elif basement_label_nodes:
+        basement_present = True
+        basement_source = "BBR_Etage.eta006BygningensEtagebetegnelse/eta025Etagetype"
+        basement_raw["basement_label_nodes"] = basement_label_nodes
+
+    if basement_present is True:
+        return {
+            "floors_raw": etage_nodes,
+            "basement_present": True,
+            "basement_area_m2": basement_area_m2 if basement_area_m2 > 0 else None,
+            "basement_living_area_m2": basement_living_area_m2 if basement_living_area_m2 > 0 else None,
+            "basement_commercial_area_m2": basement_commercial_area_m2 if basement_commercial_area_m2 > 0 else None,
+            "basement_source": basement_source,
+            "basement_raw": basement_raw,
+            "attic_used_area_m2": attic_used_area_m2 if attic_used_area_m2 > 0 else None,
+            "floors_summary": floors_summary
+        }
+
+    basement_raw["debug"] = (
+        "Kælderdata blev ikke fundet i de hentede BBR-entiteter. "
+        "Der blev undersøgt BBR_Etage-felterne eta022Kaelderareal og "
+        "eta006BygningensEtagebetegnelse."
+    )
+
+    return {
+        "floors_raw": etage_nodes,
+        "basement_area_m2": None,
+        "basement_present": None,
+        "basement_source": "BBR_Etage forsøgt, men kælderdata ikke fundet",
+        "basement_raw": basement_raw,
+        "basement_living_area_m2": None,
+        "basement_commercial_area_m2": None,
+        "attic_used_area_m2": attic_used_area_m2 if attic_used_area_m2 > 0 else None,
+        "floors_summary": floors_summary
+    }
+
+
 def normalize_bbr_building_from_graphql(address_result, address_data):
     if not address_result or address_result.get("status") not in ["success", "query_worked_but_no_nodes"]:
         placeholder = get_building_placeholder(address_data)
@@ -1383,6 +1703,7 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
 
     building = select_best_bbr_building(nodes)
     secondary_buildings = build_secondary_bbr_buildings(nodes, building)
+    basement_data = normalize_bbr_basement_data(building, address_result)
 
     usage_code = building.get("byg021BygningensAnvendelse")
     outer_wall_code = building.get("byg032YdervaeggensMateriale")
@@ -1392,6 +1713,7 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
     heating_installation_code = building.get("byg056Varmeinstallation")
     heating_fuel_code = building.get("byg057Opvarmningsmiddel")
     supplementary_heating_code = building.get("byg058SupplerendeVarme")
+    preservation_code = building.get("byg070Fredning")
     status_code = building.get("status")
 
     return {
@@ -1415,11 +1737,32 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
         "building_type": usage_code,
         "building_type_text": translate_bbr_code(usage_code, BBR_BUILDING_USAGE),
 
+        "floors_count": building.get("byg054AntalEtager"),
+        "apartments_with_kitchen": building.get("byg024AntalLejlighederMedKoekken"),
+        "apartments_without_kitchen": building.get("byg025AntalLejlighederUdenKoekken"),
+
         "construction_year": building.get("byg026Opfoerelsesaar"),
         "renovation_year": building.get("byg027OmTilbygningsaar"),
         "area_m2": building.get("byg038SamletBygningsareal"),
+        "residential_area_m2": building.get("byg039BygningensSamledeBoligAreal"),
+        "commercial_area_m2": building.get("byg040BygningensSamledeErhvervsAreal"),
+        "built_area_m2": building.get("byg041BebyggetAreal"),
+        "built_in_garage_area_m2": building.get("byg042ArealIndbyggetGarage"),
+        "built_in_carport_area_m2": building.get("byg043ArealIndbyggetCarport"),
+        "built_in_shed_area_m2": building.get("byg044ArealIndbyggetUdhus"),
+        "other_area_m2": building.get("byg048AndetAreal"),
+        "access_area_m2": building.get("byg051Adgangsareal"),
 
         "basement": "Ikke verificeret",
+        "floors_raw": basement_data.get("floors_raw"),
+        "basement_area_m2": basement_data.get("basement_area_m2"),
+        "basement_present": basement_data.get("basement_present"),
+        "basement_living_area_m2": basement_data.get("basement_living_area_m2"),
+        "basement_commercial_area_m2": basement_data.get("basement_commercial_area_m2"),
+        "basement_source": basement_data.get("basement_source"),
+        "basement_raw": basement_data.get("basement_raw"),
+        "attic_used_area_m2": basement_data.get("attic_used_area_m2"),
+        "floors_summary": basement_data.get("floors_summary"),
 
         "outer_wall_material": outer_wall_code,
         "outer_wall_material_text": translate_bbr_code(outer_wall_code, BBR_OUTER_WALL_MATERIAL),
@@ -1441,6 +1784,11 @@ def normalize_bbr_building_from_graphql(address_result, address_data):
 
         "supplementary_heating": supplementary_heating_code,
         "supplementary_heating_text": translate_bbr_code(supplementary_heating_code, BBR_SUPPLEMENTARY_HEATING),
+
+        "preservation_status": preservation_code,
+        "preservation_status_text": translate_bbr_code(preservation_code, BBR_PRESERVATION_STATUS),
+        "preservation_reference": building.get("byg071BevaringsvaerdighedReference"),
+        "bbr_notes_raw": building.get("byg500Notatlinjer"),
 
         "ground": building.get("grund"),
         "cadastre_parcel": building.get("jordstykke"),
@@ -1631,6 +1979,7 @@ def build_short_report_building(building_data):
         "heating_installation_text",
         "heating_fuel_text",
         "supplementary_heating_text",
+        "preservation_status_text",
         "status_text",
     ]
 
@@ -1639,13 +1988,43 @@ def build_short_report_building(building_data):
 
     for field in [
         "bbr_id",
+        "floors_count",
+        "apartments_with_kitchen",
+        "apartments_without_kitchen",
         "construction_year",
         "renovation_year",
         "area_m2",
+        "residential_area_m2",
+        "commercial_area_m2",
+        "built_area_m2",
+        "built_in_garage_area_m2",
+        "built_in_carport_area_m2",
+        "built_in_shed_area_m2",
+        "other_area_m2",
+        "access_area_m2",
         "municipality_code",
         "husnummer",
+        "preservation_reference",
     ]:
         add_positive_field(building, building_data, field)
+
+    basement_area_m2 = building_data.get("basement_area_m2") if building_data else None
+    basement_present = building_data.get("basement_present") if building_data else None
+
+    if basement_area_m2 and basement_area_m2 > 0:
+        building["basement"] = f"Kælder: {basement_area_m2} m²"
+        building["basement_area_m2"] = basement_area_m2
+        building["basement_present"] = True
+        add_positive_field(building, building_data, "basement_living_area_m2")
+        add_positive_field(building, building_data, "basement_commercial_area_m2")
+    elif basement_present is True:
+        building["basement"] = "Kælder registreret"
+        building["basement_present"] = True
+
+    attic_used_area_m2 = building_data.get("attic_used_area_m2") if building_data else None
+
+    if attic_used_area_m2 and attic_used_area_m2 > 0:
+        building["attic_used_area_m2"] = attic_used_area_m2
 
     secondary_buildings = []
 
@@ -2166,10 +2545,33 @@ def get_building_placeholder(address_data):
         "building_type": "Ikke verificeret",
         "building_type_text": "Ikke verificeret",
 
+        "floors_count": None,
+        "apartments_with_kitchen": None,
+        "apartments_without_kitchen": None,
+
         "construction_year": None,
         "renovation_year": None,
         "area_m2": None,
+        "residential_area_m2": None,
+        "commercial_area_m2": None,
+        "built_area_m2": None,
+        "built_in_garage_area_m2": None,
+        "built_in_carport_area_m2": None,
+        "built_in_shed_area_m2": None,
+        "other_area_m2": None,
+        "access_area_m2": None,
         "basement": "Ikke verificeret",
+        "floors_raw": [],
+        "basement_area_m2": None,
+        "basement_present": None,
+        "basement_living_area_m2": None,
+        "basement_commercial_area_m2": None,
+        "basement_source": "BBR GraphQL ikke forsøgt - ingen bygning fundet",
+        "basement_raw": {
+            "debug": "Kælderdata ikke undersøgt, fordi BBR/bygningsdata ikke blev fundet."
+        },
+        "attic_used_area_m2": None,
+        "floors_summary": [],
 
         "roof_material": "Ikke verificeret",
         "roof_material_text": "Ikke verificeret",
@@ -2191,6 +2593,11 @@ def get_building_placeholder(address_data):
 
         "supplementary_heating": "Ikke verificeret",
         "supplementary_heating_text": "Ikke verificeret",
+
+        "preservation_status": "Ikke verificeret",
+        "preservation_status_text": "Ikke verificeret",
+        "preservation_reference": None,
+        "bbr_notes_raw": None,
 
         "secondary_buildings": [],
 
@@ -2403,6 +2810,22 @@ def test_bbr_graphql_address_route():
                 "heating_fuel_text": fallback_building.get("heating_fuel_text"),
                 "supplementary_heating": fallback_building.get("supplementary_heating"),
                 "supplementary_heating_text": fallback_building.get("supplementary_heating_text")
+            }
+        },
+        "basement_debug": {
+            "bbr_etage_attempts": bbr_address_result.get("bbr_etage_attempts", []),
+            "etage_nodes_by_building_id": bbr_address_result.get("etage_nodes_by_building_id", {}),
+            "normalized": {
+                "basement_area_m2": normalized_building.get("basement_area_m2"),
+                "basement_present": normalized_building.get("basement_present"),
+                "basement_source": normalized_building.get("basement_source"),
+                "basement_raw": normalized_building.get("basement_raw")
+            },
+            "fallback": {
+                "basement_area_m2": fallback_building.get("basement_area_m2"),
+                "basement_present": fallback_building.get("basement_present"),
+                "basement_source": fallback_building.get("basement_source"),
+                "basement_raw": fallback_building.get("basement_raw")
             }
         }
     })

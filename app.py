@@ -83,13 +83,15 @@ Skriv aldrig kun rå BBR-koder i rapporten.
 
 Skriv kort, skarpt og i punktopstilling.
 Returnér kun JSON efter det angivne schema.
+Brug assistance_lines og resource_lines kun til neutrale afstands-/ressourcefund, hvis de er sendt i input. Skriv aldrig at noget skal afsendes eller anbefales.
+Brug map_links til korte kortlinks, ikke lange forklaringer.
 Brug kun én samlet forbeholdslinje nederst:
 “Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger.”
 """
 
 INDSATSBRIEF_FULL_REPORT_PROMPT = """
 Lav en FULD INDSATSBRIEF. Brug flere konkrete positive fund fra de tilsendte data.
-Strukturér JSON-felterne sådan: address_lines til adresse, koordinater, kort og satellitlink; building_lines til bygning, etager, materialer, varme, kælder og sekundære bygninger; surroundings_lines til konkrete OSM-fund; weather_lines til temperatur, vindretning, vindstyrke, vindstød, nedbør og røgretning; water_supply_lines kun til faktiske brandhanefund; supplementary_lines til andre relevante positive fund.
+Strukturér JSON-felterne sådan: address_lines til adresse og koordinater; map_links til kort og satellitlink; building_lines og building_details til bygning, etager og arealer; heating_lines til varme; basement_lines kun til registreret kælder; secondary_buildings til sekundære bygninger; surroundings_lines og risk_context_lines til konkrete OSM-fund; weather_lines til temperatur, vindretning, vindstyrke, vindstød, nedbør og røgretning; water_supply_lines kun til faktiske brandhanefund; supplementary_lines til andre relevante positive fund.
 Skriv konkrete OSM-fund og ikke kun antal. Fuld rapport er ikke en taktisk plan og må ikke indeholde taktisk oplæg, taktisk fokus eller kritiske mangler. Nævn kun manglende data i supplementary_lines, hvis det er nødvendigt og i én kort samlet linje.
 """
 
@@ -102,6 +104,7 @@ Hvis svaret ikke findes i data, sig kort at det ikke fremgår af de tilgængelig
 Skriv dansk, kort og praktisk.
 Skriv ikke taktisk plan, medmindre brugeren direkte beder om taktisk vurdering.
 Skriv ikke “ikke verificeret” efter hvert fund.
+Skriv ikke disponeringsforslag, “send”, “bør afsendes” eller “anbefalet station”.
 """
 
 REPORT_SCHEMA = {
@@ -136,6 +139,42 @@ REPORT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"}
         },
+        "assistance_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "map_links": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "building_details": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "access_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "secondary_buildings": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "basement_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "heating_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "risk_context_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "resource_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
         "supplementary_lines": {
             "type": "array",
             "items": {"type": "string"}
@@ -153,6 +192,15 @@ REPORT_SCHEMA = {
         "osm_risk_lines",
         "weather_lines",
         "water_supply_lines",
+        "assistance_lines",
+        "map_links",
+        "building_details",
+        "access_lines",
+        "secondary_buildings",
+        "basement_lines",
+        "heating_lines",
+        "risk_context_lines",
+        "resource_lines",
         "building_lines",
         "surroundings_lines",
         "supplementary_lines",
@@ -163,83 +211,16 @@ REPORT_SCHEMA = {
 }
 
 REPORT_DISCLAIMER = "Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger."
-
-# Manuel supplerende stationsliste.
-# Bruges til stationer der mangler i OSM eller hvor organisation skal rettes.
-# Organisation skal angives korrekt. Slagelse og Sorø må ikke sættes som
-# Vestsjællands Brandvæsen, medmindre data faktisk siger det.
-FIRE_RESCUE_STATIONS = [
-    {
-        "name": "Station Slagelse",
-        "type": "Brand/redning",
-        "organization": "Slagelse Brand og Redning",
-        "area": "Slagelse",
-        "lat": 55.4021,
-        "lon": 11.3546,
-        "address": "Slagelse",
-        "source": "manual",
-    },
-    {
-        "name": "Station Gørlev",
-        "type": "Brand/redning",
-        "organization": "Vestsjællands Brandvæsen",
-        "area": "Gørlev",
-        "lat": 55.5399,
-        "lon": 11.2268,
-        "address": "Agertoften 4, 4281 Gørlev",
-        "source": "manual",
-    },
-    {
-        "name": "Station Kalundborg",
-        "type": "Brand/redning",
-        "organization": "Vestsjællands Brandvæsen",
-        "area": "Kalundborg",
-        "lat": 55.6768,
-        "lon": 11.0895,
-        "address": "Rynkevangen 12, 4400 Kalundborg",
-        "source": "manual",
-    },
-    {
-        "name": "Station Fuglebjerg",
-        "type": "Brand/redning",
-        "organization": "Midt- og Sydsjællands Brand & Redning",
-        "area": "Fuglebjerg",
-        "lat": 55.3062,
-        "lon": 11.5475,
-        "address": "Næstvedvej 10, 4250 Fuglebjerg",
-        "source": "manual",
-    },
-    {
-        "name": "Station Næstved",
-        "type": "Brand/redning",
-        "organization": "Midt- og Sydsjællands Brand & Redning",
-        "area": "Næstved",
-        "lat": 55.2237,
-        "lon": 11.7629,
-        "address": "Manøvej 25, 4700 Næstved",
-        "source": "manual",
-    },
-    {
-        "name": "Station Sorø",
-        "type": "Brand/redning",
-        "organization": None,
-        "area": "Sorø",
-        "lat": 55.4319,
-        "lon": 11.5557,
-        "address": "Sorø",
-        "source": "manual",
-    },
-    {
-        "name": "Station Ringsted",
-        "type": "Brand/redning",
-        "organization": "Midt- og Sydsjællands Brand & Redning",
-        "area": "Ringsted",
-        "lat": 55.4427,
-        "lon": 11.7901,
-        "address": "Ringsted",
-        "source": "manual",
-    },
-]
+ASSISTANCE_DISCLAIMER = (
+    "Listen viser vejledende nærmeste brand-/redningsressourcer. "
+    "Det er ikke live disponering og ikke en anbefaling om afsendelse."
+)
+STATION_DATA_DIR = os.path.join(os.path.dirname(__file__), "station_data")
+FIRE_RESCUE_STATIONS_FILE = os.path.join(STATION_DATA_DIR, "fire_rescue_stations.json")
+RESOURCE_ALIASES_FILE = os.path.join(STATION_DATA_DIR, "resource_aliases.json")
+STATION_DATA_CACHE = None
+RESOURCE_ALIAS_CACHE = None
+STATION_GEOCODE_CACHE = {}
 
 ROUTE_CACHE = {}
 
@@ -250,6 +231,7 @@ API_ERROR_PREFIXES = (
     "/brief-followup",
     "/hazmat-analyze",
     "/assistance-stations",
+    "/nearest-resource",
     "/address-autocomplete",
     "/test-bbr",
     "/test-hydrants",
@@ -511,6 +493,294 @@ def parse_assistance_radius(value, default=40):
         return radius if radius > 0 else default
     except Exception:
         return default
+
+
+def load_json_file(path, fallback):
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception as error:
+        app.logger.warning("Kunne ikke loade JSON-data fra %s: %s", path, error)
+        return fallback
+
+
+def load_fire_rescue_stations():
+    """Load manual station/resource data without making app startup fragile."""
+    global STATION_DATA_CACHE
+    if STATION_DATA_CACHE is None:
+        data = load_json_file(FIRE_RESCUE_STATIONS_FILE, [])
+        STATION_DATA_CACHE = data if isinstance(data, list) else []
+    return STATION_DATA_CACHE
+
+
+def load_resource_aliases():
+    """Load centralized resource aliases for natural-language resource search."""
+    global RESOURCE_ALIAS_CACHE
+    if RESOURCE_ALIAS_CACHE is None:
+        data = load_json_file(RESOURCE_ALIASES_FILE, {})
+        RESOURCE_ALIAS_CACHE = data if isinstance(data, dict) else {}
+    return RESOURCE_ALIAS_CACHE
+
+
+def normalize_text(value):
+    if value is None:
+        return ""
+    normalized = str(value).strip().lower()
+    normalized = (
+        normalized
+        .replace("æ", "ae")
+        .replace("ø", "oe")
+        .replace("å", "aa")
+    )
+    normalized = re.sub(r"[-/.,;:()]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def expand_resource_query(query):
+    query_text = str(query or "").strip()
+    if not query_text:
+        return []
+
+    aliases = load_resource_aliases()
+    normalized_query = normalize_text(query_text)
+    expanded = [query_text]
+
+    for canonical, terms in aliases.items():
+        candidate_terms = [canonical, *(terms or [])]
+        normalized_terms = {normalize_text(term) for term in candidate_terms}
+        if normalized_query in normalized_terms:
+            expanded.extend(candidate_terms)
+
+    unique_terms = []
+    seen = set()
+    for term in expanded:
+        key = normalize_text(term)
+        if key and key not in seen:
+            seen.add(key)
+            unique_terms.append(term)
+    return unique_terms
+
+
+def station_text_fields(station):
+    return [
+        station.get("name"),
+        station.get("organization"),
+        station.get("authority"),
+        station.get("operator"),
+        station.get("area"),
+        *(station.get("special_resources") or []),
+        *(station.get("resource_aliases") or []),
+    ]
+
+
+def score_resource_text(value, expanded_terms, base_score):
+    normalized_value = normalize_text(value)
+    if not normalized_value:
+        return None
+
+    best_score = None
+    matched_terms = []
+    for term in expanded_terms:
+        normalized_term = normalize_text(term)
+        if not normalized_term:
+            continue
+        if normalized_value == normalized_term:
+            score = base_score
+        elif normalized_term in normalized_value or normalized_value in normalized_term:
+            score = max(base_score - 20, 1)
+        else:
+            continue
+        if best_score is None or score > best_score:
+            best_score = score
+        if term not in matched_terms:
+            matched_terms.append(term)
+
+    if best_score is None:
+        return None
+    return best_score, matched_terms
+
+
+def score_station_resource(item, expanded_terms, item_kind):
+    candidates = [
+        (item.get("name"), 100),
+        (item.get("type"), 85),
+    ]
+    candidates.extend((alias, 82) for alias in item.get("aliases") or [])
+    candidates.extend((capability, 80) for capability in item.get("capabilities") or [])
+    best = None
+    matched_terms = []
+
+    for value, base_score in candidates:
+        scored = score_resource_text(value, expanded_terms, base_score)
+        if not scored:
+            continue
+        score, terms = scored
+        if best is None or score > best:
+            best = score
+        matched_terms.extend(term for term in terms if term not in matched_terms)
+
+    if best is None:
+        return None
+
+    return {
+        "matched_resource": item.get("name") or item.get("type") or item_kind,
+        "matched_type": item_kind,
+        "match_score": best,
+        "matched_terms": matched_terms,
+    }
+
+
+def find_matching_station_resources(resource_query, include_non_operational=False):
+    expanded_terms = expand_resource_query(resource_query)
+    if not expanded_terms:
+        return []
+
+    matches = []
+    for station in load_fire_rescue_stations():
+        if not include_non_operational and station.get("operational_response_station") is False:
+            continue
+
+        station_matches = []
+        for collection_name, match_type in [
+            ("vehicles", "vehicle"),
+            ("trailers", "trailer"),
+            ("containers", "container"),
+        ]:
+            for item in station.get(collection_name) or []:
+                scored = score_station_resource(item, expanded_terms, match_type)
+                if scored:
+                    station_matches.append(scored)
+
+        for value in station.get("special_resources") or []:
+            scored = score_resource_text(value, expanded_terms, 70)
+            if scored:
+                score, terms = scored
+                station_matches.append({
+                    "matched_resource": value,
+                    "matched_type": "station_special_resource",
+                    "match_score": score,
+                    "matched_terms": terms,
+                })
+
+        for value in station_text_fields(station):
+            scored = score_resource_text(value, expanded_terms, 55)
+            if scored:
+                score, terms = scored
+                station_matches.append({
+                    "matched_resource": value,
+                    "matched_type": "alias",
+                    "match_score": score,
+                    "matched_terms": terms,
+                })
+
+        if not station_matches:
+            continue
+
+        best_match = sorted(station_matches, key=lambda item: item["match_score"], reverse=True)[0]
+        matches.append({
+            "station": station,
+            **best_match,
+        })
+
+    return sorted(matches, key=lambda item: item["match_score"], reverse=True)
+
+
+def get_station_coordinates(station):
+    if station.get("lat") is not None and station.get("lon") is not None:
+        try:
+            return float(station["lat"]), float(station["lon"])
+        except Exception:
+            return None
+
+    address = (station.get("address") or "").strip()
+    if not address:
+        return None
+
+    cache_key = normalize_text(address)
+    if cache_key in STATION_GEOCODE_CACHE:
+        return STATION_GEOCODE_CACHE[cache_key]
+
+    try:
+        address_data = lookup_address(address)
+        if address_data and not address_data.get("error"):
+            latitude = address_data.get("latitude")
+            longitude = address_data.get("longitude")
+            if latitude is not None and longitude is not None:
+                STATION_GEOCODE_CACHE[cache_key] = (float(latitude), float(longitude))
+                return STATION_GEOCODE_CACHE[cache_key]
+    except Exception as error:
+        app.logger.warning("Kunne ikke geokode station %s: %s", station.get("name"), error)
+
+    STATION_GEOCODE_CACHE[cache_key] = None
+    return None
+
+
+def rank_stations_by_distance(origin_lat, origin_lon, matches, limit=5, radius_km=None):
+    ranked = []
+    for match in matches:
+        station = match.get("station") or {}
+        coordinates = get_station_coordinates(station)
+        if not coordinates:
+            continue
+        station_lat, station_lon = coordinates
+        try:
+            air_distance_km = haversine_distance_km(origin_lat, origin_lon, station_lat, station_lon)
+        except Exception:
+            continue
+
+        if radius_km is not None and air_distance_km > radius_km:
+            continue
+
+        route = get_driving_route_osrm(origin_lat, origin_lon, station_lat, station_lon)
+        road_time_min = route.get("drive_time_min")
+        road_distance_km = route.get("road_distance_km")
+        ranked.append({
+            **match,
+            "station_lat": station_lat,
+            "station_lon": station_lon,
+            "air_distance_km": air_distance_km,
+            "road_distance_km": road_distance_km,
+            "road_time_min": road_time_min,
+            "drive_time_min": road_time_min,
+            "route_source": route.get("route_source"),
+        })
+
+    ranked.sort(key=lambda item: (
+        item["road_time_min"] is None,
+        item["road_time_min"] if item["road_time_min"] is not None else item["air_distance_km"],
+        item["air_distance_km"],
+        -item.get("match_score", 0),
+    ))
+    return ranked[:max(1, int(limit or 5))]
+
+
+def detect_resource_question(question):
+    normalized = normalize_text(question)
+    if not normalized:
+        return False
+    question_markers = ["hvor", "naermeste", "find", "ressource", "station"]
+    if not any(marker in normalized for marker in question_markers):
+        return False
+    aliases = load_resource_aliases()
+    for canonical, terms in aliases.items():
+        for term in [canonical, *(terms or [])]:
+            normalized_term = normalize_text(term)
+            if normalized_term and normalized_term in normalized:
+                return True
+    return False
+
+
+def extract_resource_query(question):
+    normalized = normalize_text(question)
+    aliases = load_resource_aliases()
+    best = None
+    for canonical, terms in aliases.items():
+        for term in [canonical, *(terms or [])]:
+            normalized_term = normalize_text(term)
+            if normalized_term and normalized_term in normalized:
+                if best is None or len(normalized_term) > len(normalize_text(best)):
+                    best = canonical
+    return best
 
 
 def haversine_distance_km(lat1, lon1, lat2, lon2):
@@ -3282,95 +3552,135 @@ def brief_page():
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IndsatsBrief Brand</title>
     <style>
-        :root { color-scheme: light; }
+        :root {
+            color-scheme: dark;
+            --bg: #0f172a;
+            --card: #111827;
+            --card-soft: #1e293b;
+            --border: rgba(255,255,255,0.08);
+            --primary: #2563eb;
+            --assist: #f97316;
+            --success: #22c55e;
+            --warning: #facc15;
+            --error: #ef4444;
+            --text: #f8fafc;
+            --muted: #cbd5e1;
+        }
         * { box-sizing: border-box; }
-        body { margin: 0; background: #eef2f3; color: #162126; font-family: Arial, sans-serif; }
-        main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 56px; }
-        h1 { margin: 0 0 6px; font-size: 28px; }
-        .intro { margin: 0 0 24px; color: #526168; }
-        .topline { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
-        .logout { white-space: nowrap; font-weight: 700; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        a { color: #93c5fd; overflow-wrap: anywhere; }
+        main { max-width: 1200px; margin: 0 auto; padding: 24px 24px 56px; }
+        h1, h2, h3 { letter-spacing: 0; }
+        h1 { margin: 0 0 4px; font-size: 30px; }
+        .intro { margin: 0; color: var(--muted); }
+        .topline { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 22px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(17,24,39,.95)); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
+        .logout { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.06); }
+        .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; box-shadow: 0 16px 45px rgba(0,0,0,.24); }
+        .search-card { margin-bottom: 14px; }
         .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 18px; }
-        .tab { background: #dce5e7; color: #23343a; min-height: 44px; }
-        .tab.active, .tab:hover { background: #34464e; color: #fff; }
+        .tab { background: rgba(255,255,255,.08); color: var(--muted); min-height: 44px; }
+        .tab.active, .tab:hover { background: var(--card-soft); color: var(--text); }
         .panel { display: none; }
         .panel.active { display: block; }
-        .search { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 12px; align-items: end; }
+        .search { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 14px; align-items: end; }
         .address-field { position: relative; }
-        .autocomplete-list { display: none; position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); max-height: 260px; overflow: auto; border: 1px solid #aebbc0; border-radius: 4px; background: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .12); }
-        .autocomplete-option { display: block; width: 100%; min-height: 48px; padding: 10px 12px; border: 0; border-bottom: 1px solid #e2e8ea; background: #fff; color: #162126; text-align: left; font: inherit; cursor: pointer; }
-        .autocomplete-option:hover { background: #eef5f6; }
-        .commands { display: flex; gap: 10px; flex-wrap: wrap; }
-        .assistance-primary { background: #075d78; font-size: 16px; }
-        .assistance-primary:hover { background: #03485d; }
-        label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
-        input, select { width: 100%; min-height: 48px; border: 1px solid #aebbc0; border-radius: 4px; padding: 10px 12px; font: inherit; }
-        button { min-height: 48px; border: 0; border-radius: 4px; padding: 10px 16px; background: #b91f2b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-        button:hover { background: #941722; }
-        button.secondary { background: #34464e; }
-        button.secondary:hover { background: #223239; }
-        button:disabled { cursor: wait; opacity: .65; }
-        #status { min-height: 24px; margin: 16px 0 8px; color: #44555d; }
-        #result { display: none; background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 22px; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
-        #report { font: 16px/1.55 Arial, sans-serif; overflow-wrap: anywhere; }
-        #report h2 { margin: 0 0 20px; font-size: 21px; }
-        #report h3 { margin: 20px 0 7px; font-size: 16px; }
-        #report ul { margin: 0; padding-left: 21px; }
-        #report li { margin: 5px 0; }
-        a { color: #075d78; overflow-wrap: anywhere; }
-        .actions { display: none; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-        #map-section { display: none; margin-top: 18px; background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 18px; }
-        #map-section h2 { margin: 0 0 12px; font-size: 20px; }
-        #map-frame { width: 100%; height: 360px; border: 0; border-radius: 4px; }
-        .map-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-        textarea { width: 100%; min-height: 120px; border: 1px solid #aebbc0; border-radius: 4px; padding: 12px; font: inherit; resize: vertical; }
-        .tool-panel { background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 20px; }
-        .tool-panel h2 { margin: 0 0 14px; font-size: 20px; }
-        .tool-result { display: none; margin-top: 16px; padding: 16px; border-left: 4px solid #075d78; background: #f5f8f8; overflow-wrap: anywhere; white-space: pre-wrap; }
-        #assistance-section { display: none; margin-top: 18px; }
-        .assistance-controls { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
-        .assistance-controls label { min-width: 150px; }
-        .station-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 14px; }
-        .station-card { border: 1px solid #d2dbde; border-radius: 6px; padding: 14px; background: #fff; overflow-wrap: anywhere; }
-        .station-card h3 { margin: 0 0 8px; font-size: 16px; }
-        .station-card p { margin: 4px 0; }
-        @media print { .search, #status, .actions, .intro, #map-section, #assistance-section, .tabs, .tool-panel, .logout { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
-        @media (max-width: 800px) { main { padding: 24px 20px 48px; } .search { grid-template-columns: minmax(0, 1fr) auto; } .address-field { grid-column: 1 / -1; } }
-        @media (max-width: 520px) { main { padding: 20px 14px 36px; } h1 { font-size: 25px; } .topline { display: block; } .logout { display: inline-block; margin: 0 0 18px; } .search, .commands, .assistance-controls { display: grid; grid-template-columns: 1fr; } .address-field { grid-column: auto; } .search button, .assistance-controls button { width: 100%; } #result, #map-section, .tool-panel { padding: 16px; } #map-frame { height: 280px; } }
+        .commands { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(160px, max-content)) repeat(2, minmax(120px, 150px)); gap: 10px; align-items: end; }
+        .autocomplete-list { display: none; position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 8px); max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: #020617; box-shadow: 0 24px 60px rgba(0,0,0,.42); }
+        .autocomplete-option { display: block; width: 100%; min-height: 52px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+        .autocomplete-option:hover, .autocomplete-option:focus { background: rgba(37,99,235,.22); }
+        label { display: grid; gap: 7px; color: var(--muted); font-size: 14px; font-weight: 800; }
+        input, select, textarea { width: 100%; min-height: 48px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; background: #020617; color: var(--text); font: inherit; outline: none; }
+        input:focus, select:focus, textarea:focus, button:focus, a:focus { outline: 3px solid rgba(37,99,235,.5); outline-offset: 2px; }
+        textarea { min-height: 124px; resize: vertical; }
+        button { min-height: 48px; border: 0; border-radius: 12px; padding: 10px 16px; background: var(--primary); color: #fff; font: inherit; font-weight: 850; cursor: pointer; transition: transform .12s ease, filter .12s ease, opacity .12s ease; }
+        button:hover { filter: brightness(1.08); transform: translateY(-1px); }
+        button.secondary { background: var(--card-soft); color: var(--text); }
+        button:disabled { cursor: not-allowed; opacity: .48; transform: none; }
+        .assistance-primary { background: var(--assist); color: #111827; font-size: 16px; }
+        #status { min-height: 48px; display: flex; align-items: center; gap: 10px; margin: 14px 0; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(30,41,59,.72); color: var(--muted); font-weight: 750; }
+        #status::before { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--warning); box-shadow: 0 0 0 4px rgba(250,204,21,.12); }
+        #status[data-state="ready"]::before { background: var(--success); box-shadow: 0 0 0 4px rgba(34,197,94,.12); }
+        #status[data-state="loading"]::before { background: var(--warning); animation: pulse 1s infinite; }
+        #status[data-state="done"]::before { background: var(--success); }
+        #status[data-state="error"]::before { background: var(--error); box-shadow: 0 0 0 4px rgba(239,68,68,.15); }
+        @keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+        .main-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .9fr); gap: 18px; align-items: start; }
+        .side-stack { display: grid; gap: 18px; }
+        #result { display: none; }
+        #report { font-size: 16px; line-height: 1.58; overflow-wrap: anywhere; }
+        #report h2 { margin: 0 0 16px; font-size: 23px; }
+        #report h3 { margin: 18px 0 8px; font-size: 15px; color: #bfdbfe; text-transform: uppercase; }
+        #report ul { margin: 0; padding-left: 22px; }
+        #report li { margin: 7px 0; }
+        .actions { display: none; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+        #map-section { display: none; }
+        #map-section h2, .tool-panel h2, #assistance-section h2, #resource-section h2 { margin: 0 0 14px; font-size: 20px; }
+        #map-frame { width: 100%; height: 360px; border: 0; border-radius: 12px; background: #020617; }
+        .map-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+        .map-links a { min-height: 42px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 10px; background: rgba(37,99,235,.16); text-decoration: none; font-weight: 800; }
+        .tool-result { display: none; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 12px; background: rgba(2,6,23,.52); overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); }
+        #assistance-section, #resource-section { display: block; }
+        .empty-hint { color: var(--muted); margin: 0; }
+        .station-list { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
+        .station-card { border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--card-soft); overflow-wrap: anywhere; }
+        .station-card h3 { margin: 0 0 8px; font-size: 17px; }
+        .station-card p { margin: 5px 0; color: var(--muted); }
+        .badge { display: inline-flex; align-items: center; min-height: 26px; border-radius: 999px; padding: 3px 9px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; font-weight: 850; }
+        .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+        @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } .commands { grid-template-columns: repeat(3, minmax(150px, 1fr)); } #map-frame { height: 320px; } }
+        @media (max-width: 700px) { .topline { align-items: flex-start; } .search, .commands, .resource-form { grid-template-columns: 1fr; } .commands { gap: 9px; } button { width: 100%; } .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { padding: 16px; } #map-frame { height: 280px; } }
+        @media (max-width: 480px) { main { padding: 14px 12px 34px; } h1 { font-size: 24px; } .topline { display: block; } .logout { margin-top: 14px; width: 100%; } #map-frame { height: 260px; } #report { font-size: 15px; } }
+        @media print {
+            body { background: #fff; color: #000; }
+            main { max-width: none; padding: 0; }
+            .topline, .tabs, .panel, #status, .actions, #map-section, #assistance-section, #resource-section, .tool-panel, .side-stack { display: none !important; }
+            .main-grid { display: block; }
+            #result { display: block !important; border: 0; box-shadow: none; padding: 0; background: #fff; color: #000; }
+            #report h3 { color: #000; }
+            a { color: #000; text-decoration: none; }
+        }
     </style>
 </head>
 <body>
     <main>
-        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Kort eller fuld indsatsbrief baseret på adresseopslag.</p></div><a class="logout" href="/brief-logout">Log ud</a></div>
+        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p></div><a class="logout" href="/brief-logout">Log ud</a></div>
         <nav class="tabs" aria-label="Brief-funktioner">
             <button class="tab active" type="button" data-tab="address">Adresseopslag</button>
             <button class="tab" type="button" data-tab="full">Fuld rapport</button>
             <button class="tab" type="button" data-tab="followup">Spørg til rapporten</button>
         </nav>
-        <section class="panel active" data-panel="address">
+        <section class="panel active card search-card" data-panel="address">
             <form id="brief-form" class="search">
                 <div class="address-field"><label>Adresse<input id="address" name="address" required autocomplete="off" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label><div id="autocomplete-list" class="autocomplete-list" role="listbox"></div></div>
                 <label>Radius (m)<input id="radius" name="radius" type="number" min="1" value="250"></label>
-                <div class="commands"><button id="submit" data-mode="short" type="submit">Lav kort indsatsbrief</button><button data-mode="full" type="submit" class="secondary">Lav fuld rapport</button><label>Assistance-radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><label>Vis stationer<select id="assistance-limit"><option value="5" selected>5</option><option value="10">10</option></select></label><button id="assistance-button" type="button" class="assistance-primary" disabled>Assistance brand/redning</button></div>
+                <div class="commands"><button id="submit" data-mode="short" type="submit">Kort brief</button><button data-mode="full" type="submit" class="secondary">Fuld rapport</button><button id="assistance-button" type="button" class="assistance-primary" disabled>Assistance</button><label>Assistance-radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><label>Vis stationer<select id="assistance-limit"><option value="5" selected>5</option><option value="10">10</option></select></label></div>
             </form>
         </section>
         <section class="panel" data-panel="full"><div class="tool-panel"><h2>Fuld rapport</h2><p>Brug adresseopslaget for at lave en fuld rapport med flere dataafsnit.</p><button id="full-report" type="button">Lav fuld rapport</button></div></section>
-        <section class="panel" data-panel="followup"><div class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="followup-question" placeholder="Stil opfølgende spørgsmål til seneste rapport"></textarea><button id="ask-followup" type="button">Spørg til rapporten</button><div id="followup-result" class="tool-result"></div></div></section>
-        <p id="status" role="status"></p>
-        <section id="result" aria-live="polite"><div id="report"></div></section>
-        <div id="actions" class="actions">
-            <button id="copy" type="button" class="secondary">Kopiér rapport</button>
-            <button id="print" type="button" class="secondary">Print/gem som PDF</button>
-        </div>
-        <section id="map-section">
-            <h2>Kort</h2>
-            <iframe id="map-frame" title="Kort over adresse"></iframe>
-            <div class="map-links">
-                <a id="open-map" target="_blank" rel="noopener noreferrer">Åbn kort i nyt vindue</a>
-                <a id="open-satellite" target="_blank" rel="noopener noreferrer" hidden>Åbn Google satellit</a>
+        <section class="panel" data-panel="followup"><div class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="followup-question" placeholder="Spørg fx: Er der kælder? Hvor er nærmeste stige? Er der adgangsforhold?"></textarea><button id="ask-followup" type="button">Spørg</button><div id="followup-result" class="tool-result"></div></div></section>
+        <p id="status" role="status" data-state="ready">Klar</p>
+        <div class="main-grid">
+            <div>
+                <section id="result" aria-live="polite"><div id="report"></div></section>
+                <div id="actions" class="actions">
+                    <button id="copy" type="button" class="secondary">Kopiér rapport</button>
+                    <button id="print" type="button" class="secondary">Print/gem som PDF</button>
+                </div>
             </div>
-        </section>
-        <section id="assistance-section" class="tool-panel"><h2>Assistance brand/redning</h2><div id="assistance-result"></div></section>
+            <div class="side-stack">
+                <section id="map-section">
+                    <h2>Kort</h2>
+                    <iframe id="map-frame" title="Kort over adresse"></iframe>
+                    <div class="map-links">
+                        <a id="open-map" target="_blank" rel="noopener noreferrer">Link til kort</a>
+                        <a id="open-satellite" target="_blank" rel="noopener noreferrer" hidden>Link til Google satellit</a>
+                    </div>
+                </section>
+                <section id="assistance-section"><h2>Assistance</h2><div id="assistance-result"><p class="empty-hint">Lav først et adresseopslag for at se nærmeste assistance.</p></div></section>
+                <section id="resource-section"><h2>Ressourcesøgning</h2><div class="resource-form"><label>Ressource<input id="resource-search-input" placeholder="Søg fx stige, tankvogn, kemi, redningsbåd, TAF 60…"></label><button id="resource-search-button" type="button">Søg ressource</button></div><div id="resource-result" class="tool-result"></div></section>
+                <section class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="side-followup-question" placeholder="Spørg fx: Er der kælder? Hvad er tagmaterialet? Hvad viser OSM?"></textarea><button id="side-ask-followup" type="button">Spørg</button><div id="side-followup-result" class="tool-result"></div></section>
+            </div>
+        </div>
     </main>
     <script>
         const forbiddenKeys = new Set([
@@ -3525,10 +3835,18 @@ def brief_page():
         const assistanceResult = document.getElementById('assistance-result');
         const addressInput = document.getElementById('address');
         const autocompleteList = document.getElementById('autocomplete-list');
+        const resourceSearchInput = document.getElementById('resource-search-input');
+        const resourceSearchButton = document.getElementById('resource-search-button');
+        const resourceResult = document.getElementById('resource-result');
         let reportText = '';
         let latestIncidentData = null;
         let latestReportText = '';
         let latestReportStructured = null;
+
+        function setStatus(message, state = 'ready') {
+            status.textContent = message;
+            status.dataset.state = state;
+        }
 
         async function fetchJson(url, options = {}) {
             const response = await fetch(url, options);
@@ -3581,7 +3899,7 @@ def brief_page():
                 link.href = match[1] || match[2];
                 link.target = '_blank';
                 link.rel = 'noopener noreferrer';
-                link.textContent = match[1] ? '[kort]' : match[2];
+                link.textContent = match[1] ? 'Link til kort' : 'Link';
                 container.appendChild(link);
                 cursor = match.index + match[0].length;
             }
@@ -3594,7 +3912,7 @@ def brief_page():
             String(text).split('\n').forEach(line => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
-                if (trimmed === 'HURTIG INDSATSBRIEF') {
+                if (trimmed === 'HURTIG INDSATSBRIEF' || trimmed === 'FULD INDSATSBRIEF') {
                     sections.push({ heading: trimmed, lines: [] });
                     return;
                 }
@@ -3611,10 +3929,14 @@ def brief_page():
         function reportSections(reportStructured, text) {
             if (!reportStructured || !reportStructured.title) return parseReportText(text);
             const definitions = [
-                ['Adresse', 'address_lines'], ['Fund', 'findings'], ['Bygning', 'building_lines'],
-                ['Omgivelser / OSM', 'surroundings_lines'], ['OSM-risikotjek', 'osm_risk_lines'],
-                ['Vejr/vind', 'weather_lines'], ['Vandforsyning', 'water_supply_lines'],
-                ['Trafik/vejarbejde', 'traffic_lines'],
+                ['Adresse', 'address_lines'], ['Kortlinks', 'map_links'], ['Fund', 'findings'],
+                ['Bygning', 'building_lines'], ['Bygningsdetaljer', 'building_details'],
+                ['Adgang', 'access_lines'], ['Sekundære bygninger', 'secondary_buildings'],
+                ['Kælder', 'basement_lines'], ['Varme', 'heating_lines'],
+                ['Omgivelser / OSM', 'surroundings_lines'], ['Risikokontekst', 'risk_context_lines'],
+                ['OSM-risikotjek', 'osm_risk_lines'], ['Vejr/vind', 'weather_lines'],
+                ['Vandforsyning', 'water_supply_lines'], ['Assistance', 'assistance_lines'],
+                ['Ressourcer', 'resource_lines'], ['Trafik/vejarbejde', 'traffic_lines'],
                 ['Supplerende oplysninger', 'supplementary_lines'], ['Forbehold', 'disclaimer']
             ];
             const sections = [{ heading: reportStructured.title, lines: [] }];
@@ -3698,32 +4020,32 @@ def brief_page():
             const mode = event.submitter?.dataset.mode || 'short';
             if (!address) return;
             document.getElementById('submit').disabled = true;
-            status.textContent = 'Henter indsatsbrief...';
+            setStatus('Henter data…', 'loading');
             result.style.display = 'none';
             actions.style.display = 'none';
             mapSection.style.display = 'none';
-            assistanceSection.style.display = 'none';
             try {
                 const params = new URLSearchParams({ address: address, radius_m: radius, mode: mode });
                 const url = mode === 'full' ? `/full-brief?${params.toString()}` : `/analyze-brief?${params.toString()}`;
+                setStatus('AI analyserer…', 'loading');
                 const data = await fetchJson(url);
                 if (!data.report_text) throw new Error('Analyse returnerede ingen rapporttekst');
                 showReport(data.report_text, data.raw_incident_data || data, data.report_structured);
-                status.textContent = 'Indsatsbrief klar.';
+                setStatus('Færdig', 'done');
             } catch (error) {
                 const fallbackData = error.data && error.data.raw_incident_data;
 
                 if (fallbackData) {
                     showReport(error.data.report_text || buildReport(fallbackData), fallbackData, error.data.report_structured);
-                    status.textContent = `${error.message}. Viser rapport uden AI-analyse.`;
+                    setStatus(`${error.message}. Viser rapport uden AI-analyse.`, 'error');
                 } else {
                     try {
                         const params = new URLSearchParams({ address: address, radius_m: radius });
                         const fallback = await fetchJson(`/incident-brief?${params.toString()}`);
                         showReport(buildReport(fallback), fallback);
-                        status.textContent = 'AI-analyse fejlede. Viser rapport uden AI-analyse.';
+                        setStatus('AI-analyse fejlede. Viser rapport uden AI-analyse.', 'error');
                     } catch (fallbackError) {
-                        status.textContent = fallbackError.message || error.message || 'Kunne ikke hente indsatsbrief.';
+                        setStatus(fallbackError.message || error.message || 'Kunne ikke hente indsatsbrief.', 'error');
                     }
                 }
             } finally {
@@ -3750,7 +4072,7 @@ def brief_page():
         document.getElementById('copy').addEventListener('click', async () => {
             if (!reportText) return;
             await navigator.clipboard.writeText(reportText);
-            status.textContent = 'Rapporten er kopieret.';
+            setStatus('Rapporten er kopieret.', 'done');
         });
         document.getElementById('print').addEventListener('click', () => window.print());
         document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
@@ -3759,14 +4081,13 @@ def brief_page():
         }));
         document.getElementById('full-report').addEventListener('click', () => {
             if (!document.getElementById('address').value.trim()) {
-                status.textContent = 'Indtast først en adresse under Adresseopslag.';
+                setStatus('Indtast først en adresse under Adresseopslag.', 'error');
                 return;
             }
             form.requestSubmit(document.querySelector('[data-mode="full"]'));
         });
-        document.getElementById('ask-followup').addEventListener('click', async () => {
-            const question = document.getElementById('followup-question').value.trim();
-            const output = document.getElementById('followup-result');
+        async function askFollowup(questionElement, output) {
+            const question = questionElement.value.trim();
             if (!latestIncidentData) { output.textContent = 'Lav først et adresseopslag.'; output.style.display = 'block'; return; }
             if (!question) { output.textContent = 'Skriv et spørgsmål.'; output.style.display = 'block'; return; }
             output.textContent = 'Henter svar...'; output.style.display = 'block';
@@ -3774,12 +4095,17 @@ def brief_page():
                 const data = await fetchJson('/brief-followup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, incident_data: latestIncidentData, report_text: latestReportText, report_structured: latestReportStructured }) });
                 output.textContent = data.answer || 'Intet svar modtaget.';
             } catch (error) { output.textContent = error.message || 'Kunne ikke hente svar.'; }
+        }
+        document.getElementById('ask-followup').addEventListener('click', async () => {
+            await askFollowup(document.getElementById('followup-question'), document.getElementById('followup-result'));
+        });
+        document.getElementById('side-ask-followup').addEventListener('click', async () => {
+            await askFollowup(document.getElementById('side-followup-question'), document.getElementById('side-followup-result'));
         });
         assistanceButton.addEventListener('click', async () => {
             const address = latestIncidentData?.requested_address || document.getElementById('address').value.trim();
             if (!address) return;
-            assistanceSection.style.display = 'block';
-            assistanceResult.textContent = 'Henter brand/redningsstationer...';
+            assistanceResult.textContent = 'Henter assistance…';
             try {
                 const params = new URLSearchParams({ address, radius_km: assistanceRadius.value, limit: assistanceLimit.value });
                 const data = await fetchJson(`/assistance-stations?${params.toString()}`);
@@ -3795,7 +4121,7 @@ def brief_page():
                     const title = document.createElement('h3');
                     title.textContent = station.name;
                     card.appendChild(title);
-                    const parts = [station.type, station.organization && `Organisation: ${station.organization}`, station.area, `Luftlinje: ${String(station.air_distance_km).replace('.', ',')} km`].filter(Boolean);
+                    const parts = [station.type, station.organization && `Organisation: ${station.organization}`, station.operator && `Operatør: ${station.operator}`, station.area, `Luftlinje: ${String(station.air_distance_km).replace('.', ',')} km`].filter(Boolean);
                     if (station.road_distance_km !== null && station.drive_time_min !== null) {
                         parts.push(`Vej: ${String(station.road_distance_km).replace('.', ',')} km`);
                         parts.push(`Ca. ${station.drive_time_min} min.`);
@@ -3812,6 +4138,50 @@ def brief_page():
                 assistanceResult.appendChild(disclaimer);
             } catch (error) {
                 assistanceResult.textContent = error.message || 'Kunne ikke hente assistanceoplysninger.';
+            }
+        });
+        resourceSearchButton.addEventListener('click', async () => {
+            const address = latestIncidentData?.requested_address || addressInput.value.trim();
+            const resource = resourceSearchInput.value.trim();
+            if (!address) { resourceResult.textContent = 'Udfyld en adresse eller lav en brief først.'; resourceResult.style.display = 'block'; return; }
+            if (!resource) { resourceResult.textContent = 'Skriv en ressource at søge efter.'; resourceResult.style.display = 'block'; return; }
+            resourceResult.textContent = 'Søger i stationsfilen…';
+            resourceResult.style.display = 'block';
+            try {
+                const params = new URLSearchParams({ address, resource, radius_km: '100', limit: '5' });
+                const data = await fetchJson(`/nearest-resource?${params.toString()}`);
+                resourceResult.replaceChildren();
+                if (!data.results || !data.results.length) {
+                    resourceResult.textContent = data.message || 'Ingen registrerede ressourcer fundet i stationsfilen for den søgning.';
+                    return;
+                }
+                const list = document.createElement('div');
+                list.className = 'station-list';
+                data.results.forEach(result => {
+                    const card = document.createElement('article');
+                    card.className = 'station-card';
+                    const title = document.createElement('h3');
+                    title.textContent = result.matched_resource || resource;
+                    card.appendChild(title);
+                    const badge = document.createElement('span');
+                    badge.className = 'badge';
+                    badge.textContent = result.operational_response_station ? 'Primær station' : 'Støtte/ikke primær station';
+                    card.appendChild(badge);
+                    [
+                        result.station_name && `Station: ${result.station_name}`,
+                        (result.organization || result.operator || result.authority) && `Organisation/operatør: ${result.organization || result.operator || result.authority}`,
+                        result.air_distance_km !== null && result.air_distance_km !== undefined && `Luftlinje: ${String(result.air_distance_km).replace('.', ',')} km`,
+                        result.road_distance_km !== null && result.road_time_min !== null && `Vej: ${String(result.road_distance_km).replace('.', ',')} km · ca. ${result.road_time_min} min.`,
+                        result.notes && `Note: ${result.notes}`
+                    ].filter(Boolean).forEach(text => { const p = document.createElement('p'); p.textContent = text; card.appendChild(p); });
+                    list.appendChild(card);
+                });
+                resourceResult.appendChild(list);
+                const disclaimer = document.createElement('p');
+                disclaimer.textContent = data.disclaimer;
+                resourceResult.appendChild(disclaimer);
+            } catch (error) {
+                resourceResult.textContent = error.message || 'Kunne ikke søge ressource.';
             }
         });
     </script>
@@ -4366,6 +4736,11 @@ AI_BLOCKED_REPORT_PHRASES = (
     "taktisk fokus",
     "kritiske mangler",
     "mangler",
+    "disponering",
+    "disponer",
+    "afsend",
+    "anbefalet station",
+    "bør afsendes",
     "ikke fundet",
     "manglende",
     "ingen data",
@@ -4571,6 +4946,15 @@ def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
         "osm_risk_lines": clean_lines(report.get("osm_risk_lines")),
         "weather_lines": clean_lines(report.get("weather_lines")),
         "water_supply_lines": clean_lines(report.get("water_supply_lines")),
+        "assistance_lines": clean_lines(report.get("assistance_lines")),
+        "map_links": clean_lines(report.get("map_links")),
+        "building_details": clean_lines(report.get("building_details")),
+        "access_lines": clean_lines(report.get("access_lines")),
+        "secondary_buildings": clean_lines(report.get("secondary_buildings")),
+        "basement_lines": clean_lines(report.get("basement_lines")),
+        "heating_lines": clean_lines(report.get("heating_lines")),
+        "risk_context_lines": clean_lines(report.get("risk_context_lines")),
+        "resource_lines": clean_lines(report.get("resource_lines")),
         "supplementary_lines": clean_lines(report.get("supplementary_lines")),
         "traffic_lines": clean_lines(report.get("traffic_lines")),
         "disclaimer": REPORT_DISCLAIMER,
@@ -4740,6 +5124,15 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
         "osm_risk_lines": [] if report_mode == "full" else list(dict.fromkeys(osm_lines)),
         "weather_lines": list(dict.fromkeys(weather_lines)),
         "water_supply_lines": water_supply_lines,
+        "assistance_lines": [],
+        "map_links": [],
+        "building_details": [],
+        "access_lines": [],
+        "secondary_buildings": [],
+        "basement_lines": [],
+        "heating_lines": [],
+        "risk_context_lines": [],
+        "resource_lines": [],
         "supplementary_lines": supplementary_lines,
         "traffic_lines": traffic_lines,
         "disclaimer": REPORT_DISCLAIMER,
@@ -4785,12 +5178,21 @@ def build_report_text(report_structured):
 
     for heading, field in [
         ("Adresse", "address_lines"),
+        ("Kortlinks", "map_links"),
         ("Fund", "findings"),
         ("Bygning", "building_lines"),
+        ("Bygningsdetaljer", "building_details"),
+        ("Adgang", "access_lines"),
+        ("Sekundære bygninger", "secondary_buildings"),
+        ("Kælder", "basement_lines"),
+        ("Varme", "heating_lines"),
         ("Omgivelser / OSM", "surroundings_lines"),
+        ("Risikokontekst", "risk_context_lines"),
         ("OSM-risikotjek", "osm_risk_lines"),
         ("Vejr/vind", "weather_lines"),
         ("Vandforsyning", "water_supply_lines"),
+        ("Assistance", "assistance_lines"),
+        ("Ressourcer", "resource_lines"),
         ("Trafik/vejarbejde", "traffic_lines"),
         ("Supplerende oplysninger", "supplementary_lines"),
     ]:
@@ -4953,6 +5355,120 @@ def full_brief():
     return analyze_brief_response(address, radius_m, "full")
 
 
+def build_nearest_resource_payload(address, resource_query, radius_km=100, limit=5):
+    if not address:
+        return {"error": "Adresse mangler"}, 400
+    if not resource_query:
+        return {"error": "Ressource mangler"}, 400
+
+    try:
+        radius_km = float(radius_km)
+        if radius_km <= 0:
+            radius_km = 100
+    except Exception:
+        radius_km = 100
+
+    try:
+        limit = min(max(int(limit), 1), 10)
+    except Exception:
+        limit = 5
+
+    address_data = lookup_address(address)
+    if not address_data or address_data.get("error"):
+        return {"error": "Adresse kunne ikke slås op"}, 400
+
+    origin_lat = address_data.get("latitude")
+    origin_lon = address_data.get("longitude")
+    if origin_lat is None or origin_lon is None:
+        return {"error": "Adresse kunne ikke slås op"}, 400
+
+    expanded_terms = expand_resource_query(resource_query)
+    matches = find_matching_station_resources(resource_query, include_non_operational=True)
+    ranked = rank_stations_by_distance(
+        origin_lat,
+        origin_lon,
+        matches,
+        limit=limit,
+        radius_km=radius_km,
+    )
+
+    results = []
+    for item in ranked:
+        station = item.get("station") or {}
+        results.append({
+            "station_id": station.get("id"),
+            "station_name": station.get("name"),
+            "organization": station.get("organization"),
+            "authority": station.get("authority"),
+            "operator": station.get("operator"),
+            "area": station.get("area"),
+            "address": station.get("address"),
+            "operational_response_station": station.get("operational_response_station") is not False,
+            "matched_resource": item.get("matched_resource"),
+            "matched_type": item.get("matched_type"),
+            "matched_terms": item.get("matched_terms", []),
+            "air_distance_km": item.get("air_distance_km"),
+            "road_distance_km": item.get("road_distance_km"),
+            "road_time_min": item.get("road_time_min"),
+            "source": station.get("source", "manual"),
+            "notes": station.get("notes"),
+        })
+
+    payload = {
+        "address": address_data.get("normalized_address") or address,
+        "resource_query": resource_query,
+        "expanded_terms": expanded_terms,
+        "results": results,
+        "message": (
+            None if results
+            else "Ingen registrerede ressourcer fundet i stationsfilen for den søgning."
+        ),
+        "disclaimer": (
+            "Listen viser vejledende nærmeste brand-/redningsressourcer ud fra stationsfilen. "
+            "Det er ikke live disponering og ikke en anbefaling om afsendelse."
+        ),
+    }
+    return payload, 200
+
+
+def answer_resource_followup(question, incident_data):
+    resource_query = extract_resource_query(question)
+    if not resource_query:
+        return None
+
+    address = (
+        incident_data.get("requested_address")
+        or incident_data.get("matched_address")
+        or incident_data.get("normalized_address")
+    )
+    if not address:
+        return "Det fremgår ikke af de tilgængelige data, hvilken adresse der skal bruges til ressourcesøgning."
+
+    payload, status = build_nearest_resource_payload(address, resource_query, radius_km=100, limit=1)
+    if status != 200 or not payload.get("results"):
+        return payload.get("message") or "Der er ingen registrerede ressourcer i stationsfilen for den søgning."
+
+    result = payload["results"][0]
+    station = result.get("station_name")
+    resource = result.get("matched_resource") or resource_query
+    organization = result.get("organization") or result.get("authority") or result.get("operator")
+    distance = result.get("air_distance_km")
+    road_time = result.get("road_time_min")
+    road_distance = result.get("road_distance_km")
+    status_text = "" if result.get("operational_response_station") else " Ressourceposten er markeret som støtte/ikke primær station."
+
+    parts = [f"Nærmeste registrerede {resource} i stationsfilen er {station}"]
+    if organization:
+        parts.append(f"({organization})")
+    if distance is not None:
+        parts.append(f"luftlinje ca. {str(distance).replace('.', ',')} km")
+    if road_distance is not None and road_time is not None:
+        parts.append(
+            f"vej ca. {str(road_distance).replace('.', ',')} km og ca. {road_time} min almindelig køretid"
+        )
+    return " ".join(parts).strip() + f".{status_text}"
+
+
 @app.route("/brief-followup", methods=["POST"])
 def brief_followup():
     access_error = brief_api_access_error()
@@ -4969,6 +5485,11 @@ def brief_followup():
         return jsonify({"error": "Der er ingen tidligere rapport at spørge til. Lav først et adresseopslag."}), 400
 
     try:
+        if detect_resource_question(question):
+            resource_answer = answer_resource_followup(question, incident_data)
+            if resource_answer:
+                return jsonify({"answer": resource_answer})
+
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.responses.create(
             model=OPENAI_MODEL,
@@ -4987,6 +5508,21 @@ def brief_followup():
         return jsonify({"answer": answer})
     except Exception as error:
         return jsonify({"error": "Kunne ikke besvare spørgsmålet", "details": str(error)}), 502
+
+
+@app.route("/nearest-resource", methods=["GET"])
+def nearest_resource():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+
+    payload, status = build_nearest_resource_payload(
+        request.args.get("address", "").strip(),
+        request.args.get("resource", "").strip(),
+        request.args.get("radius_km", 100),
+        request.args.get("limit", 5),
+    )
+    return jsonify(payload), status
 
 
 @app.route("/assistance-stations", methods=["GET"])
@@ -5021,10 +5557,21 @@ def assistance_stations():
     if incident_lat is None or incident_lon is None:
         return jsonify({"error": "Adresse kunne ikke slås op"}), 400
 
-    manual_stations = [
-        station for station in FIRE_RESCUE_STATIONS
-        if station.get("lat") is not None and station.get("lon") is not None
-    ]
+    manual_stations = []
+    for station in load_fire_rescue_stations():
+        if station.get("operational_response_station") is False:
+            continue
+        coordinates = get_station_coordinates(station)
+        if not coordinates:
+            continue
+        station_lat, station_lon = coordinates
+        manual_stations.append({
+            **station,
+            "lat": station_lat,
+            "lon": station_lon,
+            "type": station.get("type") or "Brand/redning",
+            "source": station.get("source") or "manual",
+        })
     osm_stations = get_osm_fire_rescue_stations_nearby(
         incident_lat, incident_lon, radius_km
     )
@@ -5059,6 +5606,8 @@ def assistance_stations():
             "name": station["name"],
             "type": station["type"],
             "organization": station.get("organization"),
+            "authority": station.get("authority"),
+            "operator": station.get("operator"),
             "area": station["area"],
             "air_distance_km": station["air_distance_km"],
             "source": station.get("source", "manual"),
@@ -5081,7 +5630,7 @@ def assistance_stations():
             "merged_count": len(all_stations),
         },
         "stations": stations,
-        "disclaimer": "Listen viser brand- og redningsstationer fundet i OSM og/eller den manuelle stationsliste inden for valgt radius. Afstande og køretid er vejledende. Køretid er almindelig vejberegning og ikke udrykningskørsel.",
+        "disclaimer": ASSISTANCE_DISCLAIMER,
     })
 
 

@@ -1,0 +1,193 @@
+{
+  "sprøjte": [
+    "sprøjte",
+    "autosprøjte",
+    "automobilsprøjte",
+    "automobilsproejte",
+    "brandsprøjte",
+    "brandbil",
+    "basis",
+    "basisenhed",
+    "tanksprøjte",
+    "tanksproejte"
+  ],
+  "tankvogn": [
+    "tankvogn",
+    "vandtankvogn",
+    "vandtank",
+    "vandforsyning",
+    "vandressource",
+    "vand"
+  ],
+  "stige": [
+    "stige",
+    "drejestige",
+    "stigevogn",
+    "redningslift",
+    "lift",
+    "højderedning",
+    "hoejderedning",
+    "redning fra højde",
+    "tagarbejde"
+  ],
+  "redningsvogn": [
+    "redningsvogn",
+    "pionervogn",
+    "frigørelse",
+    "frigoerelse",
+    "tung frigørelse",
+    "tung redning",
+    "trafikuheld",
+    "fastklemt",
+    "redning"
+  ],
+  "kemi": [
+    "kemi",
+    "CBRN",
+    "cbrn",
+    "kemivogn",
+    "miljøvogn",
+    "miljoevogn",
+    "miljø",
+    "miljoe",
+    "farlige stoffer",
+    "forurening",
+    "rens",
+    "renseplads"
+  ],
+  "båd": [
+    "båd",
+    "baad",
+    "redningsbåd",
+    "redningsbaad",
+    "bådtrækker",
+    "baadtraekker",
+    "vandredning",
+    "overfladeredning",
+    "søredning",
+    "soeredning",
+    "SAR",
+    "hovercraft",
+    "dykker",
+    "vanddykker",
+    "dykkervogn"
+  ],
+  "robot": [
+    "robot",
+    "R6",
+    "TAF 60",
+    "TAF60",
+    "fjernstyret slukningsenhed",
+    "fjernstyret robotenhed",
+    "fjernstyret indsats",
+    "robot/TAF 60"
+  ],
+  "MIRG": [
+    "MIRG",
+    "mirg",
+    "skibsbrand",
+    "skib",
+    "maritim indsats",
+    "slukning til søs",
+    "brandslukning til søs",
+    "Maritime Incident Response Group"
+  ],
+  "slangetender": [
+    "slangetender",
+    "slange",
+    "slanger",
+    "slangeudlægning",
+    "A-slange",
+    "B-slange",
+    "taktisk vandforsyning"
+  ],
+  "indsatsleder": [
+    "indsatsleder",
+    "ISL",
+    "isl",
+    "ledervogn",
+    "indsatsledervogn",
+    "holdleder",
+    "ledelse"
+  ],
+  "container": [
+    "container",
+    "kroghejs",
+    "kroghejskøretøj",
+    "containerbil",
+    "containerberedskab",
+    "vandtankcontainer",
+    "klimacontainer",
+    "elbilslukningscontainer"
+  ],
+  "logistik": [
+    "logistik",
+    "transport",
+    "materieltransport",
+    "mandskabsvogn",
+    "personvogn",
+    "støttevogn",
+    "servicevogn",
+    "trailer",
+    "materieltrailer"
+  ],
+  "pumpe": [
+    "pumpe",
+    "påhængspumpe",
+    "påhængssprøjte",
+    "pumpetrailer",
+    "efterløbspumpe",
+    "dykpumpe",
+    "lænsepumpe",
+    "pumpeopgaver"
+  ],
+  "klima": [
+    "klima",
+    "klimacontainer",
+    "klimatrailer",
+    "oversvømmelse",
+    "stormflod",
+    "vand på vej",
+    "pumpeopgaver"
+  ],
+  "elbil": [
+    "elbil",
+    "elbilslukning",
+    "batteribrand",
+    "battericontainer",
+    "elbilslukningscontainer"
+  ],
+  "jernbane": [
+    "jernbane",
+    "banevej",
+    "banevejkøretøj",
+    "BVK",
+    "mobilovergang",
+    "togulykke",
+    "jordingsvogn",
+    "jordingsudstyr",
+    "kørestrøm",
+    "Storebælt",
+    "broberedskab"
+  ],
+  "lys": [
+    "lys",
+    "belysning",
+    "arbejdslys",
+    "lysgiraf"
+  ],
+  "kran": [
+    "kran",
+    "redningskran",
+    "bjærgning",
+    "tung redning"
+  ],
+  "frivillige": [
+    "frivillige",
+    "frivilligenhed",
+    "supplerende beredskab",
+    "forplejning",
+    "logistik",
+    "støtteberedskab"
+  ]
+}

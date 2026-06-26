@@ -2641,7 +2641,252 @@ def get_road_placeholder(address_data):
 
 @app.route("/")
 def home():
-    return "IndsatsBrief API kører"
+    return '<a href="/brief">Åbn IndsatsBrief Brand</a>'
+
+
+@app.route("/brief", methods=["GET"])
+def brief_page():
+    """Small browser client for the short, presentation-safe incident brief."""
+    html = r"""
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IndsatsBrief Brand</title>
+    <style>
+        :root { color-scheme: light; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #eef2f3; color: #162126; font-family: Arial, sans-serif; }
+        main { max-width: 860px; margin: 0 auto; padding: 32px 20px 56px; }
+        h1 { margin: 0 0 6px; font-size: 28px; }
+        .intro { margin: 0 0 24px; color: #526168; }
+        .search { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 12px; align-items: end; }
+        label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
+        input { width: 100%; min-height: 42px; border: 1px solid #aebbc0; border-radius: 4px; padding: 9px 10px; font: inherit; }
+        button { min-height: 42px; border: 0; border-radius: 4px; padding: 9px 14px; background: #b91f2b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+        button:hover { background: #941722; }
+        button.secondary { background: #34464e; }
+        button.secondary:hover { background: #223239; }
+        button:disabled { cursor: wait; opacity: .65; }
+        #status { min-height: 24px; margin: 16px 0 8px; color: #44555d; }
+        #result { display: none; background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 22px; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+        #report { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.55 Arial, sans-serif; }
+        .actions { display: none; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+        details { display: none; margin-top: 18px; }
+        summary { cursor: pointer; font-weight: 700; }
+        #raw-json { margin: 10px 0 0; max-height: 360px; overflow: auto; background: #162126; color: #e7f0f2; border-radius: 4px; padding: 12px; font: 12px/1.45 monospace; }
+        @media print { .search, #status, .actions, details, .intro { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
+        @media (max-width: 620px) { .search { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>IndsatsBrief Brand</h1>
+        <p class="intro">Kort indsatsbrief med positive, præsentationsklare fund.</p>
+        <form id="brief-form" class="search">
+            <label>Adresse<input id="address" name="address" required autocomplete="street-address" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label>
+            <label>Radius (m)<input id="radius" name="radius" type="number" min="1" value="250"></label>
+            <button id="submit" type="submit">Lav indsatsbrief</button>
+        </form>
+        <p id="status" role="status"></p>
+        <section id="result" aria-live="polite"><pre id="report"></pre></section>
+        <div id="actions" class="actions">
+            <button id="copy" type="button" class="secondary">Kopiér rapport</button>
+            <button id="print" type="button" class="secondary">Print/gem som PDF</button>
+            <button id="toggle-json" type="button" class="secondary">Vis rå JSON</button>
+        </div>
+        <details id="debug"><summary>Rå JSON (debug)</summary><pre id="raw-json"></pre></details>
+    </main>
+    <script>
+        const forbiddenKeys = new Set([
+            'tactical_note', 'fire_relevant_notes', 'limitations', 'critical_missing',
+            'preliminary_access_assessment', 'verification_status', 'utilities', 'hazmat'
+        ]);
+        const excludedText = /ikke oplyst|ukendt|ikke tilgængeligt/i;
+
+        function cleanValue(value) {
+            if (value === null || value === undefined || value === '') return null;
+            if (typeof value === 'string') {
+                if (excludedText.test(value)) return null;
+                const cleaned = value
+                    .replace(/\s*ifølge\s+bbr\s*[–-]\s*ikke verificeret operativt\b/gi, '')
+                    .replace(/\s*[–,-]?\s*ikke verificeret operativt\b/gi, '')
+                    .replace(/\s*[–,-]?\s*skal verificeres\b/gi, '')
+                    .replace(/\s*[–,-]?\s*ikke verificeret\b/gi, '')
+                    .replace(/\s{2,}/g, ' ')
+                    .replace(/[\s,;–-]+$/, '')
+                    .trim();
+                return cleaned && !excludedText.test(cleaned) ? cleaned : null;
+            }
+            if (Array.isArray(value)) return value.map(cleanValue).filter(item => item !== null);
+            if (typeof value === 'object') {
+                return Object.fromEntries(Object.entries(value)
+                    .filter(([key]) => !forbiddenKeys.has(key))
+                    .map(([key, item]) => [key, cleanValue(item)])
+                    .filter(([, item]) => item !== null && (!Array.isArray(item) || item.length)));
+            }
+            return value;
+        }
+
+        function hasValue(value) {
+            return value !== null && value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0);
+        }
+
+        function positiveFallback(data) {
+            const addressDetails = data.address_details || {};
+            const building = data.building || {};
+            const weather = data.weather && !data.weather.error ? data.weather : {};
+            const osm = data.osm_risk_check || {};
+            const water = data.water_supply || {};
+            const fallback = {
+                address: {
+                    requested_address: data.normalized_address || addressDetails.normalized_address,
+                    matched_address: addressDetails.normalized_address
+                },
+                coordinates: { latitude: data.latitude, longitude: data.longitude },
+                map_url: data.map && data.map.map_url,
+                google_maps_satellite: data.aerial_photo && data.aerial_photo.links && data.aerial_photo.links.google_maps_satellite,
+                building: {
+                    building_type_text: building.building_type_text || building.usage_text,
+                    area_m2: building.area_m2,
+                    construction_year: building.construction_year,
+                    renovation_year: building.renovation_year,
+                    outer_wall_material_text: building.outer_wall_material_text,
+                    roof_material_text: building.roof_material_text,
+                    heating_installation_text: building.heating_installation_text,
+                    heating_fuel_text: building.heating_fuel_text,
+                    supplementary_heating_text: building.supplementary_heating_text,
+                    basement_present: building.basement_present,
+                    basement_area_m2: building.basement_area_m2,
+                    secondary_buildings: building.secondary_buildings
+                },
+                osm_risk_summary: osm.osm_risk_summary,
+                weather: weather,
+                water_supply: water.hydrant_count > 0 ? { hydrant_count: water.hydrant_count } : null
+            };
+            return cleanValue(fallback);
+        }
+
+        function formatValue(value, unit = '') {
+            const cleaned = cleanValue(value);
+            return hasValue(cleaned) ? `${cleaned}${unit}` : null;
+        }
+
+        function buildReport(data) {
+            const report = cleanValue(data.short_report_data) || positiveFallback(data) || {};
+            const lines = ['HURTIG INDSATSBRIEF', ''];
+            const address = report.address || {};
+            const addressLines = [];
+            const requested = cleanValue(address.requested_address || address.matched_address);
+            const matched = cleanValue(address.matched_address);
+            if (requested) addressLines.push(requested);
+            if (matched && matched !== requested) addressLines.push(`Registreret adresse: ${matched}`);
+            const coordinates = report.coordinates || {};
+            if (hasValue(coordinates.latitude) && hasValue(coordinates.longitude)) addressLines.push(`Koordinater: ${coordinates.latitude}, ${coordinates.longitude}`);
+            if (cleanValue(report.map_url)) addressLines.push(`Kort: ${cleanValue(report.map_url)}`);
+            if (cleanValue(report.google_maps_satellite)) addressLines.push(`Google satellit: ${cleanValue(report.google_maps_satellite)}`);
+            if (address.note && cleanValue(address.note)) addressLines.push(cleanValue(address.note));
+            if (addressLines.length) lines.push('Adresse:', ...addressLines.map(item => `- ${item}`), '');
+
+            const building = report.building || {};
+            const findings = [];
+            const labels = [
+                ['building_type_text', 'Bygning'], ['area_m2', 'Areal', ' m²'], ['floors_count', 'Etager'],
+                ['apartments_with_kitchen', 'Lejligheder med køkken'], ['construction_year', 'Opførelsesår'],
+                ['renovation_year', 'Ombygningsår'], ['outer_wall_material_text', 'Ydervægge'],
+                ['roof_material_text', 'Tag'], ['heating_installation_text', 'Varmeinstallation'],
+                ['heating_fuel_text', 'Opvarmningsmiddel'], ['supplementary_heating_text', 'Supplerende varme'],
+                ['residential_area_m2', 'Boligareal', ' m²'], ['commercial_area_m2', 'Erhvervsareal', ' m²'],
+                ['attic_used_area_m2', 'Udnyttet tagetage', ' m²'], ['preservation_status_text', 'Fredning/bevaring']
+            ];
+            labels.forEach(([key, label, unit]) => {
+                const value = formatValue(building[key], unit || '');
+                if (value) findings.push(`${label}: ${value}`);
+            });
+            const basementArea = Number(building.basement_area_m2);
+            if (building.basement_present === true || basementArea > 0) findings.push(basementArea > 0 ? `Kælder: ${basementArea} m²` : 'Kælder registreret');
+            (building.secondary_buildings || []).forEach(item => {
+                const secondary = cleanValue(item) || {};
+                const text = cleanValue(secondary.display_text) || [secondary.building_type_text || secondary.usage_text, secondary.construction_year && `fra ${secondary.construction_year}`, secondary.roof_material_text && `tag ${secondary.roof_material_text}`].filter(Boolean).join(', ');
+                if (text) findings.push(`Sekundær bygning: ${text}`);
+            });
+            if (findings.length) lines.push('Fund:', ...findings.map(item => `- ${item}`), '');
+
+            const osmFindings = (report.osm_risk_summary || []).map(cleanValue).filter(Boolean).map(item => {
+                const detail = [item.category, item.count && `${item.count} fund`, item.nearest_distance_m && `${item.nearest_distance_m} m`].filter(Boolean);
+                return detail.join(': ').replace(': ', ' - ');
+            }).filter(Boolean);
+            if (osmFindings.length) lines.push('OSM-risikotjek:', ...osmFindings.map(item => `- ${item}`), '');
+
+            const weather = report.weather || {};
+            const weatherLines = [
+                formatValue(weather.temperature_c, ' °C') && `Temperatur: ${formatValue(weather.temperature_c, ' °C')}`,
+                cleanValue(weather.wind_direction_text) && `Vindretning: ${cleanValue(weather.wind_direction_text)}`,
+                formatValue(weather.wind_speed_ms, ' m/s') && `Vindhastighed: ${formatValue(weather.wind_speed_ms, ' m/s')}`,
+                formatValue(weather.wind_gust_ms, ' m/s') && `Vindstød: ${formatValue(weather.wind_gust_ms, ' m/s')}`,
+                formatValue(weather.precipitation, ' mm') && `Nedbør: ${formatValue(weather.precipitation, ' mm')}`
+            ].filter(Boolean);
+            if (weatherLines.length) lines.push('Vejr/vind:', ...weatherLines.map(item => `- ${item}`), '');
+
+            const water = report.water_supply || {};
+            if (Number(water.hydrant_count) > 0) lines.push('Vandforsyning:', `- Brandhanefund: ${water.hydrant_count}`, '');
+            lines.push('Forbehold:', '- Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger.');
+            return lines.join('\n');
+        }
+
+        const form = document.getElementById('brief-form');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+        const reportElement = document.getElementById('report');
+        const actions = document.getElementById('actions');
+        const debug = document.getElementById('debug');
+        const rawJson = document.getElementById('raw-json');
+        let reportText = '';
+
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const address = document.getElementById('address').value.trim();
+            const radius = document.getElementById('radius').value || '250';
+            if (!address) return;
+            document.getElementById('submit').disabled = true;
+            status.textContent = 'Henter indsatsbrief...';
+            result.style.display = 'none';
+            actions.style.display = 'none';
+            debug.style.display = 'none';
+            try {
+                const response = await fetch(`/incident-brief?address=${encodeURIComponent(address)}&radius_m=${encodeURIComponent(radius)}`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Kunne ikke hente indsatsbrief');
+                reportText = buildReport(data);
+                reportElement.textContent = reportText;
+                rawJson.textContent = JSON.stringify(data, null, 2);
+                result.style.display = 'block';
+                actions.style.display = 'flex';
+                debug.style.display = 'block';
+                status.textContent = 'Indsatsbrief klar.';
+            } catch (error) {
+                status.textContent = error.message || 'Kunne ikke hente indsatsbrief.';
+            } finally {
+                document.getElementById('submit').disabled = false;
+            }
+        });
+
+        document.getElementById('copy').addEventListener('click', async () => {
+            if (!reportText) return;
+            await navigator.clipboard.writeText(reportText);
+            status.textContent = 'Rapporten er kopieret.';
+        });
+        document.getElementById('print').addEventListener('click', () => window.print());
+        document.getElementById('toggle-json').addEventListener('click', () => {
+            debug.open = !debug.open;
+            debug.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+    </script>
+</body>
+</html>
+    """
+    return Response(html, mimetype="text/html")
 
 
 @app.route("/privacy", methods=["GET"])

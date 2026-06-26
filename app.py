@@ -3,12 +3,115 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 import requests
 import os
+import json
 import math
 import base64
 import re
+from openai import OpenAI
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
+
+INDSATSBRIEF_SYSTEM_PROMPT = """
+Du er IndsatsBrief Brand, en dansk analyseassistent til brand/redning.
+
+Du analyserer rå adresse-, BBR-, OSM-, vejr-, kort-, satellit-, kælder-, etage-, varme-, sekundærbygnings- og vandforsyningsdata til en kort dansk fremkørselsrapport.
+
+Du må gerne analysere rå data.
+Du må gerne sammenfatte og prioritere positive fund.
+Du må gerne bruge data fra BBR, OSM og vejr.
+Du må ikke lave taktisk plan.
+Du må ikke skrive taktisk oplæg.
+Du må ikke skrive taktisk fokus.
+Du må ikke skrive første taktiske fokus.
+Du må ikke skrive kritiske mangler.
+Du må ikke skrive mangelliste.
+Du må ikke nævne manglende data.
+
+Du må ikke skrive disse ord eller fraser i output:
+- ikke verificeret
+- skal verificeres
+- ikke verificeret operativt
+- Ikke oplyst
+- Ukendt
+- Ikke tilgængeligt
+- kritisk mangel
+- kritiske mangler
+- taktisk fokus
+- første taktiske fokus
+- taktisk oplæg
+- taktisk plan
+
+Du må kun skrive positive fund.
+Hvis et fund kommer fra BBR eller OSM, må du gerne bruge det, men uden gentagne forbehold.
+Skriv ikke “ifølge BBR – ikke verificeret”.
+Skriv fx “Varme: Fjernvarme/blokvarme”.
+Skriv ikke “Varme: Fjernvarme/blokvarme ifølge BBR – ikke verificeret operativt”.
+
+Kælder må kun nævnes hvis basement_present=true eller basement_area_m2>0.
+Hvis kælderdata mangler, skal kælder udelades helt.
+Skriv aldrig “Kælder: Ikke verificeret”.
+
+Hvis vejrdata mangler, skal vejrsektionen udelades.
+Hvis OSM-fund mangler, skal OSM-sektionen udelades.
+Hvis vandforsyning mangler, skal vandforsyning udelades.
+Hvis en sektion ikke har positive fund, skal sektionen udelades.
+
+Ved lejligheder må adresseafvigelser ikke kaldes kritiske.
+Hvis requested_address og matched_address afviger, skriv højst:
+“Adresseopslag matchede nærmeste registrerede adresse: [adresse]”.
+
+Brug altid tekstfelter frem for rå BBR-koder.
+Skriv “Garage”, “Carport”, “Udhus” osv. hvis tekst findes.
+Skriv aldrig kun rå BBR-koder i rapporten.
+
+Skriv kort, skarpt og i punktopstilling.
+Returnér kun JSON efter det angivne schema.
+Brug kun én samlet forbeholdslinje nederst:
+“Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger.”
+"""
+
+REPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "address_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "findings": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "osm_risk_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "weather_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "water_supply_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "disclaimer": {"type": "string"}
+    },
+    "required": [
+        "title",
+        "address_lines",
+        "findings",
+        "osm_risk_lines",
+        "weather_lines",
+        "water_supply_lines",
+        "disclaimer"
+    ],
+    "additionalProperties": False
+}
+
+REPORT_DISCLAIMER = "Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger."
 
 
 # -------------------------------------------------------
@@ -2855,12 +2958,13 @@ def brief_page():
             actions.style.display = 'none';
             debug.style.display = 'none';
             try {
-                const response = await fetch(`/incident-brief?address=${encodeURIComponent(address)}&radius_m=${encodeURIComponent(radius)}`);
+                const response = await fetch(`/analyze-brief?address=${encodeURIComponent(address)}&radius_m=${encodeURIComponent(radius)}`);
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Kunne ikke hente indsatsbrief');
-                reportText = buildReport(data);
+                reportText = data.report_text;
+                if (!reportText) throw new Error('Analyse returnerede ingen rapporttekst');
                 reportElement.textContent = reportText;
-                rawJson.textContent = JSON.stringify(data, null, 2);
+                rawJson.textContent = JSON.stringify(data.raw_incident_data || data, null, 2);
                 result.style.display = 'block';
                 actions.style.display = 'flex';
                 debug.style.display = 'block';
@@ -3285,13 +3389,8 @@ def hazmat_lookup():
     })
 
 
-@app.route("/incident-brief", methods=["GET"])
-def incident_brief():
-    address = request.args.get("address", "")
-    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
-
-    if not address:
-        return jsonify({"error": "Missing address"}), 400
+def build_incident_brief_data(address, radius_m):
+    """Collect the existing incident brief data for API and AI routes alike."""
 
     address_data = lookup_address(address)
 
@@ -3424,7 +3523,192 @@ def incident_brief():
         ]
     }
 
-    return jsonify(data)
+    return data
+
+
+AI_BLOCKED_REPORT_PHRASES = (
+    "taktisk",
+    "første taktiske fokus",
+    "taktisk fokus",
+    "kritiske mangler",
+    "mangler",
+    "ikke verificeret",
+    "skal verificeres",
+    "ikke verificeret operativt",
+    "ikke oplyst",
+    "ukendt",
+    "ikke tilgængeligt",
+    "ikke fundet",
+    "manglende",
+    "ingen data",
+    "ingen fund",
+)
+
+
+def build_openai_brief_payload(raw_incident_data):
+    """Limit the model input to incident data relevant to the short report."""
+    building = raw_incident_data.get("building", {})
+    map_data = raw_incident_data.get("map", {})
+    aerial_photo = raw_incident_data.get("aerial_photo", {})
+
+    return {
+        "short_report_data": raw_incident_data.get("short_report_data"),
+        "address": {
+            "normalized_address": raw_incident_data.get("normalized_address"),
+            "address_details": raw_incident_data.get("address_details"),
+        },
+        "coordinates": {
+            "latitude": raw_incident_data.get("latitude"),
+            "longitude": raw_incident_data.get("longitude"),
+        },
+        "map_url": map_data.get("map_url"),
+        "google_maps_satellite": aerial_photo.get("links", {}).get("google_maps_satellite"),
+        "building": building,
+        "secondary_buildings": building.get("secondary_buildings", []),
+        "floors_and_basement": {
+            "floors_count": building.get("floors_count"),
+            "floors_summary": building.get("floors_summary"),
+            "basement_present": building.get("basement_present"),
+            "basement_area_m2": building.get("basement_area_m2"),
+            "basement_living_area_m2": building.get("basement_living_area_m2"),
+            "basement_commercial_area_m2": building.get("basement_commercial_area_m2"),
+            "attic_used_area_m2": building.get("attic_used_area_m2"),
+        },
+        "weather": raw_incident_data.get("weather"),
+        "osm_risk_check": raw_incident_data.get("osm_risk_check"),
+        "water_supply": raw_incident_data.get("water_supply"),
+    }
+
+
+def raw_incident_has_basement(raw_incident_data):
+    building = raw_incident_data.get("building", {})
+    basement_area = parse_positive_number(building.get("basement_area_m2"))
+    return building.get("basement_present") is True or (basement_area is not None and basement_area > 0)
+
+
+def sanitize_ai_report(report, raw_incident_data):
+    """Apply presentation rules again, even if the model ignores an instruction."""
+    if not isinstance(report, dict):
+        raise ValueError("OpenAI returnerede ikke et JSON-objekt")
+
+    has_basement = raw_incident_has_basement(raw_incident_data)
+
+    def clean_line(line):
+        if not isinstance(line, str):
+            return None
+
+        cleaned = line.strip()
+        lowered = cleaned.lower()
+
+        if not cleaned or any(phrase in lowered for phrase in AI_BLOCKED_REPORT_PHRASES):
+            return None
+
+        if "kælder" in lowered and not has_basement:
+            return None
+
+        if REPORT_DISCLAIMER.lower() in lowered:
+            return None
+
+        return cleaned
+
+    def clean_lines(value):
+        if not isinstance(value, list):
+            return []
+
+        lines = []
+        for line in value:
+            cleaned = clean_line(line)
+            if cleaned and cleaned not in lines:
+                lines.append(cleaned)
+        return lines
+
+    return {
+        "title": "HURTIG INDSATSBRIEF",
+        "address_lines": clean_lines(report.get("address_lines")),
+        "findings": clean_lines(report.get("findings")),
+        "osm_risk_lines": clean_lines(report.get("osm_risk_lines")),
+        "weather_lines": clean_lines(report.get("weather_lines")),
+        "water_supply_lines": clean_lines(report.get("water_supply_lines")),
+        "disclaimer": REPORT_DISCLAIMER,
+    }
+
+
+def build_report_text(report_structured):
+    """Render the accepted structured result in a stable short-report format."""
+    lines = ["HURTIG INDSATSBRIEF", ""]
+
+    for heading, field in [
+        ("Adresse", "address_lines"),
+        ("Fund", "findings"),
+        ("OSM-risikotjek", "osm_risk_lines"),
+        ("Vejr/vind", "weather_lines"),
+        ("Vandforsyning", "water_supply_lines"),
+    ]:
+        section_lines = report_structured.get(field, [])
+        if section_lines:
+            lines.extend([f"{heading}:"])
+            lines.extend(f"* {line}" for line in section_lines)
+            lines.append("")
+
+    lines.extend(["Forbehold:", f"* {REPORT_DISCLAIMER}"])
+    return "\n".join(lines)
+
+
+@app.route("/incident-brief", methods=["GET"])
+def incident_brief():
+    address = request.args.get("address", "").strip()
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
+
+    if not address:
+        return jsonify({"error": "Missing address"}), 400
+
+    return jsonify(build_incident_brief_data(address, radius_m))
+
+
+@app.route("/analyze-brief", methods=["GET"])
+def analyze_brief():
+    address = request.args.get("address", "").strip()
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
+
+    if not address:
+        return jsonify({"error": "Missing address"}), 400
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "OPENAI_API_KEY is not configured"}), 503
+
+    raw_incident_data = build_incident_brief_data(address, radius_m)
+    payload = build_openai_brief_payload(raw_incident_data)
+
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+            reasoning={"effort": "low"},
+            instructions=INDSATSBRIEF_SYSTEM_PROMPT,
+            input=json.dumps(payload, ensure_ascii=False),
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "incident_brief_report",
+                    "strict": True,
+                    "schema": REPORT_SCHEMA,
+                }
+            },
+        )
+        report_from_model = json.loads(response.output_text)
+        report_structured = sanitize_ai_report(report_from_model, raw_incident_data)
+    except json.JSONDecodeError:
+        return jsonify({"error": "OpenAI returnerede ugyldig JSON"}), 502
+    except Exception:
+        return jsonify({"error": "OpenAI-analyse kunne ikke gennemføres"}), 502
+
+    return jsonify({
+        "report_text": build_report_text(report_structured),
+        "report_structured": report_structured,
+        "raw_incident_data": raw_incident_data,
+        "model_used": OPENAI_MODEL,
+    })
 
 
 if __name__ == "__main__":

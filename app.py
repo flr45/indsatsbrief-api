@@ -3946,10 +3946,65 @@ def brief_page():
         let latestIncidentData = null;
         let latestReportText = '';
         let latestReportStructured = null;
+        let assistanceResults = [];
+        let nearestResourceResults = [];
+        let followupAnswer = '';
+        let followupMessages = [];
+        let lastSearchedAddress = '';
 
         function setStatus(message, state = 'ready') {
             status.textContent = message;
             status.dataset.state = state;
+        }
+
+        function clearRenderedReport() {
+            reportElement.replaceChildren();
+            reportText = '';
+            result.style.display = 'none';
+            actions.style.display = 'none';
+        }
+
+        function clearAssistanceResults() {
+            assistanceResults = [];
+            assistanceResult.innerHTML = '<p class="empty-hint">Lav først et adresseopslag for at se nærmeste assistance.</p>';
+        }
+
+        function clearNearestResourceResults() {
+            nearestResourceResults = [];
+            resourceSearchInput.value = '';
+            resourceResult.replaceChildren();
+            resourceResult.style.display = 'none';
+        }
+
+        function clearFollowupArea() {
+            followupAnswer = '';
+            followupMessages = [];
+            document.getElementById('followup-question').value = '';
+            document.getElementById('side-followup-question').value = '';
+            document.getElementById('followup-result').replaceChildren();
+            document.getElementById('followup-result').style.display = 'none';
+            document.getElementById('side-followup-result').replaceChildren();
+            document.getElementById('side-followup-result').style.display = 'none';
+        }
+
+        function clearMapArea() {
+            mapFrame.removeAttribute('src');
+            openMap.removeAttribute('href');
+            openSatellite.removeAttribute('href');
+            openSatellite.hidden = true;
+            mapSection.style.display = 'none';
+        }
+
+        function resetBriefStateForNewSearch() {
+            latestIncidentData = null;
+            latestReportText = '';
+            latestReportStructured = null;
+            assistanceButton.disabled = true;
+            clearRenderedReport();
+            clearAssistanceResults();
+            clearNearestResourceResults();
+            clearFollowupArea();
+            clearMapArea();
         }
 
         async function fetchJson(url, options = {}) {
@@ -3986,6 +4041,10 @@ def brief_page():
                 option.className = 'autocomplete-option';
                 option.textContent = suggestion.text;
                 option.addEventListener('click', () => {
+                    if (suggestion.text.trim() !== lastSearchedAddress.trim()) {
+                        resetBriefStateForNewSearch();
+                        setStatus('Klar', 'ready');
+                    }
                     addressInput.value = suggestion.text;
                     hideAutocomplete();
                 });
@@ -4011,6 +4070,55 @@ def brief_page():
             container.appendChild(document.createTextNode(source.slice(cursor)));
         }
 
+        function translateReportLine(line) {
+            return String(line)
+                .replace(/^Attic used area\s*:/i, 'Udnyttet tagetage:')
+                .replace(/\battic used area\b/gi, 'udnyttet tagetage');
+        }
+
+        function normalizeLine(line) {
+            return translateReportLine(line)
+                .toLowerCase()
+                .replace(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g, '')
+                .replace(/https?:\/\/\S+/g, '')
+                .replace(/^(bygning|bygningstype|anvendelse|etager|antal etager|opført|opførelsesår|ombygget|ombygningsår|ydervæg|ydervægge|tag|tagdækning|varme|varmeinstallation|opvarmningsmiddel|supplerende varme|bebygget areal|boligareal|erhvervsareal|kælder|udnyttet tagetage|attic used area|sekundær bygning)\s*:?\s*/i, '')
+                .replace(/[.:;]+/g, '')
+                .replace(/\s+etager?$/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function dedupeSections(sections) {
+            const buildingHeadings = new Set(['Bygning', 'Bygningsdetaljer', 'Kælder', 'Varme', 'Sekundære bygninger']);
+            const buildingLines = new Set();
+            sections.forEach(section => {
+                if (buildingHeadings.has(section.heading)) {
+                    section.lines.forEach(line => {
+                        const key = normalizeLine(line);
+                        if (key) buildingLines.add(key);
+                    });
+                }
+            });
+
+            const seen = new Set();
+            return sections.map(section => {
+                if (!section.lines.length) return section;
+                const lines = [];
+                section.lines.forEach(line => {
+                    const translated = translateReportLine(line);
+                    const key = normalizeLine(translated);
+                    if (!key) return;
+                    if (section.heading === 'Fund' && buildingLines.has(key)) return;
+                    if (seen.has(`${section.heading}:${key}`)) return;
+                    if (seen.has(key) && section.heading === 'Fund') return;
+                    seen.add(`${section.heading}:${key}`);
+                    if (section.heading !== 'Fund') seen.add(key);
+                    lines.push(translated);
+                });
+                return { ...section, lines };
+            }).filter((section, index) => index === 0 || section.lines.length);
+        }
+
         function parseReportText(text) {
             const sections = [];
             let current = null;
@@ -4025,14 +4133,14 @@ def brief_page():
                     current = { heading: trimmed.slice(0, -1), lines: [] };
                     sections.push(current);
                 } else if (current && /^[*-]\s+/.test(trimmed)) {
-                    current.lines.push(trimmed.replace(/^[*-]\s+/, ''));
+                    current.lines.push(translateReportLine(trimmed.replace(/^[*-]\s+/, '')));
                 }
             });
             return sections;
         }
 
         function reportSections(reportStructured, text) {
-            if (!reportStructured || !reportStructured.title) return parseReportText(text);
+            if (!reportStructured || !reportStructured.title) return dedupeSections(parseReportText(text));
             const definitions = [
                 ['Adresse', 'address_lines'], ['Kortlinks', 'map_links'], ['Fund', 'findings'],
                 ['Bygning', 'building_lines'], ['Bygningsdetaljer', 'building_details'],
@@ -4050,7 +4158,7 @@ def brief_page():
                 const lines = Array.isArray(value) ? value : (value ? [value] : []);
                 if (lines.length) sections.push({ heading, lines });
             });
-            return sections;
+            return dedupeSections(sections);
         }
 
         function renderReport(text, reportStructured) {
@@ -4124,11 +4232,15 @@ def brief_page():
             const radius = document.getElementById('radius').value || '250';
             const mode = event.submitter?.dataset.mode || 'short';
             if (!address) return;
+            if (address.trim() !== lastSearchedAddress.trim()) {
+                resetBriefStateForNewSearch();
+            } else {
+                clearRenderedReport();
+                clearMapArea();
+            }
+            lastSearchedAddress = address.trim();
             document.getElementById('submit').disabled = true;
             setStatus('Henter data…', 'loading');
-            result.style.display = 'none';
-            actions.style.display = 'none';
-            mapSection.style.display = 'none';
             try {
                 const params = new URLSearchParams({ address: address, radius_m: radius, mode: mode });
                 const url = mode === 'full' ? `/full-brief?${params.toString()}` : `/analyze-brief?${params.toString()}`;
@@ -4162,6 +4274,11 @@ def brief_page():
         addressInput.addEventListener('input', () => {
             clearTimeout(autocompleteTimer);
             const query = addressInput.value.trim();
+            if (lastSearchedAddress && query !== lastSearchedAddress.trim()) {
+                resetBriefStateForNewSearch();
+                setStatus('Klar', 'ready');
+                lastSearchedAddress = '';
+            }
             if (query.length < 3) { hideAutocomplete(); return; }
             autocompleteTimer = setTimeout(async () => {
                 try {
@@ -4214,6 +4331,7 @@ def brief_page():
             try {
                 const params = new URLSearchParams({ address, radius_km: assistanceRadius.value, limit: assistanceLimit.value });
                 const data = await fetchJson(`/assistance-stations?${params.toString()}`);
+                assistanceResults = data.stations || [];
                 assistanceResult.replaceChildren();
                 const count = document.createElement('p');
                 count.textContent = `Viser ${data.stations.length} nærmeste brand-/redningsberedskaber`;
@@ -4255,6 +4373,7 @@ def brief_page():
             try {
                 const params = new URLSearchParams({ address, resource, radius_km: '100', limit: '5' });
                 const data = await fetchJson(`/nearest-resource?${params.toString()}`);
+                nearestResourceResults = data.results || [];
                 resourceResult.replaceChildren();
                 if (!data.results || !data.results.length) {
                     resourceResult.textContent = data.message || 'Ingen registrerede ressourcer fundet i stationsfilen for den søgning.';
@@ -4277,7 +4396,7 @@ def brief_page():
                         (result.organization || result.operator || result.authority) && `Organisation/operatør: ${result.organization || result.operator || result.authority}`,
                         result.air_distance_km !== null && result.air_distance_km !== undefined && `Luftlinje: ${String(result.air_distance_km).replace('.', ',')} km`,
                         result.road_distance_km !== null && result.road_time_min !== null && `Vej: ${String(result.road_distance_km).replace('.', ',')} km · ca. ${result.road_time_min} min.`,
-                        result.notes && `Note: ${result.notes}`
+                        result.source && `Kilde: ${result.source}`
                     ].filter(Boolean).forEach(text => { const p = document.createElement('p'); p.textContent = text; card.appendChild(p); });
                     list.appendChild(card);
                 });
@@ -5022,6 +5141,17 @@ def raw_incident_has_basement(raw_incident_data):
     return building.get("basement_present") is True or (basement_area is not None and basement_area > 0)
 
 
+def translate_report_label_text(value):
+    if not isinstance(value, str):
+        return value
+    return re.sub(
+        r"^Attic used area\s*:",
+        "Udnyttet tagetage:",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
 def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
     """Apply presentation rules again, even if the model ignores an instruction."""
     if not isinstance(report, dict):
@@ -5038,7 +5168,7 @@ def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
         if not isinstance(cleaned, str):
             return None
 
-        cleaned = cleaned.strip()
+        cleaned = translate_report_label_text(cleaned.strip())
         lowered = cleaned.lower()
 
         if not cleaned or any(phrase in lowered for phrase in AI_BLOCKED_REPORT_PHRASES):
@@ -5326,7 +5456,11 @@ def build_report_text(report_structured):
         if section_lines:
             lines.extend([f"{heading}:"])
             lines.extend(
-                "* " + re.sub(r"\[kort\]\((https?://[^)]+)\)", r"kort: \1", line)
+                "* " + re.sub(
+                    r"\[kort\]\((https?://[^)]+)\)",
+                    r"kort: \1",
+                    translate_report_label_text(line),
+                )
                 for line in section_lines
             )
             lines.append("")

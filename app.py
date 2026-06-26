@@ -8,6 +8,7 @@ import math
 import base64
 import re
 import hmac
+import time
 from openai import OpenAI
 from werkzeug.exceptions import HTTPException
 
@@ -272,6 +273,7 @@ def is_api_request_path():
 def handle_api_http_error(error):
     if is_api_request_path():
         return jsonify({
+            "ok": False,
             "error": error.description or "API-fejl",
             "route": request.path,
         }), error.code
@@ -281,8 +283,10 @@ def handle_api_http_error(error):
 @app.errorhandler(Exception)
 def handle_api_unexpected_error(error):
     if is_api_request_path():
+        app.logger.exception("API error")
         return jsonify({
-            "error": "Uventet serverfejl",
+            "ok": False,
+            "error": "Serverfejl under behandling af forespørgslen.",
             "details": str(error),
             "route": request.path,
         }), 500
@@ -849,7 +853,7 @@ def get_driving_route_osrm(origin_lat, origin_lon, dest_lat, dest_lon):
     )
 
     try:
-        response = requests.get(url, timeout=4)
+        response = requests.get(url, timeout=(3, 6))
         response.raise_for_status()
         routes = response.json().get("routes") or []
         if not routes:
@@ -873,7 +877,7 @@ def get_osm_fire_rescue_stations_nearby(lat, lon, radius_km):
     """Find nearby fire/rescue stations in OSM without excluding BRS stations."""
     radius_m = max(1, int(float(radius_km) * 1000))
     query = f"""
-    [out:json][timeout:20];
+    [out:json][timeout:4];
     (
       nwr(around:{radius_m},{lat},{lon})["emergency"="fire_station"];
       nwr(around:{radius_m},{lat},{lon})["amenity"="fire_station"];
@@ -884,13 +888,16 @@ def get_osm_fire_rescue_stations_nearby(lat, lon, radius_km):
     """
     stations = []
     seen = set()
+    started_at = time.monotonic()
 
     for overpass_url in [
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
     ]:
+        if time.monotonic() - started_at > 5:
+            break
         try:
-            response = requests.get(overpass_url, params={"data": query}, timeout=12)
+            response = requests.get(overpass_url, params={"data": query}, timeout=(2, 4))
             response.raise_for_status()
             for element in response.json().get("elements", []):
                 key = (element.get("type"), element.get("id"))
@@ -1040,7 +1047,7 @@ def lookup_address(address):
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=(3, 6))
         response.raise_for_status()
         results = response.json()
 
@@ -1106,7 +1113,7 @@ def get_address_autocomplete(query, limit=8):
         response = requests.get(
             "https://api.dataforsyningen.dk/adresser",
             params={"q": query, "per_side": limit},
-            timeout=5,
+            timeout=(3, 6),
         )
         response.raise_for_status()
         suggestions = []
@@ -1136,7 +1143,7 @@ def get_nearby_main_roads(lat, lon, radius_m=400):
     }
     highway_values = "|".join(priority)
     query = f"""
-    [out:json][timeout:12];
+    [out:json][timeout:4];
     way(around:{int(radius_m)},{lat},{lon})["highway"~"^({highway_values})$"]["name"];
     out center tags;
     """
@@ -1144,7 +1151,7 @@ def get_nearby_main_roads(lat, lon, radius_m=400):
         response = requests.get(
             "https://overpass-api.de/api/interpreter",
             params={"data": query},
-            timeout=8,
+            timeout=(2, 4),
         )
         response.raise_for_status()
         candidates = []
@@ -1176,7 +1183,7 @@ def get_traffic_events_nearby(lat, lon, radius_km=5):
     if not traffic_url:
         return []
     try:
-        response = requests.get(traffic_url, timeout=5)
+        response = requests.get(traffic_url, timeout=(3, 6))
         response.raise_for_status()
         payload = response.json()
         events = payload.get("events", payload) if isinstance(payload, dict) else payload
@@ -1238,7 +1245,7 @@ def get_weather(latitude, longitude):
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=(3, 6))
 
         debug = {
             "url": url,
@@ -1330,7 +1337,7 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
     ]
 
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:4];
     (
       node["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
       way["emergency"="fire_hydrant"](around:{int(radius_m)},{latitude},{longitude});
@@ -1340,8 +1347,11 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
     """
 
     attempts = []
+    started_at = time.monotonic()
 
     for overpass_url in overpass_urls:
+        if time.monotonic() - started_at > 5:
+            break
         try:
             response = requests.get(
                 overpass_url,
@@ -1350,7 +1360,7 @@ def get_possible_hydrants_from_osm(latitude, longitude, radius_m=250):
                     "User-Agent": "IndsatsBrief-Brand/1.0",
                     "Accept": "application/json"
                 },
-                timeout=30
+                timeout=(2, 4)
             )
 
             attempts.append({
@@ -1547,9 +1557,25 @@ def build_osm_risk_summary(findings):
     )
 
 
+def osm_overpass_fallback(error_message=None, attempts=None, radius_m=250):
+    return {
+        "ok": False,
+        "source": "osm_overpass",
+        "error": error_message or "OSM/Overpass kunne ikke hentes inden for timeout.",
+        "query_radius_m": int(radius_m),
+        "finding_count": 0,
+        "findings": [],
+        "grouped_summary": [],
+        "osm_risk_summary": [],
+        "links": [],
+        "attempts": attempts or [],
+    }
+
+
 def get_osm_risk_check(latitude, longitude, radius_m=250):
     if latitude is None or longitude is None:
         return {
+            "ok": False,
             "source": "OpenStreetMap/Overpass ikke forsøgt - mangler koordinater",
             "query_radius_m": int(radius_m),
             "findings": [],
@@ -1566,7 +1592,7 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
     ]
 
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:4];
     (
       node(around:{int(radius_m)},{latitude},{longitude})["generator:source"="solar"];
       way(around:{int(radius_m)},{latitude},{longitude})["generator:source"="solar"];
@@ -1632,8 +1658,11 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
     """
 
     attempts = []
+    started_at = time.monotonic()
 
     for overpass_url in overpass_urls:
+        if time.monotonic() - started_at > 5:
+            break
         try:
             response = requests.get(
                 overpass_url,
@@ -1642,7 +1671,7 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
                     "User-Agent": "IndsatsBrief-Brand/1.0",
                     "Accept": "application/json"
                 },
-                timeout=30
+                timeout=(2, 4)
             )
 
             attempts.append({
@@ -1699,6 +1728,7 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
                     grouped_summary[name] = grouped_summary.get(name, 0) + 1
 
             return {
+                "ok": True,
                 "source": "OpenStreetMap via Overpass API",
                 "working_overpass_url": overpass_url,
                 "query_radius_m": int(radius_m),
@@ -1710,23 +1740,36 @@ def get_osm_risk_check(latitude, longitude, radius_m=250):
                 "verification_status": "Mulige risikoelementer fundet via åben datakilde - ikke verificeret"
             }
 
+        except requests.exceptions.Timeout as e:
+            attempts.append({
+                "url": overpass_url,
+                "error": "timeout",
+                "details": str(e)
+            })
+        except requests.exceptions.RequestException as e:
+            attempts.append({
+                "url": overpass_url,
+                "error": "request_error",
+                "details": str(e)
+            })
+        except ValueError as e:
+            attempts.append({
+                "url": overpass_url,
+                "error": "invalid_json",
+                "details": str(e)
+            })
         except Exception as e:
             attempts.append({
                 "url": overpass_url,
-                "error": str(e)
+                "error": "unexpected_error",
+                "details": str(e)
             })
 
-    return {
-        "source": "OpenStreetMap/Overpass API",
-        "query_radius_m": int(radius_m),
-        "finding_count": 0,
-        "grouped_summary": {},
-        "osm_risk_summary": [],
-        "findings": [],
-        "attempts": attempts,
-        "note": "OSM-risikotjek kunne ikke gennemføres via de testede Overpass-servere.",
-        "verification_status": "OSM-risikotjek ikke verificeret"
-    }
+    return osm_overpass_fallback(
+        "OSM/Overpass kunne ikke hentes inden for timeout.",
+        attempts,
+        radius_m,
+    )
 
 
 # -------------------------------------------------------
@@ -1904,7 +1947,7 @@ def fetch_ortofoto_image(latitude, longitude):
         return wms
 
     try:
-        response = requests.get(wms["url"], timeout=30)
+        response = requests.get(wms["url"], timeout=(3, 6))
         content_type = response.headers.get("Content-Type", "")
 
         result = {
@@ -1958,7 +2001,7 @@ def get_ortofoto_image_bytes(latitude, longitude):
         return None, "text/plain", wms.get("message", "WMS kunne ikke bygges")
 
     try:
-        response = requests.get(wms["url"], timeout=30)
+        response = requests.get(wms["url"], timeout=(3, 6))
         content_type = response.headers.get("Content-Type", "text/plain")
 
         if response.status_code != 200:
@@ -3164,7 +3207,7 @@ def get_nearby_dawa_access_addresses(address_data, radius_m=75, per_side=50):
         response = requests.get(
             "https://api.dataforsyningen.dk/adgangsadresser",
             params=params,
-            timeout=10
+            timeout=(3, 6)
         )
         response.raise_for_status()
         results = response.json()
@@ -3883,7 +3926,8 @@ def brief_page():
             try {
                 data = JSON.parse(text);
             } catch (error) {
-                throw new Error('API’en returnerede ikke JSON. Serveren sendte sandsynligvis en HTML-fejlside. Tjek Render logs.');
+                const preview = text.replace(/\s+/g, ' ').trim().slice(0, 180);
+                throw new Error(`API’en returnerede ikke JSON (HTTP ${response.status}). ${preview ? `Svar: ${preview}` : 'Serveren sendte sandsynligvis en HTML-fejlside. Tjek Render logs.'}`);
             }
 
             if (!response.ok) {
@@ -4616,6 +4660,7 @@ def hazmat_lookup():
 
 def build_incident_brief_data(address, radius_m):
     """Collect the existing incident brief data for API and AI routes alike."""
+    warnings = []
 
     address_data = lookup_address(address)
 
@@ -4665,9 +4710,28 @@ def build_incident_brief_data(address, radius_m):
     else:
         building_data = get_building_placeholder(address_data)
 
-    water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
+    try:
+        water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
+    except Exception as e:
+        app.logger.exception("Hydrant/Overpass lookup failed")
+        warnings.append("Brandhane-/vandforsyningsdata kunne ikke hentes inden for timeout.")
+        water_supply_data = {
+            "source": "osm_overpass",
+            "error": str(e),
+            "hydrants": [],
+            "hydrant_count": 0,
+            "alternative_water": [],
+            "verification_status": "Brandhaner/vandforsyning ikke hentet"
+        }
     aerial_check_data = get_aerial_check(address_data, radius_m)
-    osm_risk_check_data = get_osm_risk_check(latitude, longitude, radius_m)
+    try:
+        osm_risk_check_data = get_osm_risk_check(latitude, longitude, radius_m)
+        if isinstance(osm_risk_check_data, dict) and osm_risk_check_data.get("ok") is False:
+            warnings.append("OSM-risikodata kunne ikke hentes inden for timeout.")
+    except Exception as e:
+        app.logger.exception("OSM risk lookup failed")
+        warnings.append("OSM-risikodata kunne ikke hentes inden for timeout.")
+        osm_risk_check_data = osm_overpass_fallback(str(e), radius_m=radius_m)
     nearby_main_road = get_nearby_main_roads(latitude, longitude) if latitude is not None and longitude is not None else None
     traffic_events_nearby = get_traffic_events_nearby(latitude, longitude) if latitude is not None and longitude is not None else []
     short_report_data = build_short_report_data(
@@ -4721,6 +4785,7 @@ def build_incident_brief_data(address, radius_m):
         "osm_risk_check": osm_risk_check_data,
         "nearby_main_road": nearby_main_road,
         "traffic_events_nearby": traffic_events_nearby,
+        "warnings": warnings,
 
         "utilities": {
             "gas": "Ikke verificeret",

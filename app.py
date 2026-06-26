@@ -3526,7 +3526,7 @@ def get_road_placeholder(address_data):
 
 @app.route("/")
 def home():
-    return '<a href="/brief">Åbn IndsatsBrief Brand</a>'
+    return redirect("/brief")
 
 
 def brief_configuration_message():

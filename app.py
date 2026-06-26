@@ -216,11 +216,33 @@ ASSISTANCE_DISCLAIMER = (
     "Det er ikke live disponering og ikke en anbefaling om afsendelse."
 )
 STATION_DATA_DIR = os.path.join(os.path.dirname(__file__), "station_data")
+ROOT_FIRE_RESCUE_STATIONS_FILE = os.path.join(os.path.dirname(__file__), "fire_rescue_stations.json")
 FIRE_RESCUE_STATIONS_FILE = os.path.join(STATION_DATA_DIR, "fire_rescue_stations.json")
 RESOURCE_ALIASES_FILE = os.path.join(STATION_DATA_DIR, "resource_aliases.json")
 STATION_DATA_CACHE = None
 RESOURCE_ALIAS_CACHE = None
 STATION_GEOCODE_CACHE = {}
+RESOURCE_ALIAS_MAP = {
+    "sprøjte": ["sprøjte", "autosprøjte", "automobilsprøjte", "automobilsproejte", "brandsprøjte", "brandbil", "basis", "basisenhed", "tanksprøjte", "tanksproejte"],
+    "tankvogn": ["tankvogn", "vandtankvogn", "vandtank", "vandforsyning", "vandressource", "vand"],
+    "stige": ["stige", "drejestige", "stigevogn", "redningslift", "lift", "højderedning", "hoejderedning", "redning fra højde", "tagarbejde"],
+    "redningsvogn": ["redningsvogn", "pionervogn", "frigørelse", "frigoerelse", "tung frigørelse", "tung redning", "trafikuheld", "fastklemt", "redning"],
+    "kemi": ["kemi", "CBRN", "cbrn", "kemivogn", "miljøvogn", "miljoevogn", "miljø", "miljoe", "farlige stoffer", "forurening", "rens", "renseplads"],
+    "båd": ["båd", "baad", "redningsbåd", "redningsbaad", "bådtrækker", "baadtraekker", "vandredning", "overfladeredning", "søredning", "soeredning", "SAR", "hovercraft", "dykker", "vanddykker", "dykkervogn"],
+    "robot": ["robot", "R6", "TAF 60", "TAF60", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "fjernstyret indsats", "robot/TAF 60"],
+    "MIRG": ["MIRG", "mirg", "skibsbrand", "skib", "maritim indsats", "slukning til søs", "brandslukning til søs", "Maritime Incident Response Group"],
+    "slangetender": ["slangetender", "slange", "slanger", "slangeudlægning", "A-slange", "B-slange", "taktisk vandforsyning"],
+    "indsatsleder": ["indsatsleder", "ISL", "isl", "ledervogn", "indsatsledervogn", "holdleder", "ledelse"],
+    "container": ["container", "kroghejs", "kroghejskøretøj", "containerbil", "containerberedskab", "vandtankcontainer", "klimacontainer", "elbilslukningscontainer"],
+    "logistik": ["logistik", "transport", "materieltransport", "mandskabsvogn", "personvogn", "støttevogn", "servicevogn", "trailer", "materieltrailer"],
+    "pumpe": ["pumpe", "påhængspumpe", "påhængssprøjte", "pumpetrailer", "efterløbspumpe", "dykpumpe", "lænsepumpe", "pumpeopgaver"],
+    "klima": ["klima", "klimacontainer", "klimatrailer", "oversvømmelse", "stormflod", "vand på vej", "pumpeopgaver"],
+    "elbil": ["elbil", "elbilslukning", "batteribrand", "battericontainer", "elbilslukningscontainer"],
+    "jernbane": ["jernbane", "banevej", "banevejkøretøj", "BVK", "mobilovergang", "togulykke", "jordingsvogn", "jordingsudstyr", "kørestrøm", "Storebælt", "broberedskab"],
+    "lys": ["lys", "belysning", "arbejdslys", "lysgiraf"],
+    "kran": ["kran", "redningskran", "bjærgning", "tung redning"],
+    "frivillige": ["frivillige", "frivilligenhed", "supplerende beredskab", "forplejning", "logistik", "støtteberedskab"],
+}
 
 ROUTE_CACHE = {}
 
@@ -508,7 +530,12 @@ def load_fire_rescue_stations():
     """Load manual station/resource data without making app startup fragile."""
     global STATION_DATA_CACHE
     if STATION_DATA_CACHE is None:
-        data = load_json_file(FIRE_RESCUE_STATIONS_FILE, [])
+        station_file = (
+            ROOT_FIRE_RESCUE_STATIONS_FILE
+            if os.path.exists(ROOT_FIRE_RESCUE_STATIONS_FILE)
+            else FIRE_RESCUE_STATIONS_FILE
+        )
+        data = load_json_file(station_file, [])
         STATION_DATA_CACHE = data if isinstance(data, list) else []
     return STATION_DATA_CACHE
 
@@ -518,7 +545,7 @@ def load_resource_aliases():
     global RESOURCE_ALIAS_CACHE
     if RESOURCE_ALIAS_CACHE is None:
         data = load_json_file(RESOURCE_ALIASES_FILE, {})
-        RESOURCE_ALIAS_CACHE = data if isinstance(data, dict) else {}
+        RESOURCE_ALIAS_CACHE = {**RESOURCE_ALIAS_MAP, **data} if isinstance(data, dict) else dict(RESOURCE_ALIAS_MAP)
     return RESOURCE_ALIAS_CACHE
 
 
@@ -5429,6 +5456,17 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         ),
     }
     return payload, 200
+
+
+def find_nearest_resource(address, resource_query, radius_km=100, limit=5):
+    """Return neutral nearest-resource data from the station file."""
+    payload, _status = build_nearest_resource_payload(
+        address,
+        resource_query,
+        radius_km=radius_km,
+        limit=limit,
+    )
+    return payload
 
 
 def answer_resource_followup(question, incident_data):

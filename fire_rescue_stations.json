@@ -1,0 +1,6338 @@
+[
+  {
+    "id": "sbr_slagelse",
+    "name": "Station Slagelse",
+    "organization": "Slagelse Brand og Redning",
+    "authority": "Slagelse Brand og Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Slagelse",
+    "address": "Antvorskov Alle 135, 4200 Slagelse",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "sprøjte",
+          "autosprøjte",
+          "automobilsprøjte",
+          "basis"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "basisberedskab"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M2",
+          "sprøjte",
+          "autosprøjte",
+          "automobilsprøjte",
+          "basis"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "basisberedskab"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "stige",
+          "drejestige",
+          "stigevogn",
+          "højderedning"
+        ],
+        "capabilities": [
+          "højderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ]
+      },
+      {
+        "name": "R1",
+        "type": "redningsvogn/kemivogn",
+        "aliases": [
+          "R1",
+          "redningsvogn",
+          "kemivogn",
+          "kemi",
+          "CBRN",
+          "miljø",
+          "omklædningsvogn",
+          "frigørelse"
+        ],
+        "capabilities": [
+          "frigørelse",
+          "redning",
+          "kemi/CBRN",
+          "miljø",
+          "omklædning"
+        ]
+      },
+      {
+        "name": "R3",
+        "type": "pionervogn/redningsvogn",
+        "aliases": [
+          "R3",
+          "pionervogn",
+          "redningsvogn",
+          "højderedning",
+          "brøndredning",
+          "dybderedning",
+          "overfladeredning"
+        ],
+        "capabilities": [
+          "højderedning",
+          "brøndredning",
+          "dybderedning",
+          "overfladeredning",
+          "pioneropgaver",
+          "specialopgaver"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "tankvogn",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "R6",
+        "type": "fjernstyret robotenhed",
+        "aliases": [
+          "R6",
+          "robot",
+          "TAF 60",
+          "TAF60",
+          "fjernstyret slukningsenhed",
+          "robot/TAF 60"
+        ],
+        "capabilities": [
+          "robot",
+          "TAF 60",
+          "fjernstyret slukning",
+          "fjernstyret indsats"
+        ]
+      },
+      {
+        "name": "SV1",
+        "type": "transportbil/støttevogn",
+        "aliases": [
+          "SV1",
+          "transportbil",
+          "støttevogn",
+          "servicevogn",
+          "logistik"
+        ],
+        "capabilities": [
+          "logistik",
+          "materieltransport",
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "MIRG-trailer",
+        "type": "MIRG-trailer",
+        "aliases": [
+          "MIRG",
+          "MIRG-trailer",
+          "skibsbrand",
+          "maritim indsats"
+        ],
+        "capabilities": [
+          "MIRG",
+          "skibsbrand",
+          "maritim indsats",
+          "slukning til søs"
+        ]
+      },
+      {
+        "name": "Transporttrailer",
+        "type": "transporttrailer",
+        "aliases": [
+          "transporttrailer",
+          "materieltrailer",
+          "logistik"
+        ],
+        "capabilities": [
+          "logistik",
+          "materieltransport"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "højderedning",
+      "brøndredning",
+      "dybderedning",
+      "overfladeredning",
+      "kemi/CBRN",
+      "miljø",
+      "robot/TAF 60",
+      "MIRG",
+      "skibsbrand",
+      "maritim indsats",
+      "slukning til søs",
+      "logistik",
+      "materieltransport",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "højderedning",
+      "brøndredning",
+      "dybderedning",
+      "overfladeredning",
+      "kemi/CBRN",
+      "miljø",
+      "robot/TAF 60",
+      "MIRG",
+      "skibsbrand",
+      "maritim indsats",
+      "slukning til søs",
+      "logistik",
+      "materieltransport",
+      "vandforsyning"
+    ],
+    "notes": "M1/M2 har ikke frigørelse. R1 har frigørelse og kemi/CBRN. R3 har højderedning, brønd/dybde og overfladeredning. Tavlevogn/KST/ledelsesstøtte må ikke tilføjes.",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "sbr_korsoer",
+    "name": "Station Korsør",
+    "organization": "Falck",
+    "authority": "Slagelse Brand og Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Korsør",
+    "address": "Reskavej 11, 4220 Korsør",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "1862/M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "1862/M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "2861",
+        "type": "vandtankvogn",
+        "aliases": [
+          "2861",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "BVK Korsør",
+        "type": "banevejkøretøj",
+        "aliases": [
+          "BVK Korsør",
+          "banevejkøretøj"
+        ],
+        "capabilities": [
+          "banevej",
+          "jernbane",
+          "Storebælt",
+          "broberedskab"
+        ]
+      },
+      {
+        "name": "M7",
+        "type": "brosprøjte",
+        "aliases": [
+          "M7",
+          "brosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "Storebælt",
+          "broberedskab"
+        ]
+      },
+      {
+        "name": "P5",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "P5",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "B2",
+        "type": "redningsbåd",
+        "aliases": [
+          "B2",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning",
+          "redningsbåd"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Skiltetrailer",
+        "type": "afmærkning",
+        "aliases": [
+          "Skiltetrailer",
+          "afmærkning"
+        ],
+        "capabilities": [
+          "afmærkning"
+        ]
+      },
+      {
+        "name": "Mobilovergang",
+        "type": "mobilovergang",
+        "aliases": [
+          "Mobilovergang",
+          "mobilovergang"
+        ],
+        "capabilities": [
+          "jernbane",
+          "banevej",
+          "Storebælt"
+        ]
+      },
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "Storebælt",
+      "banevej",
+      "jernbane",
+      "broberedskab",
+      "redningsbåd",
+      "vandredning",
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "resource_aliases": [
+      "Storebælt",
+      "banevej",
+      "jernbane",
+      "broberedskab",
+      "redningsbåd",
+      "vandredning",
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "sbr_skaelskoer",
+    "name": "Station Skælskør",
+    "organization": "Falck",
+    "authority": "Slagelse Brand og Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Skælskør",
+    "address": "Kajgade 10, 4230 Skælskør",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "1868",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "1868",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "2867",
+        "type": "vandtankvogn",
+        "aliases": [
+          "2867",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "B3",
+        "type": "båd/redningsbåd",
+        "aliases": [
+          "B3",
+          "båd/redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      },
+      {
+        "name": "T1",
+        "type": "slangetender",
+        "aliases": [
+          "T1",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "redningsbåd",
+      "vandredning",
+      "slangetender",
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "resource_aliases": [
+      "redningsbåd",
+      "vandredning",
+      "slangetender",
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "sbr_soroe",
+    "name": "Station Sorø",
+    "organization": "Slagelse Brand og Redning",
+    "authority": "Slagelse Brand og Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Sorø",
+    "address": "Kongebrovej 7, 4180 Sorø",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M3",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M3",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M4",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M4",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "T2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "T2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "T3",
+        "type": "vandtankvogn",
+        "aliases": [
+          "T3",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "R4",
+        "type": "redningsvogn",
+        "aliases": [
+          "R4",
+          "redningsvogn"
+        ],
+        "capabilities": [
+          "frigørelse",
+          "redning"
+        ]
+      },
+      {
+        "name": "S2",
+        "type": "lift/redningslift",
+        "aliases": [
+          "S2",
+          "lift/redningslift"
+        ],
+        "capabilities": [
+          "højderedning",
+          "redning fra højde"
+        ]
+      },
+      {
+        "name": "T1",
+        "type": "slangetender",
+        "aliases": [
+          "T1",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "B1",
+        "type": "båd/redningsbåd",
+        "aliases": [
+          "B1",
+          "båd/redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      },
+      {
+        "name": "F1",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "F1",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "R5",
+        "type": "miljøkøretøj",
+        "aliases": [
+          "R5",
+          "miljøkøretøj"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "Efterløbspumpe",
+        "type": "efterløbspumpe",
+        "aliases": [
+          "Efterløbspumpe",
+          "efterløbspumpe"
+        ],
+        "capabilities": [
+          "pumpe",
+          "vandforsyning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "højderedning",
+      "redningsbåd",
+      "vandredning",
+      "slangetender",
+      "miljø",
+      "kemi/CBRN",
+      "efterløbspumpe",
+      "frigørelse"
+    ],
+    "resource_aliases": [
+      "højderedning",
+      "redningsbåd",
+      "vandredning",
+      "slangetender",
+      "miljø",
+      "kemi/CBRN",
+      "efterløbspumpe",
+      "frigørelse"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "sbr_ruds_vedby",
+    "name": "Station Ruds Vedby",
+    "organization": "Falck",
+    "authority": "Slagelse Brand og Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Ruds Vedby",
+    "address": "Birkevej 20, 4291 Ruds Vedby",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M6",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M6",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "R4",
+        "type": "vandtankvogn",
+        "aliases": [
+          "R4",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_asnaes",
+    "name": "Asnæs Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Asnæs",
+    "address": "Nygade 15, 4550 Asnæs",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "B1",
+        "type": "bådtrækker",
+        "aliases": [
+          "B1",
+          "bådtrækker"
+        ],
+        "capabilities": [
+          "bådtræk",
+          "vandredning"
+        ]
+      },
+      {
+        "name": "I7",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I7",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "R1",
+        "type": "redningsvogn tung",
+        "aliases": [
+          "R1",
+          "redningsvogn tung"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "tung redning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "redningsbåd",
+      "vandredning",
+      "tung redning",
+      "frigørelse",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "redningsbåd",
+      "vandredning",
+      "tung redning",
+      "frigørelse",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_goerlev",
+    "name": "Gørlev Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Gørlev",
+    "address": "Agertoften 4, 4281 Gørlev",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "F1",
+        "type": "miljøvogn",
+        "aliases": [
+          "F1",
+          "miljøvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_holbaek",
+    "name": "Holbæk Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Holbæk",
+    "address": "L. C. Worsøesvej 6, 4300 Holbæk",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M2",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "I1",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I1",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I2",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I2",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "redningslift",
+        "aliases": [
+          "S1",
+          "redningslift"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "højderedning",
+      "indsatsleder",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "højderedning",
+      "indsatsleder",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_kalundborg",
+    "name": "Kalundborg Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Kalundborg",
+    "address": "Rynkevangen 12, 4400 Kalundborg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M2",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M3",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M3",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "I3",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I3",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I4",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I4",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "P1",
+        "type": "mandskabsvogn",
+        "aliases": [
+          "P1",
+          "mandskabsvogn"
+        ],
+        "capabilities": [
+          "transport/logistik"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "redningslift",
+        "aliases": [
+          "S1",
+          "redningslift"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "R1",
+        "type": "redningsvogn let",
+        "aliases": [
+          "R1",
+          "redningsvogn let"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse"
+        ]
+      },
+      {
+        "name": "T1",
+        "type": "slangetender",
+        "aliases": [
+          "T1",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V3",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V3",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "højderedning",
+      "vandforsyning",
+      "slangetender",
+      "miljø",
+      "kemi/CBRN",
+      "redningsbåd",
+      "vandredning",
+      "frigørelse"
+    ],
+    "resource_aliases": [
+      "højderedning",
+      "vandforsyning",
+      "slangetender",
+      "miljø",
+      "kemi/CBRN",
+      "redningsbåd",
+      "vandredning",
+      "frigørelse"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_lumsaas",
+    "name": "Lumsås Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Lumsås",
+    "address": "Oddenvej 180, 4500 Nykøbing Sj",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "K1",
+        "type": "miljøvogn",
+        "aliases": [
+          "K1",
+          "miljøvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "resource_aliases": [
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_moerkoev",
+    "name": "Mørkøv Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Mørkøv",
+    "address": "Holbækvej 251, 4440 Mørkøv",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_nykoebing_sj",
+    "name": "Nykøbing Sj Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Nykøbing Sj",
+    "address": "Vangen 1, 4500 Nykøbing Sj",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "B1",
+        "type": "bådtrækker",
+        "aliases": [
+          "B1",
+          "bådtrækker"
+        ],
+        "capabilities": [
+          "bådtræk",
+          "vandredning"
+        ]
+      },
+      {
+        "name": "F2",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "F2",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "I7",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I7",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I8",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I8",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V3",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V3",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "redningsbåd",
+      "vandredning",
+      "vandforsyning",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "redningsbåd",
+      "vandredning",
+      "vandforsyning",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_oroe",
+    "name": "Orø Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Orø",
+    "address": "Orø Havn 1, 4300 Holbæk",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "vandforsyning",
+          "ø-beredskab"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "ø-beredskab"
+    ],
+    "resource_aliases": [
+      "ø-beredskab"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_reersoe",
+    "name": "Reersø Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Reersø",
+    "address": "Skovvejen 3, 4281 Reersø",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "ø-beredskab"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "ø-beredskab"
+    ],
+    "resource_aliases": [
+      "ø-beredskab"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_snertinge",
+    "name": "Snertinge Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Snertinge",
+    "address": "Kalundborgvej 15, 4460 Snertinge",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning",
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "resource_aliases": [
+      "vandforsyning",
+      "miljø",
+      "kemi/CBRN"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_tuse_naes",
+    "name": "Tuse Næs Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Tuse Næs",
+    "address": "Udby Kirkevej 30, 4300 Holbæk",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_toelloese",
+    "name": "Tølløse Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Tølløse",
+    "address": "Industrivej 5, 4340 Tølløse",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_holbaek_frivillig",
+    "name": "Holbæk Frivilligenhed",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "frivilligenhed",
+    "operational_response_station": false,
+    "area": "Holbæk",
+    "address": "Anders Larsensvej 1, 4300 Holbæk",
+    "lat": null,
+    "lon": null,
+    "vehicles": [],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "frivilligenhed"
+    ],
+    "resource_aliases": [
+      "frivilligenhed"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_kalundborg_frivillig",
+    "name": "Kalundborg Frivilligenhed",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "frivilligenhed",
+    "operational_response_station": false,
+    "area": "Kalundborg",
+    "address": "Rynkevangen 16, 4400 Kalundborg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "frivilligenhed"
+    ],
+    "resource_aliases": [
+      "frivilligenhed"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_vig_frivillig",
+    "name": "Vig Frivilligenhed",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "frivilligenhed",
+    "operational_response_station": false,
+    "area": "Vig",
+    "address": "Nørremarken 13, 4560 Vig",
+    "lat": null,
+    "lon": null,
+    "vehicles": [],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "frivilligenhed"
+    ],
+    "resource_aliases": [
+      "frivilligenhed"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_nekseloe",
+    "name": "Nekselø Brand",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Nekselø",
+    "address": "4591 Nekselø",
+    "lat": null,
+    "lon": null,
+    "vehicles": [],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "ø-beredskab"
+    ],
+    "resource_aliases": [
+      "ø-beredskab"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "vsbv_sejeroe",
+    "name": "Sejerø Brandstation",
+    "organization": "Vestsjællands Brandvæsen",
+    "authority": "Vestsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Sejerø",
+    "address": "Sejerøvej 7, 4592 Sejerø",
+    "lat": null,
+    "lon": null,
+    "vehicles": [],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "ø-beredskab"
+    ],
+    "resource_aliases": [
+      "ø-beredskab"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_faxe",
+    "name": "Faxe Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Faxe",
+    "address": "Faxe",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M6",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M6",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "I5",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I5",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "R2",
+        "type": "redningsvogn/pionervogn",
+        "aliases": [
+          "R2",
+          "redningsvogn/pionervogn"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "pioneropgaver"
+        ]
+      },
+      {
+        "name": "TS3",
+        "type": "tanksprøjte",
+        "aliases": [
+          "TS3",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V4",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V4",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Påhængsstige",
+        "type": "påhængsstige",
+        "aliases": [
+          "Påhængsstige",
+          "påhængsstige"
+        ],
+        "capabilities": [
+          "stige",
+          "redning fra højde"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "frigørelse",
+      "pioneropgaver",
+      "vandforsyning",
+      "påhængsstige",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "frigørelse",
+      "pioneropgaver",
+      "vandforsyning",
+      "påhængsstige",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_fuglebjerg",
+    "name": "Fuglebjerg Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Fuglebjerg",
+    "address": "Næstvedvej 10, 4250 Fuglebjerg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M4",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M4",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "F2",
+        "type": "miljøvogn",
+        "aliases": [
+          "F2",
+          "miljøvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "V3",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V3",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_haslev",
+    "name": "Haslev Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Haslev",
+    "address": "Haslev",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M7",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M7",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "P6",
+        "type": "personvogn",
+        "aliases": [
+          "P6",
+          "personvogn"
+        ],
+        "capabilities": [
+          "transport",
+          "mandskabstransport"
+        ]
+      },
+      {
+        "name": "R3",
+        "type": "redningsvogn/pionervogn",
+        "aliases": [
+          "R3",
+          "redningsvogn/pionervogn"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "pioneropgaver"
+        ]
+      },
+      {
+        "name": "TS2",
+        "type": "tanksprøjte",
+        "aliases": [
+          "TS2",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V5",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V5",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "frigørelse",
+      "pioneropgaver",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "frigørelse",
+      "pioneropgaver",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_herlufmagle",
+    "name": "Herlufmagle Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Herlufmagle",
+    "address": "Håndværkervej 27, 4160 Herlufmagle",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "P3",
+        "type": "mandskabsvogn",
+        "aliases": [
+          "P3",
+          "mandskabsvogn"
+        ],
+        "capabilities": [
+          "transport/logistik"
+        ]
+      },
+      {
+        "name": "TS1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "TS1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_naestved",
+    "name": "Næstved Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Næstved",
+    "address": "Næstved",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M2",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "I1",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I1",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I2",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I2",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "F1",
+        "type": "miljøvogn",
+        "aliases": [
+          "F1",
+          "miljøvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "redningslift",
+        "aliases": [
+          "S1",
+          "redningslift"
+        ],
+        "capabilities": [
+          "højderedning",
+          "redning fra højde"
+        ]
+      },
+      {
+        "name": "R1",
+        "type": "redningsvogn/pionervogn",
+        "aliases": [
+          "R1",
+          "redningsvogn/pionervogn"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "pioneropgaver"
+        ]
+      },
+      {
+        "name": "T1",
+        "type": "slangetender",
+        "aliases": [
+          "T1",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "Påhængssprøjte",
+        "type": "påhængssprøjte",
+        "aliases": [
+          "Påhængssprøjte",
+          "påhængssprøjte"
+        ],
+        "capabilities": [
+          "pumpe",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "højderedning",
+      "redningslift",
+      "frigørelse",
+      "pioneropgaver",
+      "miljø",
+      "kemi/CBRN",
+      "slangetender",
+      "vandforsyning",
+      "påhængssprøjte",
+      "redningsbåd",
+      "vandredning",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "højderedning",
+      "redningslift",
+      "frigørelse",
+      "pioneropgaver",
+      "miljø",
+      "kemi/CBRN",
+      "slangetender",
+      "vandforsyning",
+      "påhængssprøjte",
+      "redningsbåd",
+      "vandredning",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_praestoe",
+    "name": "Præstø Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Præstø",
+    "address": "Præstø",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M15",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M15",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "V11",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V11",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_ringsted",
+    "name": "Ringsted Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Ringsted",
+    "address": "Ringsted",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M9",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M9",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M10",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M10",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S2",
+        "type": "drejestige",
+        "aliases": [
+          "S2",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "P4",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "P4",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "I6",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I6",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I7",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I7",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_vordingborg",
+    "name": "Vordingborg Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Vordingborg",
+    "address": "Haminavej 4, 4760 Vordingborg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M11",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M11",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "P2",
+        "type": "bådtrækker",
+        "aliases": [
+          "P2",
+          "bådtrækker"
+        ],
+        "capabilities": [
+          "bådtræk",
+          "vandredning"
+        ]
+      },
+      {
+        "name": "I9",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I9",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I10",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "I10",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "F4",
+        "type": "miljøvogn",
+        "aliases": [
+          "F4",
+          "miljøvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "TS05",
+        "type": "tanksprøjte",
+        "aliases": [
+          "TS05",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V8",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V8",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Påhængssprøjte",
+        "type": "påhængssprøjte",
+        "aliases": [
+          "Påhængssprøjte",
+          "påhængssprøjte"
+        ],
+        "capabilities": [
+          "pumpe",
+          "vandforsyning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "vandredning",
+      "redningsbåd",
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning",
+      "påhængssprøjte",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "vandredning",
+      "redningsbåd",
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning",
+      "påhængssprøjte",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "msbr_stege",
+    "name": "Stege Brandstation",
+    "organization": "Midt- og Sydsjællands Brand & Redning",
+    "authority": "Midt- og Sydsjællands Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Stege",
+    "address": "Falcksvej 1, 4780 Stege",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "TS4",
+        "type": "tanksprøjte",
+        "aliases": [
+          "TS4",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V10",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V10",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "redningsbåd",
+      "vandredning",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "redningsbåd",
+      "vandredning",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "brkss_koege",
+    "name": "Station Køge",
+    "organization": "Brand & Redning Køge-Solrød-Stevns",
+    "authority": "Brand & Redning Køge-Solrød-Stevns",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Køge",
+    "address": "Tigervej 8, 4600 Køge",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "P1",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P1",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "P2",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P2",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "P3",
+        "type": "ledervogn",
+        "aliases": [
+          "P3",
+          "ledervogn"
+        ],
+        "capabilities": [
+          "ledelse",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "basis/automobilsprøjte",
+        "aliases": [
+          "M2",
+          "basis/automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M3",
+        "type": "basis/automobilsprøjte/frivillige",
+        "aliases": [
+          "M3",
+          "basis/automobilsprøjte/frivillige"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "frivilligenhed"
+        ]
+      },
+      {
+        "name": "K1",
+        "type": "CBRN køretøj/kemivogn",
+        "aliases": [
+          "K1",
+          "CBRN køretøj/kemivogn"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "miljø",
+          "rens"
+        ]
+      },
+      {
+        "name": "I1",
+        "type": "containerbil/kroghejs",
+        "aliases": [
+          "I1",
+          "containerbil/kroghejs"
+        ],
+        "capabilities": [
+          "containerberedskab",
+          "elbilslukning",
+          "vandforsyning",
+          "logistik"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Kemitrailer/rensetelt",
+        "type": "kemitrailer",
+        "aliases": [
+          "Kemitrailer/rensetelt",
+          "kemitrailer"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "rens"
+        ]
+      },
+      {
+        "name": "Pumpetrailer",
+        "type": "pumpetrailer",
+        "aliases": [
+          "Pumpetrailer",
+          "pumpetrailer"
+        ],
+        "capabilities": [
+          "pumpe",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Generator",
+        "type": "generator",
+        "aliases": [
+          "Generator",
+          "generator"
+        ],
+        "capabilities": [
+          "strømforsyning"
+        ]
+      }
+    ],
+    "containers": [
+      {
+        "name": "Elbilslukningscontainer/vandtankcontainer",
+        "type": "container",
+        "aliases": [
+          "Elbilslukningscontainer/vandtankcontainer",
+          "container"
+        ],
+        "capabilities": [
+          "elbilslukning",
+          "vandforsyning",
+          "mobil branddam"
+        ]
+      }
+    ],
+    "special_resources": [
+      "indsatsleder",
+      "kemi/CBRN",
+      "rens",
+      "elbilslukning",
+      "containerberedskab",
+      "pumpe",
+      "strøm",
+      "frivilligenhed",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "indsatsleder",
+      "kemi/CBRN",
+      "rens",
+      "elbilslukning",
+      "containerberedskab",
+      "pumpe",
+      "strøm",
+      "frivilligenhed",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "brkss_lellinge",
+    "name": "Station Lellinge",
+    "organization": "Brand & Redning Køge-Solrød-Stevns",
+    "authority": "Brand & Redning Køge-Solrød-Stevns",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Lellinge",
+    "address": "Byledet 66, Lellinge, 4600 Køge",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte/automobilsprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte/automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "I5",
+        "type": "dykkervogn",
+        "aliases": [
+          "I5",
+          "dykkervogn"
+        ],
+        "capabilities": [
+          "dykkerberedskab",
+          "vandredning"
+        ]
+      },
+      {
+        "name": "I1",
+        "type": "vanddykker-/højderedningsvogn",
+        "aliases": [
+          "I1",
+          "vanddykker-/højderedningsvogn"
+        ],
+        "capabilities": [
+          "dykkerberedskab",
+          "vandredning",
+          "højderedning"
+        ]
+      },
+      {
+        "name": "P2",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P2",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      },
+      {
+        "name": "Hovercraft",
+        "type": "hovercraft",
+        "aliases": [
+          "Hovercraft",
+          "hovercraft"
+        ],
+        "capabilities": [
+          "vandredning",
+          "lavvandsredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "højderedning",
+      "drejestige",
+      "dykkerberedskab",
+      "vanddykker",
+      "vandredning",
+      "redningsbåd",
+      "hovercraft",
+      "vandforsyning",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "højderedning",
+      "drejestige",
+      "dykkerberedskab",
+      "vanddykker",
+      "vandredning",
+      "redningsbåd",
+      "hovercraft",
+      "vandforsyning",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "brkss_solroed",
+    "name": "Station Solrød",
+    "organization": "Brand & Redning Køge-Solrød-Stevns",
+    "authority": "Brand & Redning Køge-Solrød-Stevns",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Solrød",
+    "address": "Engvangen 10, 2680 Solrød Strand",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "UTV1",
+        "type": "UTV/ATV",
+        "aliases": [
+          "UTV1",
+          "UTV/ATV"
+        ],
+        "capabilities": [
+          "terrænkørsel",
+          "transport",
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Miljøtrailer trin 1",
+        "type": "miljøtrailer",
+        "aliases": [
+          "Miljøtrailer trin 1",
+          "miljøtrailer"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning",
+      "miljø",
+      "kemi/CBRN",
+      "UTV",
+      "terrænkørsel"
+    ],
+    "resource_aliases": [
+      "vandforsyning",
+      "miljø",
+      "kemi/CBRN",
+      "UTV",
+      "terrænkørsel"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "brkss_haarlev",
+    "name": "Station Hårlev",
+    "organization": "Brand & Redning Køge-Solrød-Stevns",
+    "authority": "Brand & Redning Køge-Solrød-Stevns",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Hårlev",
+    "address": "Industrivej 24, 4652 Hårlev",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "brkss_store_heddinge",
+    "name": "Station Store Heddinge",
+    "organization": "Brand & Redning Køge-Solrød-Stevns",
+    "authority": "Brand & Redning Køge-Solrød-Stevns",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Store Heddinge",
+    "address": "Nørregade 20, 4660 Store Heddinge",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "FE1",
+        "type": "bådtrækker/fleksibel enhed",
+        "aliases": [
+          "FE1",
+          "bådtrækker/fleksibel enhed"
+        ],
+        "capabilities": [
+          "bådtræk",
+          "vandredning",
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning",
+      "redningsbåd",
+      "vandredning",
+      "bådtrækker"
+    ],
+    "resource_aliases": [
+      "vandforsyning",
+      "redningsbåd",
+      "vandredning",
+      "bådtrækker"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "roskilde_roskilde",
+    "name": "Roskilde Brandstation",
+    "organization": "Roskilde Brandvæsen",
+    "authority": "Roskilde Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Roskilde",
+    "address": "Gammel Vindingevej 10, 4000 Roskilde",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M2",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M3",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M3",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE1",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE1",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "FE2",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE2",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "P2",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P2",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "I1",
+        "type": "kroghejskøretøj",
+        "aliases": [
+          "I1",
+          "kroghejskøretøj"
+        ],
+        "capabilities": [
+          "containerberedskab",
+          "logistik",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "A-slangetrailer",
+        "type": "slangetrailer",
+        "aliases": [
+          "A-slangetrailer",
+          "slangetrailer"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "B/C-slangetrailer",
+        "type": "slangetrailer",
+        "aliases": [
+          "B/C-slangetrailer",
+          "slangetrailer"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "Påhængssprøjte",
+        "type": "påhængssprøjte",
+        "aliases": [
+          "Påhængssprøjte",
+          "påhængssprøjte"
+        ],
+        "capabilities": [
+          "pumpe",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Rensepladstrailer",
+        "type": "rensepladstrailer",
+        "aliases": [
+          "Rensepladstrailer",
+          "rensepladstrailer"
+        ],
+        "capabilities": [
+          "rens",
+          "kemi/CBRN",
+          "miljø"
+        ]
+      },
+      {
+        "name": "Sanitetstrailer",
+        "type": "sanitetstrailer",
+        "aliases": [
+          "Sanitetstrailer",
+          "sanitetstrailer"
+        ],
+        "capabilities": [
+          "sanitet",
+          "logistik"
+        ]
+      }
+    ],
+    "containers": [
+      {
+        "name": "Container Klima",
+        "type": "container",
+        "aliases": [
+          "Container Klima",
+          "container"
+        ],
+        "capabilities": [
+          "klimaindsats",
+          "oversvømmelse",
+          "pumpeopgaver"
+        ]
+      },
+      {
+        "name": "Container Vandtank",
+        "type": "container",
+        "aliases": [
+          "Container Vandtank",
+          "container"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "mobil branddam"
+        ]
+      }
+    ],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "vandforsyning",
+      "containerberedskab",
+      "klimaindsats",
+      "pumpeopgaver",
+      "rens",
+      "kemi/CBRN",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "vandforsyning",
+      "containerberedskab",
+      "klimaindsats",
+      "pumpeopgaver",
+      "rens",
+      "kemi/CBRN",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "roskilde_jyllinge",
+    "name": "Jyllinge Brandstation",
+    "organization": "Roskilde Brandvæsen",
+    "authority": "Roskilde Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Jyllinge",
+    "address": "Frederiksborgvej 561, 4040 Jyllinge",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M4",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M4",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "FE3",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE3",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "V3",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V3",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning"
+        ]
+      }
+    ],
+    "containers": [
+      {
+        "name": "Container Klima",
+        "type": "container",
+        "aliases": [
+          "Container Klima",
+          "container"
+        ],
+        "capabilities": [
+          "klimaindsats",
+          "oversvømmelse",
+          "pumpeopgaver"
+        ]
+      }
+    ],
+    "special_resources": [
+      "vandforsyning",
+      "redningsbåd",
+      "vandredning",
+      "klimaindsats",
+      "pumpeopgaver"
+    ],
+    "resource_aliases": [
+      "vandforsyning",
+      "redningsbåd",
+      "vandredning",
+      "klimaindsats",
+      "pumpeopgaver"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beredskab4k_greve",
+    "name": "Station Greve",
+    "organization": "Beredskab 4K",
+    "authority": "Beredskab 4K",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Greve",
+    "address": "Lunikvej 4, 2670 Greve",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Redningsbåd SAR",
+        "type": "redningsbåd",
+        "aliases": [
+          "Redningsbåd SAR",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning",
+          "SAR"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "redningsbåd",
+      "vandredning",
+      "SAR"
+    ],
+    "resource_aliases": [
+      "redningsbåd",
+      "vandredning",
+      "SAR"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beredskab4k_taastrup",
+    "name": "Station Taastrup",
+    "organization": "Beredskab 4K",
+    "authority": "Beredskab 4K",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Taastrup",
+    "address": "Øtoftegårdsvej 4, 2630 Taastrup",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M2",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "FE1",
+        "type": "redning/kemivogn",
+        "aliases": [
+          "FE1",
+          "redning/kemivogn"
+        ],
+        "capabilities": [
+          "redning",
+          "kemi/CBRN",
+          "overfladeredning"
+        ]
+      }
+    ],
+    "trailers": [
+      {
+        "name": "Dyretrailer",
+        "type": "dyretrailer",
+        "aliases": [
+          "Dyretrailer",
+          "dyretrailer"
+        ],
+        "capabilities": [
+          "dyretransport",
+          "dyreredning"
+        ]
+      }
+    ],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "vandforsyning",
+      "kemi/CBRN",
+      "overfladeredning",
+      "dyretransport"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "vandforsyning",
+      "kemi/CBRN",
+      "overfladeredning",
+      "dyretransport"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beredskab4k_geminivej",
+    "name": "Station Geminivej",
+    "organization": "Beredskab 4K",
+    "authority": "Beredskab 4K",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": false,
+    "area": "Greve",
+    "address": "Geminivej 32, 2670 Greve",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M4",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M4",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [],
+    "resource_aliases": [],
+    "notes": "Må ikke bruges som almindelig nærmeste brandstation uden validering.",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beros_ballerup",
+    "name": "Station Ballerup",
+    "organization": "Beredskab Øst",
+    "authority": "Beredskab Øst",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Ballerup",
+    "address": "Gl. Rådhusvej 86, 2750 Ballerup",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "I1",
+        "type": "kemikalieberedskabskøretøj",
+        "aliases": [
+          "I1",
+          "kemikalieberedskabskøretøj"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "miljø"
+        ]
+      },
+      {
+        "name": "K1",
+        "type": "redningskran",
+        "aliases": [
+          "K1",
+          "redningskran"
+        ],
+        "capabilities": [
+          "redningskran",
+          "tung redning",
+          "bjærgning"
+        ]
+      },
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M2",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V2",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V2",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "redningskran",
+      "tung redning",
+      "vandforsyning",
+      "følgeskade",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "redningskran",
+      "tung redning",
+      "vandforsyning",
+      "følgeskade",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beros_gentofte",
+    "name": "Station Gentofte",
+    "organization": "Beredskab Øst",
+    "authority": "Beredskab Øst",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Gentofte",
+    "address": "Bernstorffsvej 159, 2920 Charlottenlund",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "CON1",
+        "type": "container",
+        "aliases": [
+          "CON1",
+          "container"
+        ],
+        "capabilities": [
+          "containerberedskab",
+          "elbilslukning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "SAR GT",
+        "type": "redningsbåd",
+        "aliases": [
+          "SAR GT",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning",
+          "SAR",
+          "overfladeredning"
+        ]
+      },
+      {
+        "name": "K1",
+        "type": "redningskran",
+        "aliases": [
+          "K1",
+          "redningskran"
+        ],
+        "capabilities": [
+          "tung redning",
+          "bjærgning"
+        ]
+      },
+      {
+        "name": "Robot",
+        "type": "robot",
+        "aliases": [
+          "Robot",
+          "robot"
+        ],
+        "capabilities": [
+          "fjernstyret indsats",
+          "elbilslukning",
+          "batteribrand"
+        ]
+      },
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "redningskran",
+      "tung redning",
+      "redningsbåd",
+      "vandredning",
+      "overfladeredning",
+      "SAR",
+      "robot",
+      "elbilslukning",
+      "containerberedskab",
+      "vandforsyning",
+      "følgeskade"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "redningskran",
+      "tung redning",
+      "redningsbåd",
+      "vandredning",
+      "overfladeredning",
+      "SAR",
+      "robot",
+      "elbilslukning",
+      "containerberedskab",
+      "vandforsyning",
+      "følgeskade"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beros_gladsaxe",
+    "name": "Station Gladsaxe",
+    "organization": "Beredskab Øst",
+    "authority": "Beredskab Øst",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Gladsaxe",
+    "address": "Vandtårnsvej 59, 2860 Søborg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "A1",
+        "type": "ATV",
+        "aliases": [
+          "A1",
+          "ATV"
+        ],
+        "capabilities": [
+          "terrænkørsel",
+          "transport"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "autosprøjte",
+        "aliases": [
+          "M2",
+          "autosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "LED",
+        "type": "ledelsesstøtte/KST",
+        "aliases": [
+          "LED",
+          "ledelsesstøtte/KST"
+        ],
+        "capabilities": [
+          "ledelsesstøtte"
+        ]
+      },
+      {
+        "name": "R1",
+        "type": "redningsvogn",
+        "aliases": [
+          "R1",
+          "redningsvogn"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "tung redning"
+        ]
+      },
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "redningsvogn",
+      "frigørelse",
+      "tung redning",
+      "ledelsesstøtte",
+      "KST",
+      "logistik",
+      "ATV",
+      "vandforsyning",
+      "følgeskade",
+      "belysning"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "redningsvogn",
+      "frigørelse",
+      "tung redning",
+      "ledelsesstøtte",
+      "KST",
+      "logistik",
+      "ATV",
+      "vandforsyning",
+      "følgeskade",
+      "belysning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "beros_lyngby",
+    "name": "Station Lyngby",
+    "organization": "Beredskab Øst",
+    "authority": "Beredskab Øst",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Lyngby",
+    "address": "Høstvej 12-14, 2800 Kgs. Lyngby",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "SAR LY",
+        "type": "redningsbåd",
+        "aliases": [
+          "SAR LY",
+          "redningsbåd"
+        ],
+        "capabilities": [
+          "vandredning",
+          "SAR",
+          "søredning",
+          "overfladeredning"
+        ]
+      },
+      {
+        "name": "T1",
+        "type": "slangetender",
+        "aliases": [
+          "T1",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "T2",
+        "type": "slangetender",
+        "aliases": [
+          "T2",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M2",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "slangetender",
+      "taktisk vandforsyning",
+      "påhængspumpe",
+      "redningsbåd",
+      "vandredning",
+      "overfladeredning",
+      "SAR",
+      "følgeskade",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "slangetender",
+      "taktisk vandforsyning",
+      "påhængspumpe",
+      "redningsbåd",
+      "vandredning",
+      "overfladeredning",
+      "SAR",
+      "følgeskade",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_farum",
+    "name": "Station Farum",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Farum",
+    "address": "Ryttermarken 13, 3520 Farum",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte/specialsprøjte",
+        "aliases": [
+          "M2",
+          "automobilsprøjte/specialsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "specialsprøjte"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "redningslift/stigevogn",
+        "aliases": [
+          "S1",
+          "redningslift/stigevogn"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "T1",
+        "type": "slangetender",
+        "aliases": [
+          "T1",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "stigeberedskab",
+      "højderedning",
+      "bådberedskab",
+      "redningsbåd",
+      "vandredning",
+      "slangetender",
+      "vandforsyning",
+      "påhængspumpe"
+    ],
+    "resource_aliases": [
+      "stigeberedskab",
+      "højderedning",
+      "bådberedskab",
+      "redningsbåd",
+      "vandredning",
+      "slangetender",
+      "vandforsyning",
+      "påhængspumpe"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_frederikssund",
+    "name": "Station Frederikssund",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Frederikssund",
+    "address": "Løgismose 3, 3600 Frederikssund",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "P1",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P1",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "P2",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P2",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "M1",
+        "type": "tankbasis/tanksprøjte",
+        "aliases": [
+          "M1",
+          "tankbasis/tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "stigevogn",
+        "aliases": [
+          "S1",
+          "stigevogn"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "ID",
+        "type": "vanddykkervogn",
+        "aliases": [
+          "ID",
+          "vanddykkervogn"
+        ],
+        "capabilities": [
+          "dykkerberedskab",
+          "vandredning"
+        ]
+      },
+      {
+        "name": "TB",
+        "type": "bådtrækker",
+        "aliases": [
+          "TB",
+          "bådtrækker"
+        ],
+        "capabilities": [
+          "bådtræk",
+          "vandredning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "indsatsleder",
+      "tankbasis",
+      "drejestige",
+      "højderedning",
+      "dykkerberedskab",
+      "vanddykker",
+      "redningsbåd",
+      "vandredning"
+    ],
+    "resource_aliases": [
+      "indsatsleder",
+      "tankbasis",
+      "drejestige",
+      "højderedning",
+      "dykkerberedskab",
+      "vanddykker",
+      "redningsbåd",
+      "vandredning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_frederiksvaerk",
+    "name": "Station Frederiksværk",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Frederiksværk",
+    "address": "Hundestedvej 6, 3300 Frederiksværk",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "FE1",
+        "type": "mandskabsvogn/fleksibel enhed",
+        "aliases": [
+          "FE1",
+          "mandskabsvogn/fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning",
+      "overfladeredning"
+    ],
+    "resource_aliases": [
+      "vandforsyning",
+      "overfladeredning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_hilleroed",
+    "name": "Station Hillerød",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "Falck",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Hillerød",
+    "address": "Heimdalsvej 1, 3400 Hillerød",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte/basis",
+        "aliases": [
+          "M1",
+          "automobilsprøjte/basis"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "M2",
+        "type": "automobilsprøjte/basis",
+        "aliases": [
+          "M2",
+          "automobilsprøjte/basis"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "HSE1",
+        "type": "hurtig slukningsenhed",
+        "aliases": [
+          "HSE1",
+          "hurtig slukningsenhed"
+        ],
+        "capabilities": [
+          "hurtig slukning",
+          "førsteindsats"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "KE1",
+        "type": "CBRN køretøj/kemivogn",
+        "aliases": [
+          "KE1",
+          "CBRN køretøj/kemivogn"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "miljø"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "kemikalieberedskab",
+      "HSE",
+      "hurtig slukningsenhed",
+      "indsatsleder",
+      "SAR-båd",
+      "vandredning",
+      "redningsbåd"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "kemikalieberedskab",
+      "HSE",
+      "hurtig slukningsenhed",
+      "indsatsleder",
+      "SAR-båd",
+      "vandredning",
+      "redningsbåd"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_hundested",
+    "name": "Station Hundested",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Hundested",
+    "address": "Parallelvej 12, 3390 Hundested",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "FE1",
+        "type": "mandskabsvogn/fleksibel enhed",
+        "aliases": [
+          "FE1",
+          "mandskabsvogn/fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_jaegerspris",
+    "name": "Station Jægerspris",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Jægerspris",
+    "address": "Kastanievej 8, 3630 Jægerspris",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte/basis",
+        "aliases": [
+          "M1",
+          "tanksprøjte/basis"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "K1/miljøvogn/kemi/CBRN er fjernet og må ikke tilføjes.",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_skibby",
+    "name": "Station Skibby",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Skibby",
+    "address": "Selsøvej 5B, 4050 Skibby",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M1",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "FE1",
+        "type": "mandskabsvogn/fleksibel enhed",
+        "aliases": [
+          "FE1",
+          "mandskabsvogn/fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport"
+        ]
+      },
+      {
+        "name": "V1",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V1",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_slangerup",
+    "name": "Station Slangerup",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Slangerup",
+    "address": "Kingovej 14, 3550 Slangerup",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "redningsvogn/pionervogn",
+        "aliases": [
+          "M1",
+          "redningsvogn/pionervogn"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "pioneropgaver"
+        ]
+      },
+      {
+        "name": "F1",
+        "type": "mandskabsvogn",
+        "aliases": [
+          "F1",
+          "mandskabsvogn"
+        ],
+        "capabilities": [
+          "transport"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "redningsvogn",
+      "pioneropgaver",
+      "frigørelse",
+      "redningstrailer"
+    ],
+    "resource_aliases": [
+      "redningsvogn",
+      "pioneropgaver",
+      "frigørelse",
+      "redningstrailer"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_stenloese",
+    "name": "Station Stenløse",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Stenløse",
+    "address": "Frydensbergvej 5, 3660 Stenløse",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "M1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "FE4",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE4",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "transport",
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "nsbv_alleroed",
+    "name": "Allerød Brandstation",
+    "organization": "Nordsjællands Brandvæsen",
+    "authority": "Nordsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Allerød",
+    "address": "Rørmosevænget 2, 3450 Allerød",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "Autosprøjte",
+        "type": "autosprøjte",
+        "aliases": [
+          "Autosprøjte",
+          "autosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "Vandtankvogn",
+        "type": "vandtankvogn",
+        "aliases": [
+          "Vandtankvogn",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Slangetender",
+        "type": "slangetender",
+        "aliases": [
+          "Slangetender",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning",
+          "terrænkørsel",
+          "naturbrand"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "slangetender",
+      "terrængående specialkøretøj",
+      "vandforsyning",
+      "naturbrand"
+    ],
+    "resource_aliases": [
+      "slangetender",
+      "terrængående specialkøretøj",
+      "vandforsyning",
+      "naturbrand"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "nsbv_birkeroed",
+    "name": "Birkerød Brandstation",
+    "organization": "Nordsjællands Brandvæsen",
+    "authority": "Nordsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Birkerød",
+    "address": "Birkerød Kongevej 160, 3460 Birkerød",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "Autosprøjte 1",
+        "type": "autosprøjte",
+        "aliases": [
+          "Autosprøjte 1",
+          "autosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "Autosprøjte 2",
+        "type": "autosprøjte",
+        "aliases": [
+          "Autosprøjte 2",
+          "autosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "Drejestige",
+        "type": "drejestige",
+        "aliases": [
+          "Drejestige",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "nsbv_fredensborg",
+    "name": "Fredensborg Brandstation",
+    "organization": "Nordsjællands Brandvæsen",
+    "authority": "Nordsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Fredensborg",
+    "address": "Helsingørsvej 25, 3480 Fredensborg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "Autosprøjte",
+        "type": "autosprøjte",
+        "aliases": [
+          "Autosprøjte",
+          "autosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "Vandtankvogn",
+        "type": "vandtankvogn",
+        "aliases": [
+          "Vandtankvogn",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Miljøvogn",
+        "type": "miljøvogn",
+        "aliases": [
+          "Miljøvogn",
+          "miljøvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN"
+        ]
+      },
+      {
+        "name": "Pionérvogn",
+        "type": "pionervogn",
+        "aliases": [
+          "Pionérvogn",
+          "pionervogn"
+        ],
+        "capabilities": [
+          "frigørelse",
+          "tung frigørelse",
+          "tung redning",
+          "pioneropgaver"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "miljø",
+      "kemi/CBRN",
+      "pionérvogn",
+      "tung frigørelse",
+      "tung redning",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "miljø",
+      "kemi/CBRN",
+      "pionérvogn",
+      "tung frigørelse",
+      "tung redning",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "nsbv_hoersholm",
+    "name": "Hørsholm Brandstation",
+    "organization": "Nordsjællands Brandvæsen",
+    "authority": "Nordsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Hørsholm",
+    "address": "Ådalsvej 52, 2970 Hørsholm",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "Tanksprøjte 1",
+        "type": "tanksprøjte",
+        "aliases": [
+          "Tanksprøjte 1",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Tanksprøjte 2",
+        "type": "tanksprøjte",
+        "aliases": [
+          "Tanksprøjte 2",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Drejestige",
+        "type": "drejestige",
+        "aliases": [
+          "Drejestige",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "Dykkervogn",
+        "type": "dykkervogn",
+        "aliases": [
+          "Dykkervogn",
+          "dykkervogn"
+        ],
+        "capabilities": [
+          "dykkerberedskab",
+          "vandredning",
+          "bådberedskab"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "tanksprøjte",
+      "drejestige",
+      "højderedning",
+      "dykkerberedskab",
+      "redningsdykker",
+      "redningsbåd",
+      "bådberedskab",
+      "vandredning",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "tanksprøjte",
+      "drejestige",
+      "højderedning",
+      "dykkerberedskab",
+      "redningsdykker",
+      "redningsbåd",
+      "bådberedskab",
+      "vandredning",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "nsbv_naerum",
+    "name": "Nærum Brandstation",
+    "organization": "Nordsjællands Brandvæsen",
+    "authority": "Nordsjællands Brandvæsen",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Nærum",
+    "address": "Rundforbivej 176, 2850 Nærum",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "Autosprøjte",
+        "type": "autosprøjte",
+        "aliases": [
+          "Autosprøjte",
+          "autosprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "Tanksprøjte",
+        "type": "tanksprøjte",
+        "aliases": [
+          "Tanksprøjte",
+          "tanksprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning",
+          "vandforsyning"
+        ]
+      },
+      {
+        "name": "Miljø-/jordingsvogn",
+        "type": "miljø-/jordingsvogn",
+        "aliases": [
+          "Miljø-/jordingsvogn",
+          "miljø-/jordingsvogn"
+        ],
+        "capabilities": [
+          "miljø",
+          "kemi/CBRN",
+          "jordingsudstyr",
+          "jernbaneindsats",
+          "togulykke",
+          "overfladeredning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "miljø-/jordingsvogn",
+      "jordingsudstyr",
+      "jernbaneindsats",
+      "togulykke",
+      "overfladeredning",
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "resource_aliases": [
+      "miljø-/jordingsvogn",
+      "jordingsudstyr",
+      "jernbaneindsats",
+      "togulykke",
+      "overfladeredning",
+      "miljø",
+      "kemi/CBRN",
+      "vandforsyning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_hovedbrandstationen",
+    "name": "Hovedbrandstationen",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "København",
+    "address": "Bag Rådhuset 3, 1550 København V",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "R108",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "R108",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S118",
+        "type": "drejestige",
+        "aliases": [
+          "S118",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE18",
+        "type": "fleksibel enhed/redningsvogn",
+        "aliases": [
+          "FE18",
+          "fleksibel enhed/redningsvogn"
+        ],
+        "capabilities": [
+          "redning",
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "P76",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P76",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "P201",
+        "type": "kommunikationsvogn",
+        "aliases": [
+          "P201",
+          "kommunikationsvogn"
+        ],
+        "capabilities": [
+          "kommunikation",
+          "ledelsesstøtte"
+        ]
+      },
+      {
+        "name": "P26",
+        "type": "kommunikationsvogn",
+        "aliases": [
+          "P26",
+          "kommunikationsvogn"
+        ],
+        "capabilities": [
+          "kommunikation",
+          "ledelsesstøtte"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "specialtjenesten",
+      "indsatsleder",
+      "kommunikation",
+      "ledelsesstøtte"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "specialtjenesten",
+      "indsatsleder",
+      "kommunikation",
+      "ledelsesstøtte"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_frederiksberg",
+    "name": "Station Frederiksberg",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Frederiksberg",
+    "address": "Howitzvej 26, 2000 Frederiksberg",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "R209",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "R209",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S9",
+        "type": "drejestige",
+        "aliases": [
+          "S9",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE19",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE19",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_tomsgaarden",
+    "name": "Station Tomsgården",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Tomsgården",
+    "address": "Frederikssundsvej 83 B, 2400 København NV",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "I608",
+        "type": "ATV",
+        "aliases": [
+          "I608",
+          "ATV"
+        ],
+        "capabilities": [
+          "terrænkørsel"
+        ]
+      },
+      {
+        "name": "M103",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M103",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "KE10",
+        "type": "CBRN køretøj",
+        "aliases": [
+          "KE10",
+          "CBRN køretøj"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "miljø"
+        ]
+      },
+      {
+        "name": "KE3",
+        "type": "CBRN køretøj",
+        "aliases": [
+          "KE3",
+          "CBRN køretøj"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "miljø"
+        ]
+      },
+      {
+        "name": "S13",
+        "type": "drejestige",
+        "aliases": [
+          "S13",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE13",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE13",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "ATV",
+      "terrænkørsel"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "ATV",
+      "terrænkørsel"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_christianshavn",
+    "name": "Station Christianshavn",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Christianshavn",
+    "address": "Markmandsgade 15, 2300 København S",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "R101",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "R101",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S27",
+        "type": "drejestige",
+        "aliases": [
+          "S27",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE21",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE21",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "skumressource"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "skumressource"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_glostrup",
+    "name": "Station Glostrup",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Glostrup",
+    "address": "Bryggergårdsvej 3, 2600 Glostrup",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M111",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M111",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "KE11",
+        "type": "CBRN køretøj",
+        "aliases": [
+          "KE11",
+          "CBRN køretøj"
+        ],
+        "capabilities": [
+          "kemi/CBRN",
+          "miljø"
+        ]
+      },
+      {
+        "name": "S21",
+        "type": "drejestige",
+        "aliases": [
+          "S21",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE11",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE11",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "V111",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V111",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "kemikalieberedskab",
+      "vandforsyning",
+      "følgeskade",
+      "letbane/afstivning"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "kemi/CBRN",
+      "kemikalieberedskab",
+      "vandforsyning",
+      "følgeskade",
+      "letbane/afstivning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_faelledvej",
+    "name": "Station Fælledvej",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Fælledvej",
+    "address": "Fælledvej 20 A, 2200 København N",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M102",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M102",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "FE12",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE12",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "S122",
+        "type": "redningslift",
+        "aliases": [
+          "S122",
+          "redningslift"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "redningslift",
+      "højderedning",
+      "klimaindsats",
+      "pumpeopgaver"
+    ],
+    "resource_aliases": [
+      "redningslift",
+      "højderedning",
+      "klimaindsats",
+      "pumpeopgaver"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_oesterbro",
+    "name": "Station Østerbro",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Østerbro",
+    "address": "Østbanegade 89, 2100 København Ø",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M105",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M105",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S15",
+        "type": "drejestige",
+        "aliases": [
+          "S15",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE15",
+        "type": "fleksibel enhed/redningsvogn",
+        "aliases": [
+          "FE15",
+          "fleksibel enhed/redningsvogn"
+        ],
+        "capabilities": [
+          "redning",
+          "indsatsstøtte",
+          "overfladeredning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "CO2-ressource",
+      "pumperessource",
+      "overfladeredning",
+      "redningsvogn"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "CO2-ressource",
+      "pumperessource",
+      "overfladeredning",
+      "redningsvogn"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_hvidovre",
+    "name": "Station Hvidovre",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Hvidovre",
+    "address": "Avedøre Havnevej 37, 2650 Hvidovre",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M110",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M110",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "S18",
+        "type": "drejestige",
+        "aliases": [
+          "S18",
+          "drejestige"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      },
+      {
+        "name": "FE10",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE10",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "V110",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V110",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "drejestige",
+      "højderedning",
+      "vandforsyning",
+      "pumperessource"
+    ],
+    "resource_aliases": [
+      "drejestige",
+      "højderedning",
+      "vandforsyning",
+      "pumperessource"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_vesterbro",
+    "name": "Station Vesterbro",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Vesterbro",
+    "address": "Enghavevej 168-170, 2450 København SV",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "S124",
+        "type": "afprodsstige/bobcat",
+        "aliases": [
+          "S124",
+          "afprodsstige/bobcat"
+        ],
+        "capabilities": [
+          "afprodning",
+          "højderedning",
+          "specialstige"
+        ]
+      },
+      {
+        "name": "M104",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M104",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "FE17",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "FE17",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "I14",
+        "type": "kroghejskøretøj",
+        "aliases": [
+          "I14",
+          "kroghejskøretøj"
+        ],
+        "capabilities": [
+          "containerberedskab",
+          "logistik"
+        ]
+      },
+      {
+        "name": "I160",
+        "type": "lastbil",
+        "aliases": [
+          "I160",
+          "lastbil"
+        ],
+        "capabilities": [
+          "logistik",
+          "transport"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "afprodsstige",
+      "specialstige",
+      "containerberedskab",
+      "logistik"
+    ],
+    "resource_aliases": [
+      "afprodsstige",
+      "specialstige",
+      "containerberedskab",
+      "logistik"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_dragoer",
+    "name": "Station Dragør",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Dragør",
+    "address": "Nyby 4, 2791 Dragør",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M113",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M113",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "F42",
+        "type": "fleksibel enhed",
+        "aliases": [
+          "F42",
+          "fleksibel enhed"
+        ],
+        "capabilities": [
+          "indsatsstøtte"
+        ]
+      },
+      {
+        "name": "F10",
+        "type": "mandskabsvogn",
+        "aliases": [
+          "F10",
+          "mandskabsvogn"
+        ],
+        "capabilities": [
+          "transport"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "redningsbåd",
+      "vandredning",
+      "søredning"
+    ],
+    "resource_aliases": [
+      "redningsbåd",
+      "vandredning",
+      "søredning"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_store_magleby",
+    "name": "Store Magleby",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "brandstation",
+    "operational_response_station": true,
+    "area": "Store Magleby",
+    "address": "Kirkevej 9, 2791 Dragør",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "M112",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M112",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "P86",
+        "type": "indsatsledervogn",
+        "aliases": [
+          "P86",
+          "indsatsledervogn"
+        ],
+        "capabilities": [
+          "ledelse"
+        ]
+      },
+      {
+        "name": "T112",
+        "type": "slangetender",
+        "aliases": [
+          "T112",
+          "slangetender"
+        ],
+        "capabilities": [
+          "vandforsyning",
+          "slangeudlægning"
+        ]
+      },
+      {
+        "name": "V12",
+        "type": "vandtankvogn",
+        "aliases": [
+          "V12",
+          "vandtankvogn"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "slangetender",
+      "vandforsyning",
+      "indsatsleder"
+    ],
+    "resource_aliases": [
+      "slangetender",
+      "vandforsyning",
+      "indsatsleder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "hbr_frivilligenheden",
+    "name": "HBR Frivilligenheden",
+    "organization": "Hovedstadens Beredskab",
+    "authority": "Hovedstadens Beredskab",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "frivilligenhed",
+    "operational_response_station": false,
+    "area": "København NV",
+    "address": "Frederikssundsvej 83 C, 2400 København NV",
+    "lat": null,
+    "lon": null,
+    "vehicles": [
+      {
+        "name": "AE702",
+        "type": "akutenhed/first responder",
+        "aliases": [
+          "AE702",
+          "akutenhed/first responder"
+        ],
+        "capabilities": [
+          "first responder",
+          "førstehjælp"
+        ]
+      },
+      {
+        "name": "AE703",
+        "type": "akutenhed/first responder",
+        "aliases": [
+          "AE703",
+          "akutenhed/first responder"
+        ],
+        "capabilities": [
+          "first responder",
+          "førstehjælp"
+        ]
+      },
+      {
+        "name": "M207",
+        "type": "automobilsprøjte",
+        "aliases": [
+          "M207",
+          "automobilsprøjte"
+        ],
+        "capabilities": [
+          "brandslukning",
+          "røgdykning"
+        ]
+      },
+      {
+        "name": "F705",
+        "type": "kassevogn med lift",
+        "aliases": [
+          "F705",
+          "kassevogn med lift"
+        ],
+        "capabilities": [
+          "logistik",
+          "transport"
+        ]
+      },
+      {
+        "name": "F72",
+        "type": "lastbil med kran",
+        "aliases": [
+          "F72",
+          "lastbil med kran"
+        ],
+        "capabilities": [
+          "logistik",
+          "kran"
+        ]
+      }
+    ],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "frivilligenhed",
+      "logistik",
+      "first responder"
+    ],
+    "resource_aliases": [
+      "frivilligenhed",
+      "logistik",
+      "first responder"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  },
+  {
+    "id": "fbbr_holmen_frivillig",
+    "name": "Station Holmen Frivillig",
+    "organization": "Frederiksborg Brand & Redning",
+    "authority": "Frederiksborg Brand & Redning",
+    "operator": "",
+    "type": "Brand/redning",
+    "station_category": "frivilligenhed",
+    "operational_response_station": false,
+    "area": "Frederikssund",
+    "address": "Holmensvej 36C, 3600 Frederikssund",
+    "lat": null,
+    "lon": null,
+    "vehicles": [],
+    "trailers": [],
+    "containers": [],
+    "special_resources": [
+      "frivilligenhed",
+      "supplerende beredskab"
+    ],
+    "resource_aliases": [
+      "frivilligenhed",
+      "supplerende beredskab"
+    ],
+    "notes": "",
+    "source": "manual",
+    "last_updated": "2026-06-26"
+  }
+]

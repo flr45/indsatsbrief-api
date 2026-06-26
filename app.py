@@ -84,6 +84,23 @@ Brug kun én samlet forbeholdslinje nederst:
 “Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger.”
 """
 
+INDSATSBRIEF_FULL_REPORT_PROMPT = """
+Lav en FULD INDSATSBRIEF. Brug flere konkrete positive fund fra de tilsendte data.
+Strukturér JSON-felterne sådan: address_lines til adresse, koordinater, kort og satellitlink; building_lines til bygning, etager, materialer, varme, kælder og sekundære bygninger; surroundings_lines til konkrete OSM-fund; weather_lines til temperatur, vindretning, vindstyrke, vindstød, nedbør og røgretning; water_supply_lines kun til faktiske brandhanefund; supplementary_lines til andre relevante positive fund.
+Skriv konkrete OSM-fund og ikke kun antal. Fuld rapport er ikke en taktisk plan og må ikke indeholde taktisk oplæg, taktisk fokus eller kritiske mangler. Nævn kun manglende data i supplementary_lines, hvis det er nødvendigt og i én kort samlet linje.
+"""
+
+BRIEF_FOLLOWUP_PROMPT = """
+Du er IndsatsBrief Brand.
+Du besvarer opfølgende spørgsmål til en konkret adressebrief.
+Du må gerne analysere de tilsendte data.
+Du må ikke gætte på manglende data.
+Hvis svaret ikke findes i data, sig kort at det ikke fremgår af de tilgængelige data.
+Skriv dansk, kort og praktisk.
+Skriv ikke taktisk plan, medmindre brugeren direkte beder om taktisk vurdering.
+Skriv ikke “ikke verificeret” efter hvert fund.
+"""
+
 REPORT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -93,6 +110,14 @@ REPORT_SCHEMA = {
             "items": {"type": "string"}
         },
         "findings": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "building_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "surroundings_lines": {
             "type": "array",
             "items": {"type": "string"}
         },
@@ -108,6 +133,10 @@ REPORT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"}
         },
+        "supplementary_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
         "disclaimer": {"type": "string"}
     },
     "required": [
@@ -117,6 +146,9 @@ REPORT_SCHEMA = {
         "osm_risk_lines",
         "weather_lines",
         "water_supply_lines",
+        "building_lines",
+        "surroundings_lines",
+        "supplementary_lines",
         "disclaimer"
     ],
     "additionalProperties": False
@@ -124,9 +156,84 @@ REPORT_SCHEMA = {
 
 REPORT_DISCLAIMER = "Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger."
 
+# Manuel stationsliste.
+# Tilføj brand/redningsstationer her med lat/lon.
+# Assistance-funktionen bruger kun afstande og vejledende køretid, ikke disponeringsforslag.
+FIRE_RESCUE_STATIONS = [
+    {
+        "name": "Station Slagelse",
+        "type": "Brand/redning",
+        "organization": "Vestsjællands Brandvæsen",
+        "area": "Slagelse",
+        "lat": 55.4021,
+        "lon": 11.3546,
+        "address": "Slagelse",
+    },
+    {
+        "name": "Station Gørlev",
+        "type": "Brand/redning",
+        "organization": "Vestsjællands Brandvæsen",
+        "area": "Gørlev",
+        "lat": 55.5399,
+        "lon": 11.2268,
+        "address": "Agertoften 4, 4281 Gørlev",
+    },
+    {
+        "name": "Station Kalundborg",
+        "type": "Brand/redning",
+        "organization": "Vestsjællands Brandvæsen",
+        "area": "Kalundborg",
+        "lat": 55.6768,
+        "lon": 11.0895,
+        "address": "Rynkevangen 12, 4400 Kalundborg",
+    },
+    {
+        "name": "Station Fuglebjerg",
+        "type": "Brand/redning",
+        "organization": "Midt- og Sydsjællands Brand & Redning",
+        "area": "Fuglebjerg",
+        "lat": 55.3062,
+        "lon": 11.5475,
+        "address": "Næstvedvej 10, 4250 Fuglebjerg",
+    },
+    {
+        "name": "Station Næstved",
+        "type": "Brand/redning",
+        "organization": "Midt- og Sydsjællands Brand & Redning",
+        "area": "Næstved",
+        "lat": 55.2237,
+        "lon": 11.7629,
+        "address": "Manøvej 25, 4700 Næstved",
+    },
+    {
+        "name": "Station Sorø",
+        "type": "Brand/redning",
+        "organization": "Vestsjællands Brandvæsen",
+        "area": "Sorø",
+        "lat": 55.4319,
+        "lon": 11.5557,
+        "address": "Sorø",
+    },
+    {
+        "name": "Station Ringsted",
+        "type": "Brand/redning",
+        "organization": "Midt- og Sydsjællands Brand & Redning",
+        "area": "Ringsted",
+        "lat": 55.4427,
+        "lon": 11.7901,
+        "address": "Ringsted",
+    },
+]
+
+ROUTE_CACHE = {}
+
 API_ERROR_PREFIXES = (
     "/incident-brief",
     "/analyze-brief",
+    "/full-brief",
+    "/brief-followup",
+    "/hazmat-analyze",
+    "/assistance-stations",
     "/test-bbr",
     "/test-hydrants",
     "/osm-risk-check",
@@ -379,6 +486,73 @@ def parse_radius(value, default=250):
         return radius if radius > 0 else default
     except Exception:
         return default
+
+
+def parse_assistance_radius(value, default=40):
+    try:
+        radius = float(value)
+        return radius if radius > 0 else default
+    except Exception:
+        return default
+
+
+def haversine_distance_km(lat1, lon1, lat2, lon2):
+    """Return straight-line distance in km, rounded to one decimal."""
+    earth_radius_km = 6371.0
+    lat1_rad, lon1_rad = math.radians(float(lat1)), math.radians(float(lon1))
+    lat2_rad, lon2_rad = math.radians(float(lat2)), math.radians(float(lon2))
+    delta_lat = lat2_rad - lat1_rad
+    delta_lon = lon2_rad - lon1_rad
+    a = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2) ** 2
+    )
+    return round(earth_radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 1)
+
+
+def get_driving_route_osrm(origin_lat, origin_lon, dest_lat, dest_lon):
+    """Fetch ordinary-road distance and duration without failing the brief."""
+    unavailable = {
+        "road_distance_km": None,
+        "drive_time_min": None,
+        "route_source": "unavailable",
+    }
+
+    try:
+        cache_key = tuple(
+            round(float(value), 5)
+            for value in [origin_lat, origin_lon, dest_lat, dest_lon]
+        )
+    except Exception:
+        return unavailable
+
+    if cache_key in ROUTE_CACHE:
+        return ROUTE_CACHE[cache_key]
+
+    url = (
+        "https://router.project-osrm.org/route/v1/driving/"
+        f"{origin_lon},{origin_lat};{dest_lon},{dest_lat}?overview=false"
+    )
+
+    try:
+        response = requests.get(url, timeout=4)
+        response.raise_for_status()
+        routes = response.json().get("routes") or []
+        if not routes:
+            ROUTE_CACHE[cache_key] = unavailable
+            return unavailable
+
+        route = routes[0]
+        result = {
+            "road_distance_km": round(route.get("distance", 0) / 1000, 1),
+            "drive_time_min": round(route.get("duration", 0) / 60),
+            "route_source": "OSRM",
+        }
+        ROUTE_CACHE[cache_key] = result
+        return result
+    except Exception:
+        ROUTE_CACHE[cache_key] = unavailable
+        return unavailable
 
 
 def direction_from_degrees(deg):
@@ -2803,6 +2977,15 @@ def brief_configuration_message():
     return None
 
 
+def brief_api_access_error():
+    configuration_message = brief_configuration_message()
+    if configuration_message:
+        return jsonify({"error": configuration_message}), 503
+    if not session.get("brief_authenticated"):
+        return jsonify({"error": "Login kræves for denne brief-funktion."}), 401
+    return None
+
+
 def brief_login_html(error_message=None):
     error_html = f'<p class="error">{error_message}</p>' if error_message else ""
     return f"""
@@ -2885,9 +3068,17 @@ def brief_page():
         main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 56px; }
         h1 { margin: 0 0 6px; font-size: 28px; }
         .intro { margin: 0 0 24px; color: #526168; }
+        .topline { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+        .logout { white-space: nowrap; font-weight: 700; }
+        .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 18px; }
+        .tab { background: #dce5e7; color: #23343a; min-height: 44px; }
+        .tab.active, .tab:hover { background: #34464e; color: #fff; }
+        .panel { display: none; }
+        .panel.active { display: block; }
         .search { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 12px; align-items: end; }
+        .commands { display: flex; gap: 10px; flex-wrap: wrap; }
         label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
-        input { width: 100%; min-height: 48px; border: 1px solid #aebbc0; border-radius: 4px; padding: 10px 12px; font: inherit; }
+        input, select { width: 100%; min-height: 48px; border: 1px solid #aebbc0; border-radius: 4px; padding: 10px 12px; font: inherit; }
         button { min-height: 48px; border: 0; border-radius: 4px; padding: 10px 16px; background: #b91f2b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
         button:hover { background: #941722; }
         button.secondary { background: #34464e; }
@@ -2906,25 +3097,47 @@ def brief_page():
         #map-section h2 { margin: 0 0 12px; font-size: 20px; }
         #map-frame { width: 100%; height: 360px; border: 0; border-radius: 4px; }
         .map-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-        @media print { .search, #status, .actions, .intro, #map-section { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
+        textarea { width: 100%; min-height: 120px; border: 1px solid #aebbc0; border-radius: 4px; padding: 12px; font: inherit; resize: vertical; }
+        .tool-panel { background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 20px; }
+        .tool-panel h2 { margin: 0 0 14px; font-size: 20px; }
+        .tool-result { display: none; margin-top: 16px; padding: 16px; border-left: 4px solid #075d78; background: #f5f8f8; overflow-wrap: anywhere; white-space: pre-wrap; }
+        #assistance-section { display: none; margin-top: 18px; }
+        .assistance-controls { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+        .assistance-controls label { min-width: 150px; }
+        .station-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 14px; }
+        .station-card { border: 1px solid #d2dbde; border-radius: 6px; padding: 14px; background: #fff; overflow-wrap: anywhere; }
+        .station-card h3 { margin: 0 0 8px; font-size: 16px; }
+        .station-card p { margin: 4px 0; }
+        @media print { .search, #status, .actions, .intro, #map-section, #assistance-section, .tabs, .tool-panel, .logout { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
         @media (max-width: 800px) { main { padding: 24px 20px 48px; } .search { grid-template-columns: minmax(0, 1fr) auto; } .search label:first-child { grid-column: 1 / -1; } }
-        @media (max-width: 520px) { main { padding: 20px 14px 36px; } h1 { font-size: 25px; } .search { grid-template-columns: 1fr; } .search label:first-child { grid-column: auto; } .search button { width: 100%; } #result, #map-section { padding: 16px; } #map-frame { height: 280px; } }
+        @media (max-width: 520px) { main { padding: 20px 14px 36px; } h1 { font-size: 25px; } .topline { display: block; } .logout { display: inline-block; margin: 0 0 18px; } .search, .commands, .assistance-controls { display: grid; grid-template-columns: 1fr; } .search label:first-child { grid-column: auto; } .search button, .assistance-controls button { width: 100%; } #result, #map-section, .tool-panel { padding: 16px; } #map-frame { height: 280px; } }
     </style>
 </head>
 <body>
     <main>
-        <h1>IndsatsBrief Brand</h1>
-        <p class="intro">Kort indsatsbrief med positive, præsentationsklare fund.</p>
-        <form id="brief-form" class="search">
-            <label>Adresse<input id="address" name="address" required autocomplete="street-address" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label>
-            <label>Radius (m)<input id="radius" name="radius" type="number" min="1" value="250"></label>
-            <button id="submit" type="submit">Lav indsatsbrief</button>
-        </form>
+        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Kort eller fuld indsatsbrief baseret på adresseopslag.</p></div><a class="logout" href="/brief-logout">Log ud</a></div>
+        <nav class="tabs" aria-label="Brief-funktioner">
+            <button class="tab active" type="button" data-tab="address">Adresseopslag</button>
+            <button class="tab" type="button" data-tab="full">Fuld rapport</button>
+            <button class="tab" type="button" data-tab="followup">Spørg til rapporten</button>
+            <button class="tab" type="button" data-tab="hazmat">UN/farligt stof</button>
+        </nav>
+        <section class="panel active" data-panel="address">
+            <form id="brief-form" class="search">
+                <label>Adresse<input id="address" name="address" required autocomplete="street-address" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label>
+                <label>Radius (m)<input id="radius" name="radius" type="number" min="1" value="250"></label>
+                <div class="commands"><button id="submit" data-mode="short" type="submit">Lav kort indsatsbrief</button><button data-mode="full" type="submit" class="secondary">Lav fuld rapport</button></div>
+            </form>
+        </section>
+        <section class="panel" data-panel="full"><div class="tool-panel"><h2>Fuld rapport</h2><p>Brug adresseopslaget for at lave en fuld rapport med flere dataafsnit.</p><button id="full-report" type="button">Lav fuld rapport</button></div></section>
+        <section class="panel" data-panel="followup"><div class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="followup-question" placeholder="Stil opfølgende spørgsmål til seneste rapport"></textarea><button id="ask-followup" type="button">Spørg til rapporten</button><div id="followup-result" class="tool-result"></div></div></section>
+        <section class="panel" data-panel="hazmat"><div class="tool-panel"><h2>UN/farligt stof</h2><input id="hazmat-query" placeholder="UN1203 eller benzin"><button id="hazmat-submit" type="button">Slå UN/stof op</button><div id="hazmat-result" class="tool-result"></div></div></section>
         <p id="status" role="status"></p>
         <section id="result" aria-live="polite"><div id="report"></div></section>
         <div id="actions" class="actions">
             <button id="copy" type="button" class="secondary">Kopiér rapport</button>
             <button id="print" type="button" class="secondary">Print/gem som PDF</button>
+            <div class="assistance-controls"><label>Assistance-radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><button id="assistance-button" type="button" class="secondary" disabled>Assistance</button></div>
         </div>
         <section id="map-section">
             <h2>Kort</h2>
@@ -2934,6 +3147,7 @@ def brief_page():
                 <a id="open-satellite" target="_blank" rel="noopener noreferrer" hidden>Åbn Google satellit</a>
             </div>
         </section>
+        <section id="assistance-section" class="tool-panel"><h2>Assistance brand/redning</h2><div id="assistance-result"></div></section>
     </main>
     <script>
         const forbiddenKeys = new Set([
@@ -3081,10 +3295,17 @@ def brief_page():
         const mapFrame = document.getElementById('map-frame');
         const openMap = document.getElementById('open-map');
         const openSatellite = document.getElementById('open-satellite');
+        const assistanceButton = document.getElementById('assistance-button');
+        const assistanceRadius = document.getElementById('assistance-radius');
+        const assistanceSection = document.getElementById('assistance-section');
+        const assistanceResult = document.getElementById('assistance-result');
         let reportText = '';
+        let latestIncidentData = null;
+        let latestReportText = '';
+        let latestReportStructured = null;
 
-        async function fetchJson(url) {
-            const response = await fetch(url);
+        async function fetchJson(url, options = {}) {
+            const response = await fetch(url, options);
             const text = await response.text();
             let data;
 
@@ -3142,8 +3363,10 @@ def brief_page():
         function reportSections(reportStructured, text) {
             if (!reportStructured || !reportStructured.title) return parseReportText(text);
             const definitions = [
-                ['Adresse', 'address_lines'], ['Fund', 'findings'], ['OSM-risikotjek', 'osm_risk_lines'],
-                ['Vejr/vind', 'weather_lines'], ['Vandforsyning', 'water_supply_lines'], ['Forbehold', 'disclaimer']
+                ['Adresse', 'address_lines'], ['Fund', 'findings'], ['Bygning', 'building_lines'],
+                ['Omgivelser / OSM', 'surroundings_lines'], ['OSM-risikotjek', 'osm_risk_lines'],
+                ['Vejr/vind', 'weather_lines'], ['Vandforsyning', 'water_supply_lines'],
+                ['Supplerende oplysninger', 'supplementary_lines'], ['Forbehold', 'disclaimer']
             ];
             const sections = [{ heading: reportStructured.title, lines: [] }];
             definitions.forEach(([heading, key]) => {
@@ -3209,25 +3432,31 @@ def brief_page():
 
         function showReport(text, rawData, reportStructured) {
             reportText = text;
+            latestReportText = text;
+            latestIncidentData = rawData;
+            latestReportStructured = reportStructured || null;
             renderReport(reportText, reportStructured);
             updateMap(rawData);
             result.style.display = 'block';
             actions.style.display = 'flex';
+            assistanceButton.disabled = !latestIncidentData;
         }
 
         form.addEventListener('submit', async event => {
             event.preventDefault();
             const address = document.getElementById('address').value.trim();
             const radius = document.getElementById('radius').value || '250';
+            const mode = event.submitter?.dataset.mode || 'short';
             if (!address) return;
             document.getElementById('submit').disabled = true;
             status.textContent = 'Henter indsatsbrief...';
             result.style.display = 'none';
             actions.style.display = 'none';
             mapSection.style.display = 'none';
+            assistanceSection.style.display = 'none';
             try {
-                const params = new URLSearchParams({ address: address, radius_m: radius });
-                const url = `/analyze-brief?${params.toString()}`;
+                const params = new URLSearchParams({ address: address, radius_m: radius, mode: mode });
+                const url = mode === 'full' ? `/full-brief?${params.toString()}` : `/analyze-brief?${params.toString()}`;
                 const data = await fetchJson(url);
                 if (!data.report_text) throw new Error('Analyse returnerede ingen rapporttekst');
                 showReport(data.report_text, data.raw_incident_data || data, data.report_structured);
@@ -3259,6 +3488,80 @@ def brief_page():
             status.textContent = 'Rapporten er kopieret.';
         });
         document.getElementById('print').addEventListener('click', () => window.print());
+        document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(item => item.classList.toggle('active', item === tab));
+            document.querySelectorAll('.panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tab.dataset.tab));
+        }));
+        document.getElementById('full-report').addEventListener('click', () => {
+            if (!document.getElementById('address').value.trim()) {
+                status.textContent = 'Indtast først en adresse under Adresseopslag.';
+                return;
+            }
+            form.requestSubmit(document.querySelector('[data-mode="full"]'));
+        });
+        document.getElementById('ask-followup').addEventListener('click', async () => {
+            const question = document.getElementById('followup-question').value.trim();
+            const output = document.getElementById('followup-result');
+            if (!latestIncidentData) { output.textContent = 'Lav først et adresseopslag.'; output.style.display = 'block'; return; }
+            if (!question) { output.textContent = 'Skriv et spørgsmål.'; output.style.display = 'block'; return; }
+            output.textContent = 'Henter svar...'; output.style.display = 'block';
+            try {
+                const data = await fetchJson('/brief-followup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, incident_data: latestIncidentData, report_text: latestReportText, report_structured: latestReportStructured }) });
+                output.textContent = data.answer || 'Intet svar modtaget.';
+            } catch (error) { output.textContent = error.message || 'Kunne ikke hente svar.'; }
+        });
+        document.getElementById('hazmat-submit').addEventListener('click', async () => {
+            const query = document.getElementById('hazmat-query').value.trim();
+            const output = document.getElementById('hazmat-result');
+            if (!query) { output.textContent = 'Indtast UN-nummer eller stofnavn.'; output.style.display = 'block'; return; }
+            output.textContent = 'Slår op...'; output.style.display = 'block';
+            try {
+                const data = await fetchJson(`/hazmat?${new URLSearchParams({ query }).toString()}`);
+                const official = data.official_lookup || {};
+                output.replaceChildren();
+                const lines = [`Søgt stof/UN: ${data.search_text || data.query}`];
+                if (official.instruction) lines.push(official.instruction);
+                if (Array.isArray(data.safety_note) && data.safety_note[0]) lines.push(data.safety_note[0]);
+                lines.push('Forbehold: Slå altid op i officiel kilde/app før indsatsbeslutninger.');
+                lines.forEach(line => { const item = document.createElement('div'); item.textContent = line; output.appendChild(item); });
+                if (official.url) { const link = document.createElement('a'); link.href = official.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Åbn Kemikalieberedskab.dk'; output.appendChild(link); }
+            } catch (error) { output.textContent = error.message || 'Kunne ikke slå stoffet op.'; }
+        });
+        assistanceButton.addEventListener('click', async () => {
+            const address = latestIncidentData?.requested_address || document.getElementById('address').value.trim();
+            if (!address) return;
+            assistanceSection.style.display = 'block';
+            assistanceResult.textContent = 'Henter brand/redningsstationer...';
+            try {
+                const params = new URLSearchParams({ address, radius_km: assistanceRadius.value });
+                const data = await fetchJson(`/assistance-stations?${params.toString()}`);
+                assistanceResult.replaceChildren();
+                const list = document.createElement('div');
+                list.className = 'station-list';
+                data.stations.forEach(station => {
+                    const card = document.createElement('article');
+                    card.className = 'station-card';
+                    const title = document.createElement('h3');
+                    title.textContent = station.name;
+                    card.appendChild(title);
+                    const parts = [station.type, station.organization, station.area, `Luftlinje ${String(station.air_distance_km).replace('.', ',')} km`].filter(Boolean);
+                    if (station.road_distance_km !== null && station.drive_time_min !== null) {
+                        parts.push(`Vej ${String(station.road_distance_km).replace('.', ',')} km`);
+                        parts.push(`Ca. ${station.drive_time_min} min.`);
+                    } else {
+                        parts.push('Vejafstand ikke tilgængelig.');
+                    }
+                    parts.forEach(part => { const line = document.createElement('p'); line.textContent = part; card.appendChild(line); });
+                    list.appendChild(card);
+                });
+                assistanceResult.appendChild(list);
+                const disclaimer = document.createElement('p');
+                disclaimer.textContent = data.disclaimer;
+                assistanceResult.appendChild(disclaimer);
+            } catch (error) {
+                assistanceResult.textContent = error.message || 'Kunne ikke hente assistanceoplysninger.';
+            }
+        });
     </script>
 </body>
 </html>
@@ -3951,7 +4254,7 @@ def raw_incident_has_basement(raw_incident_data):
     return building.get("basement_present") is True or (basement_area is not None and basement_area > 0)
 
 
-def sanitize_ai_report(report, raw_incident_data):
+def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
     """Apply presentation rules again, even if the model ignores an instruction."""
     if not isinstance(report, dict):
         raise ValueError("OpenAI returnerede ikke et JSON-objekt")
@@ -3993,12 +4296,15 @@ def sanitize_ai_report(report, raw_incident_data):
         return lines
 
     return {
-        "title": "HURTIG INDSATSBRIEF",
+        "title": "FULD INDSATSBRIEF" if report_mode == "full" else "HURTIG INDSATSBRIEF",
         "address_lines": clean_lines(report.get("address_lines")),
         "findings": clean_lines(report.get("findings")),
+        "building_lines": clean_lines(report.get("building_lines")),
+        "surroundings_lines": clean_lines(report.get("surroundings_lines")),
         "osm_risk_lines": clean_lines(report.get("osm_risk_lines")),
         "weather_lines": clean_lines(report.get("weather_lines")),
         "water_supply_lines": clean_lines(report.get("water_supply_lines")),
+        "supplementary_lines": clean_lines(report.get("supplementary_lines")),
         "disclaimer": REPORT_DISCLAIMER,
     }
 
@@ -4082,7 +4388,7 @@ def build_deterministic_building_findings(raw_incident_data):
     return list(dict.fromkeys(findings))
 
 
-def build_deterministic_report_structured(raw_incident_data):
+def build_deterministic_report_structured(raw_incident_data, report_mode="short"):
     """Build a short report from incident data when OpenAI is unavailable."""
     short_report_data = raw_incident_data.get("short_report_data") or {}
     short_address = short_report_data.get("address") or {}
@@ -4134,13 +4440,18 @@ def build_deterministic_report_structured(raw_incident_data):
     if parse_positive_number(water_supply.get("hydrant_count")) is not None:
         water_supply_lines.append(f"Brandhanefund: {water_supply['hydrant_count']}")
 
+    building_lines = build_deterministic_building_findings(raw_incident_data)
+
     return {
-        "title": "HURTIG INDSATSBRIEF",
+        "title": "FULD INDSATSBRIEF" if report_mode == "full" else "HURTIG INDSATSBRIEF",
         "address_lines": list(dict.fromkeys(address_lines)),
-        "findings": build_deterministic_building_findings(raw_incident_data),
-        "osm_risk_lines": list(dict.fromkeys(osm_lines)),
+        "findings": [] if report_mode == "full" else building_lines,
+        "building_lines": building_lines if report_mode == "full" else [],
+        "surroundings_lines": list(dict.fromkeys(osm_lines)) if report_mode == "full" else [],
+        "osm_risk_lines": [] if report_mode == "full" else list(dict.fromkeys(osm_lines)),
         "weather_lines": list(dict.fromkeys(weather_lines)),
         "water_supply_lines": water_supply_lines,
+        "supplementary_lines": [],
         "disclaimer": REPORT_DISCLAIMER,
     }
 
@@ -4180,14 +4491,17 @@ def build_analyze_debug(raw_incident_data, payload=None):
 
 def build_report_text(report_structured):
     """Render the accepted structured result in a stable short-report format."""
-    lines = ["HURTIG INDSATSBRIEF", ""]
+    lines = [report_structured.get("title", "HURTIG INDSATSBRIEF"), ""]
 
     for heading, field in [
         ("Adresse", "address_lines"),
         ("Fund", "findings"),
+        ("Bygning", "building_lines"),
+        ("Omgivelser / OSM", "surroundings_lines"),
         ("OSM-risikotjek", "osm_risk_lines"),
         ("Vejr/vind", "weather_lines"),
         ("Vandforsyning", "water_supply_lines"),
+        ("Supplerende oplysninger", "supplementary_lines"),
     ]:
         section_lines = report_structured.get(field, [])
         if section_lines:
@@ -4210,16 +4524,15 @@ def incident_brief():
     return jsonify(build_incident_brief_data(address, radius_m))
 
 
-@app.route("/analyze-brief", methods=["GET"])
-def analyze_brief():
+def analyze_brief_response(address, radius_m, report_mode="short"):
     raw_incident_data = None
     payload = None
     try:
-        address = request.args.get("address", "").strip()
-        radius_m = parse_radius(request.args.get("radius_m", 250), 250)
-
         if not address:
             return jsonify({"error": "Adresse mangler"}), 400
+
+        if report_mode not in ["short", "full"]:
+            report_mode = "short"
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -4235,11 +4548,15 @@ def analyze_brief():
             }), 404
 
         payload = build_openai_brief_payload(raw_incident_data)
+        payload["report_mode"] = report_mode
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.responses.create(
             model=OPENAI_MODEL,
             reasoning={"effort": "low"},
-            instructions=INDSATSBRIEF_SYSTEM_PROMPT,
+            instructions=(
+                INDSATSBRIEF_SYSTEM_PROMPT
+                + (INDSATSBRIEF_FULL_REPORT_PROMPT if report_mode == "full" else "")
+            ),
             input=json.dumps(payload, ensure_ascii=False),
             text={
                 "format": {
@@ -4251,32 +4568,35 @@ def analyze_brief():
             },
         )
         report_from_model = json.loads(response.output_text)
-        report_structured = sanitize_ai_report(report_from_model, raw_incident_data)
+        report_structured = sanitize_ai_report(report_from_model, raw_incident_data, report_mode)
 
         concrete_osm_lines = build_concrete_osm_risk_lines(
             raw_incident_data.get("osm_risk_check") or {}
         )
-        model_osm_lines = report_structured.get("osm_risk_lines", [])
+        osm_field = "surroundings_lines" if report_mode == "full" else "osm_risk_lines"
+        model_osm_lines = report_structured.get(osm_field, [])
         if concrete_osm_lines and (
             not model_osm_lines
             or all("fund" in line.lower() for line in model_osm_lines)
         ):
-            report_structured["osm_risk_lines"] = concrete_osm_lines
+            report_structured[osm_field] = concrete_osm_lines
 
-        if not report_structured["findings"]:
+        findings_field = "building_lines" if report_mode == "full" else "findings"
+        if not report_structured[findings_field]:
             fallback_findings = build_deterministic_building_findings(raw_incident_data)
             if fallback_findings:
-                report_structured["findings"] = fallback_findings
+                report_structured[findings_field] = fallback_findings
 
         return jsonify({
             "report_text": build_report_text(report_structured),
             "report_structured": report_structured,
             "raw_incident_data": raw_incident_data,
+            "report_mode": report_mode,
             **build_analyze_debug(raw_incident_data, payload),
         })
     except json.JSONDecodeError as error:
         fallback_report = (
-            build_deterministic_report_structured(raw_incident_data)
+            build_deterministic_report_structured(raw_incident_data, report_mode)
             if raw_incident_data else None
         )
         return jsonify({
@@ -4286,11 +4606,12 @@ def analyze_brief():
             "report_text": build_report_text(fallback_report) if fallback_report else None,
             "report_structured": fallback_report,
             "raw_incident_data": raw_incident_data,
+            "report_mode": report_mode,
             **build_analyze_debug(raw_incident_data or {}, payload),
         }), 502
     except Exception as error:
         fallback_report = (
-            build_deterministic_report_structured(raw_incident_data)
+            build_deterministic_report_structured(raw_incident_data, report_mode)
             if raw_incident_data else None
         )
         return jsonify({
@@ -4300,8 +4621,146 @@ def analyze_brief():
             "report_text": build_report_text(fallback_report) if fallback_report else None,
             "report_structured": fallback_report,
             "raw_incident_data": raw_incident_data,
+            "report_mode": report_mode,
             **build_analyze_debug(raw_incident_data or {}, payload),
         }), 502 if raw_incident_data else 500
+
+
+@app.route("/analyze-brief", methods=["GET"])
+def analyze_brief():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+    address = request.args.get("address", "").strip()
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
+    return analyze_brief_response(address, radius_m, request.args.get("mode", "short").lower())
+
+
+@app.route("/full-brief", methods=["GET"])
+def full_brief():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+    address = request.args.get("address", "").strip()
+    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
+    return analyze_brief_response(address, radius_m, "full")
+
+
+@app.route("/brief-followup", methods=["POST"])
+def brief_followup():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+
+    data = request.get_json(silent=True) or {}
+    question = str(data.get("question", "")).strip()
+    incident_data = data.get("incident_data")
+
+    if not question:
+        return jsonify({"error": "Spørgsmål mangler"}), 400
+    if not incident_data:
+        return jsonify({"error": "Der er ingen tidligere rapport at spørge til. Lav først et adresseopslag."}), 400
+
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+            reasoning={"effort": "low"},
+            instructions=BRIEF_FOLLOWUP_PROMPT,
+            input=json.dumps({
+                "question": question,
+                "incident_data": incident_data,
+                "report_text": data.get("report_text"),
+                "report_structured": data.get("report_structured"),
+            }, ensure_ascii=False),
+        )
+        answer = clean_short_report_text(response.output_text)
+        if not is_positive_report_value(answer):
+            answer = "Det fremgår ikke af de tilgængelige data."
+        return jsonify({"answer": answer})
+    except Exception as error:
+        return jsonify({"error": "Kunne ikke besvare spørgsmålet", "details": str(error)}), 502
+
+
+@app.route("/assistance-stations", methods=["GET"])
+def assistance_stations():
+    configuration_message = brief_configuration_message()
+    if configuration_message:
+        return jsonify({"error": configuration_message}), 503
+    if not session.get("brief_authenticated"):
+        return jsonify({"error": "Ikke logget ind"}), 401
+
+    address = request.args.get("address", "").strip()
+    radius_km = parse_assistance_radius(request.args.get("radius_km", 40), 40)
+
+    if not address:
+        return jsonify({"error": "Adresse mangler"}), 400
+
+    try:
+        address_data = lookup_address(address)
+    except Exception:
+        address_data = None
+
+    if not address_data or address_data.get("error"):
+        return jsonify({"error": "Adresse kunne ikke slås op"}), 400
+
+    incident_lat = address_data.get("latitude")
+    incident_lon = address_data.get("longitude")
+    if incident_lat is None or incident_lon is None:
+        return jsonify({"error": "Adresse kunne ikke slås op"}), 400
+
+    stations_with_coordinates = [
+        station for station in FIRE_RESCUE_STATIONS
+        if station.get("lat") is not None and station.get("lon") is not None
+    ]
+    if not stations_with_coordinates:
+        return jsonify({"error": "Ingen brand/redningsstationer med koordinater i stationslisten"}), 404
+
+    nearby_stations = []
+    for station in stations_with_coordinates:
+        try:
+            air_distance_km = haversine_distance_km(
+                incident_lat, incident_lon, station["lat"], station["lon"]
+            )
+        except Exception:
+            continue
+
+        if air_distance_km <= radius_km:
+            nearby_stations.append({**station, "air_distance_km": air_distance_km})
+
+    if not nearby_stations:
+        return jsonify({
+            "error": "Ingen stationer fundet inden for radius",
+            "radius_km": radius_km,
+        }), 404
+
+    stations = []
+    for station in sorted(nearby_stations, key=lambda item: item["air_distance_km"])[:10]:
+        route = get_driving_route_osrm(
+            incident_lat, incident_lon, station["lat"], station["lon"]
+        )
+        stations.append({
+            "name": station["name"],
+            "type": station["type"],
+            "organization": station.get("organization"),
+            "area": station["area"],
+            "air_distance_km": station["air_distance_km"],
+            **route,
+        })
+
+    stations.sort(key=lambda item: (
+        item["drive_time_min"] is None,
+        item["drive_time_min"] if item["drive_time_min"] is not None else item["air_distance_km"],
+        item["air_distance_km"],
+    ))
+
+    return jsonify({
+        "incident_address": address_data.get("normalized_address") or address,
+        "coordinates": {"lat": incident_lat, "lon": incident_lon},
+        "radius_km": radius_km,
+        "stations": stations,
+        "disclaimer": "Listen viser brand- og redningsstationer i den manuelle stationsliste inden for valgt radius. Afstande og køretid er vejledende. Køretid er almindelig vejberegning og ikke udrykningskørsel.",
+    })
 
 
 if __name__ == "__main__":

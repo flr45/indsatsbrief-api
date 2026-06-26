@@ -69,6 +69,9 @@ Hvis vandforsyning mangler, skal vandforsyning udelades.
 Hvis en sektion ikke har positive fund, skal sektionen udelades.
 
 Ved OSM-risikofund skal du skrive hvad fundene er, ikke kun antal. Skriv kort kategori/type og nærmeste afstand. Hvis der er flere ens fund, saml dem i én linje, men nævn typen, fx port, låge, adgangsbegrænsning, jernbane, tank, oplag, solceller eller vand.
+Ved OSM-risikofund skal du skrive hvad fundene er og gerne med kortlink-id/map_url hvis tilgængeligt. Skriv kort og konkret. Nævn ikke kun antal fund.
+Hvis nearby_main_road findes, må du skrive en kort adgangsnote: “Adressen ligger på/ved sidevej tæt ved [vejnavn], ca. [afstand] m fra nærmeste større vej.” Skriv kun dette hvis data findes. Gæt aldrig hovedvej.
+Hvis traffic_events_nearby har fund, skriv kort: “Trafik/vejarbejde: [type] på/ved [vejnavn], ca. [afstand] m fra adressen.” Skriv ikke at vejen er lukket, medmindre data tydeligt siger road closed/lukket. Gæt aldrig.
 
 Ved lejligheder må adresseafvigelser ikke kaldes kritiske.
 Hvis requested_address og matched_address afviger, skriv højst:
@@ -137,6 +140,10 @@ REPORT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"}
         },
+        "traffic_lines": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
         "disclaimer": {"type": "string"}
     },
     "required": [
@@ -149,6 +156,7 @@ REPORT_SCHEMA = {
         "building_lines",
         "surroundings_lines",
         "supplementary_lines",
+        "traffic_lines",
         "disclaimer"
     ],
     "additionalProperties": False
@@ -156,18 +164,20 @@ REPORT_SCHEMA = {
 
 REPORT_DISCLAIMER = "Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger."
 
-# Manuel stationsliste.
-# Tilføj brand/redningsstationer her med lat/lon.
-# Assistance-funktionen bruger kun afstande og vejledende køretid, ikke disponeringsforslag.
+# Manuel supplerende stationsliste.
+# Bruges til stationer der mangler i OSM eller hvor organisation skal rettes.
+# Organisation skal angives korrekt. Slagelse og Sorø må ikke sættes som
+# Vestsjællands Brandvæsen, medmindre data faktisk siger det.
 FIRE_RESCUE_STATIONS = [
     {
         "name": "Station Slagelse",
         "type": "Brand/redning",
-        "organization": "Vestsjællands Brandvæsen",
+        "organization": "Slagelse Brand og Redning",
         "area": "Slagelse",
         "lat": 55.4021,
         "lon": 11.3546,
         "address": "Slagelse",
+        "source": "manual",
     },
     {
         "name": "Station Gørlev",
@@ -177,6 +187,7 @@ FIRE_RESCUE_STATIONS = [
         "lat": 55.5399,
         "lon": 11.2268,
         "address": "Agertoften 4, 4281 Gørlev",
+        "source": "manual",
     },
     {
         "name": "Station Kalundborg",
@@ -186,6 +197,7 @@ FIRE_RESCUE_STATIONS = [
         "lat": 55.6768,
         "lon": 11.0895,
         "address": "Rynkevangen 12, 4400 Kalundborg",
+        "source": "manual",
     },
     {
         "name": "Station Fuglebjerg",
@@ -195,6 +207,7 @@ FIRE_RESCUE_STATIONS = [
         "lat": 55.3062,
         "lon": 11.5475,
         "address": "Næstvedvej 10, 4250 Fuglebjerg",
+        "source": "manual",
     },
     {
         "name": "Station Næstved",
@@ -204,15 +217,17 @@ FIRE_RESCUE_STATIONS = [
         "lat": 55.2237,
         "lon": 11.7629,
         "address": "Manøvej 25, 4700 Næstved",
+        "source": "manual",
     },
     {
         "name": "Station Sorø",
         "type": "Brand/redning",
-        "organization": "Vestsjællands Brandvæsen",
+        "organization": None,
         "area": "Sorø",
         "lat": 55.4319,
         "lon": 11.5557,
         "address": "Sorø",
+        "source": "manual",
     },
     {
         "name": "Station Ringsted",
@@ -222,6 +237,7 @@ FIRE_RESCUE_STATIONS = [
         "lat": 55.4427,
         "lon": 11.7901,
         "address": "Ringsted",
+        "source": "manual",
     },
 ]
 
@@ -234,6 +250,7 @@ API_ERROR_PREFIXES = (
     "/brief-followup",
     "/hazmat-analyze",
     "/assistance-stations",
+    "/address-autocomplete",
     "/test-bbr",
     "/test-hydrants",
     "/osm-risk-check",
@@ -555,6 +572,104 @@ def get_driving_route_osrm(origin_lat, origin_lon, dest_lat, dest_lon):
         return unavailable
 
 
+def get_osm_fire_rescue_stations_nearby(lat, lon, radius_km):
+    """Find nearby fire/rescue stations in OSM without excluding BRS stations."""
+    radius_m = max(1, int(float(radius_km) * 1000))
+    query = f"""
+    [out:json][timeout:20];
+    (
+      nwr(around:{radius_m},{lat},{lon})["emergency"="fire_station"];
+      nwr(around:{radius_m},{lat},{lon})["amenity"="fire_station"];
+      nwr(around:{radius_m},{lat},{lon})["name"~"brand|fire|redning|beredskab",i];
+      nwr(around:{radius_m},{lat},{lon})["operator"~"Beredskabsstyrelsen|beredskab|BRS",i];
+    );
+    out center tags;
+    """
+    stations = []
+    seen = set()
+
+    for overpass_url in [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+    ]:
+        try:
+            response = requests.get(overpass_url, params={"data": query}, timeout=12)
+            response.raise_for_status()
+            for element in response.json().get("elements", []):
+                key = (element.get("type"), element.get("id"))
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                tags = element.get("tags") or {}
+                center = element.get("center") or {}
+                station_lat = element.get("lat", center.get("lat"))
+                station_lon = element.get("lon", center.get("lon"))
+                if station_lat is None or station_lon is None:
+                    continue
+
+                name = tags.get("name") or tags.get("operator") or "Brand/redningsstation"
+                organization = tags.get("operator") or tags.get("brand")
+                stations.append({
+                    "name": name,
+                    "type": "Brand/redning",
+                    "organization": organization,
+                    "area": tags.get("addr:city") or tags.get("is_in:municipality"),
+                    "lat": station_lat,
+                    "lon": station_lon,
+                    "source": "OSM",
+                    "osm_id": element.get("id"),
+                    "osm_type": element.get("type"),
+                    "osm_tags": tags,
+                })
+            return stations
+        except Exception:
+            continue
+
+    return stations
+
+
+def merge_fire_rescue_stations(manual_stations, osm_stations):
+    """Merge obvious manual/OSM duplicates, with manual names and orgs preferred."""
+    merged = [dict(station) for station in (osm_stations or [])]
+
+    def normalized_name(value):
+        return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+    for manual in manual_stations or []:
+        if manual.get("lat") is None or manual.get("lon") is None:
+            continue
+        match_index = None
+        manual_name = normalized_name(manual.get("name"))
+        for index, osm_station in enumerate(merged):
+            if osm_station.get("lat") is None or osm_station.get("lon") is None:
+                continue
+            same_name = manual_name == normalized_name(osm_station.get("name"))
+            try:
+                close_enough = haversine_distance_km(
+                    manual["lat"], manual["lon"], osm_station["lat"], osm_station["lon"]
+                ) <= 0.3
+            except Exception:
+                close_enough = False
+            if same_name and close_enough:
+                match_index = index
+                break
+
+        if match_index is None:
+            merged.append(dict(manual))
+            continue
+
+        osm_station = merged[match_index]
+        combined = {**osm_station, **manual}
+        combined["source"] = "manual+OSM"
+        combined["osm_id"] = osm_station.get("osm_id")
+        combined["osm_type"] = osm_station.get("osm_type")
+        combined["osm_tags"] = osm_station.get("osm_tags")
+        merged[match_index] = combined
+
+    return merged
+
+
 def direction_from_degrees(deg):
     if deg is None:
         return "Ikke verificeret"
@@ -684,6 +799,111 @@ def lookup_address(address):
         return {
             "error": str(e)
         }
+
+
+def get_address_autocomplete(query, limit=8):
+    if len(query.strip()) < 3:
+        return []
+
+    try:
+        response = requests.get(
+            "https://api.dataforsyningen.dk/adresser",
+            params={"q": query, "per_side": limit},
+            timeout=5,
+        )
+        response.raise_for_status()
+        suggestions = []
+        for item in response.json():
+            access_address = item.get("adgangsadresse") or {}
+            point = access_address.get("adgangspunkt") or {}
+            coordinates = point.get("koordinater") or []
+            suggestions.append({
+                "text": item.get("adressebetegnelse"),
+                "address_id": item.get("id"),
+                "access_address_id": access_address.get("id"),
+                "lat": coordinates[1] if len(coordinates) > 1 else None,
+                "lon": coordinates[0] if coordinates else None,
+            })
+        return suggestions
+    except Exception:
+        return []
+
+
+def get_nearby_main_roads(lat, lon, radius_m=400):
+    if lat is None or lon is None:
+        return None
+
+    priority = {
+        "motorway": 0, "trunk": 1, "primary": 2, "secondary": 3,
+        "tertiary": 4, "unclassified": 5, "residential": 6,
+    }
+    highway_values = "|".join(priority)
+    query = f"""
+    [out:json][timeout:12];
+    way(around:{int(radius_m)},{lat},{lon})["highway"~"^({highway_values})$"]["name"];
+    out center tags;
+    """
+    try:
+        response = requests.get(
+            "https://overpass-api.de/api/interpreter",
+            params={"data": query},
+            timeout=8,
+        )
+        response.raise_for_status()
+        candidates = []
+        for element in response.json().get("elements", []):
+            tags = element.get("tags") or {}
+            center = element.get("center") or {}
+            road_lat, road_lon = center.get("lat"), center.get("lon")
+            if not tags.get("name") or road_lat is None or road_lon is None:
+                continue
+            distance = distance_meters(lat, lon, road_lat, road_lon)
+            if distance is not None:
+                candidates.append((priority.get(tags.get("highway"), 99), distance, tags))
+        if not candidates:
+            return None
+        _, distance, tags = sorted(candidates, key=lambda item: (item[0], item[1]))[0]
+        return {
+            "nearest_main_road": tags.get("name"),
+            "highway_type": tags.get("highway"),
+            "distance_m": round(distance),
+            "source": "OSM",
+        }
+    except Exception:
+        return None
+
+
+def get_traffic_events_nearby(lat, lon, radius_km=5):
+    """Optional DATEX/Traffic Events adapter; returns no events when unavailable."""
+    traffic_url = os.getenv("VEJDIREKTORATET_TRAFFIC_EVENTS_URL")
+    if not traffic_url:
+        return []
+    try:
+        response = requests.get(traffic_url, timeout=5)
+        response.raise_for_status()
+        payload = response.json()
+        events = payload.get("events", payload) if isinstance(payload, dict) else payload
+        normalized = []
+        for event in events if isinstance(events, list) else []:
+            event_lat = event.get("lat") or event.get("latitude")
+            event_lon = event.get("lon") or event.get("longitude")
+            distance = distance_meters(lat, lon, event_lat, event_lon)
+            if distance is None or distance > radius_km * 1000:
+                continue
+            normalized.append({
+                "title": event.get("title") or event.get("description"),
+                "type": event.get("type") or "trafikhændelse",
+                "road_name": event.get("road_name") or event.get("road"),
+                "distance_m": round(distance),
+                "start_time": event.get("start_time"),
+                "end_time": event.get("end_time"),
+                "lat": event_lat,
+                "lon": event_lon,
+                "source": "Vejdirektoratet/DATEX",
+            })
+        return normalized
+    except Exception:
+        return []
 
 
 # -------------------------------------------------------
@@ -3076,7 +3296,13 @@ def brief_page():
         .panel { display: none; }
         .panel.active { display: block; }
         .search { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 12px; align-items: end; }
+        .address-field { position: relative; }
+        .autocomplete-list { display: none; position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); max-height: 260px; overflow: auto; border: 1px solid #aebbc0; border-radius: 4px; background: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .12); }
+        .autocomplete-option { display: block; width: 100%; min-height: 48px; padding: 10px 12px; border: 0; border-bottom: 1px solid #e2e8ea; background: #fff; color: #162126; text-align: left; font: inherit; cursor: pointer; }
+        .autocomplete-option:hover { background: #eef5f6; }
         .commands { display: flex; gap: 10px; flex-wrap: wrap; }
+        .assistance-primary { background: #075d78; font-size: 16px; }
+        .assistance-primary:hover { background: #03485d; }
         label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
         input, select { width: 100%; min-height: 48px; border: 1px solid #aebbc0; border-radius: 4px; padding: 10px 12px; font: inherit; }
         button { min-height: 48px; border: 0; border-radius: 4px; padding: 10px 16px; background: #b91f2b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
@@ -3109,8 +3335,8 @@ def brief_page():
         .station-card h3 { margin: 0 0 8px; font-size: 16px; }
         .station-card p { margin: 4px 0; }
         @media print { .search, #status, .actions, .intro, #map-section, #assistance-section, .tabs, .tool-panel, .logout { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
-        @media (max-width: 800px) { main { padding: 24px 20px 48px; } .search { grid-template-columns: minmax(0, 1fr) auto; } .search label:first-child { grid-column: 1 / -1; } }
-        @media (max-width: 520px) { main { padding: 20px 14px 36px; } h1 { font-size: 25px; } .topline { display: block; } .logout { display: inline-block; margin: 0 0 18px; } .search, .commands, .assistance-controls { display: grid; grid-template-columns: 1fr; } .search label:first-child { grid-column: auto; } .search button, .assistance-controls button { width: 100%; } #result, #map-section, .tool-panel { padding: 16px; } #map-frame { height: 280px; } }
+        @media (max-width: 800px) { main { padding: 24px 20px 48px; } .search { grid-template-columns: minmax(0, 1fr) auto; } .address-field { grid-column: 1 / -1; } }
+        @media (max-width: 520px) { main { padding: 20px 14px 36px; } h1 { font-size: 25px; } .topline { display: block; } .logout { display: inline-block; margin: 0 0 18px; } .search, .commands, .assistance-controls { display: grid; grid-template-columns: 1fr; } .address-field { grid-column: auto; } .search button, .assistance-controls button { width: 100%; } #result, #map-section, .tool-panel { padding: 16px; } #map-frame { height: 280px; } }
     </style>
 </head>
 <body>
@@ -3120,24 +3346,21 @@ def brief_page():
             <button class="tab active" type="button" data-tab="address">Adresseopslag</button>
             <button class="tab" type="button" data-tab="full">Fuld rapport</button>
             <button class="tab" type="button" data-tab="followup">Spørg til rapporten</button>
-            <button class="tab" type="button" data-tab="hazmat">UN/farligt stof</button>
         </nav>
         <section class="panel active" data-panel="address">
             <form id="brief-form" class="search">
-                <label>Adresse<input id="address" name="address" required autocomplete="street-address" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label>
+                <div class="address-field"><label>Adresse<input id="address" name="address" required autocomplete="off" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label><div id="autocomplete-list" class="autocomplete-list" role="listbox"></div></div>
                 <label>Radius (m)<input id="radius" name="radius" type="number" min="1" value="250"></label>
-                <div class="commands"><button id="submit" data-mode="short" type="submit">Lav kort indsatsbrief</button><button data-mode="full" type="submit" class="secondary">Lav fuld rapport</button></div>
+                <div class="commands"><button id="submit" data-mode="short" type="submit">Lav kort indsatsbrief</button><button data-mode="full" type="submit" class="secondary">Lav fuld rapport</button><label>Assistance-radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><label>Vis stationer<select id="assistance-limit"><option value="5" selected>5</option><option value="10">10</option></select></label><button id="assistance-button" type="button" class="assistance-primary" disabled>Assistance brand/redning</button></div>
             </form>
         </section>
         <section class="panel" data-panel="full"><div class="tool-panel"><h2>Fuld rapport</h2><p>Brug adresseopslaget for at lave en fuld rapport med flere dataafsnit.</p><button id="full-report" type="button">Lav fuld rapport</button></div></section>
         <section class="panel" data-panel="followup"><div class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="followup-question" placeholder="Stil opfølgende spørgsmål til seneste rapport"></textarea><button id="ask-followup" type="button">Spørg til rapporten</button><div id="followup-result" class="tool-result"></div></div></section>
-        <section class="panel" data-panel="hazmat"><div class="tool-panel"><h2>UN/farligt stof</h2><input id="hazmat-query" placeholder="UN1203 eller benzin"><button id="hazmat-submit" type="button">Slå UN/stof op</button><div id="hazmat-result" class="tool-result"></div></div></section>
         <p id="status" role="status"></p>
         <section id="result" aria-live="polite"><div id="report"></div></section>
         <div id="actions" class="actions">
             <button id="copy" type="button" class="secondary">Kopiér rapport</button>
             <button id="print" type="button" class="secondary">Print/gem som PDF</button>
-            <div class="assistance-controls"><label>Assistance-radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><button id="assistance-button" type="button" class="secondary" disabled>Assistance</button></div>
         </div>
         <section id="map-section">
             <h2>Kort</h2>
@@ -3297,8 +3520,11 @@ def brief_page():
         const openSatellite = document.getElementById('open-satellite');
         const assistanceButton = document.getElementById('assistance-button');
         const assistanceRadius = document.getElementById('assistance-radius');
+        const assistanceLimit = document.getElementById('assistance-limit');
         const assistanceSection = document.getElementById('assistance-section');
         const assistanceResult = document.getElementById('assistance-result');
+        const addressInput = document.getElementById('address');
+        const autocompleteList = document.getElementById('autocomplete-list');
         let reportText = '';
         let latestIncidentData = null;
         let latestReportText = '';
@@ -3324,20 +3550,42 @@ def brief_page():
             return data;
         }
 
-        function appendLinkedText(container, text) {
-            const urlPattern = /(https?:\/\/[^\s]+)/g;
-            String(text).split(urlPattern).forEach(part => {
-                if (/^https?:\/\//.test(part)) {
-                    const link = document.createElement('a');
-                    link.href = part;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
-                    link.textContent = part;
-                    container.appendChild(link);
-                } else {
-                    container.appendChild(document.createTextNode(part));
-                }
+        function hideAutocomplete() {
+            autocompleteList.replaceChildren();
+            autocompleteList.style.display = 'none';
+        }
+
+        function showAutocomplete(suggestions) {
+            autocompleteList.replaceChildren();
+            suggestions.forEach(suggestion => {
+                const option = document.createElement('button');
+                option.type = 'button';
+                option.className = 'autocomplete-option';
+                option.textContent = suggestion.text;
+                option.addEventListener('click', () => {
+                    addressInput.value = suggestion.text;
+                    hideAutocomplete();
+                });
+                autocompleteList.appendChild(option);
             });
+            autocompleteList.style.display = suggestions.length ? 'block' : 'none';
+        }
+
+        function appendLinkedText(container, text) {
+            const source = String(text);
+            const linkPattern = /\[kort\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g;
+            let cursor = 0;
+            for (const match of source.matchAll(linkPattern)) {
+                container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+                const link = document.createElement('a');
+                link.href = match[1] || match[2];
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = match[1] ? '[kort]' : match[2];
+                container.appendChild(link);
+                cursor = match.index + match[0].length;
+            }
+            container.appendChild(document.createTextNode(source.slice(cursor)));
         }
 
         function parseReportText(text) {
@@ -3366,6 +3614,7 @@ def brief_page():
                 ['Adresse', 'address_lines'], ['Fund', 'findings'], ['Bygning', 'building_lines'],
                 ['Omgivelser / OSM', 'surroundings_lines'], ['OSM-risikotjek', 'osm_risk_lines'],
                 ['Vejr/vind', 'weather_lines'], ['Vandforsyning', 'water_supply_lines'],
+                ['Trafik/vejarbejde', 'traffic_lines'],
                 ['Supplerende oplysninger', 'supplementary_lines'], ['Forbehold', 'disclaimer']
             ];
             const sections = [{ heading: reportStructured.title, lines: [] }];
@@ -3482,6 +3731,22 @@ def brief_page():
             }
         });
 
+        let autocompleteTimer;
+        addressInput.addEventListener('input', () => {
+            clearTimeout(autocompleteTimer);
+            const query = addressInput.value.trim();
+            if (query.length < 3) { hideAutocomplete(); return; }
+            autocompleteTimer = setTimeout(async () => {
+                try {
+                    const data = await fetchJson(`/address-autocomplete?${new URLSearchParams({ q: query }).toString()}`);
+                    if (addressInput.value.trim() === query) showAutocomplete(data.suggestions || []);
+                } catch (error) { hideAutocomplete(); }
+            }, 250);
+        });
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.address-field')) hideAutocomplete();
+        });
+
         document.getElementById('copy').addEventListener('click', async () => {
             if (!reportText) return;
             await navigator.clipboard.writeText(reportText);
@@ -3510,32 +3775,18 @@ def brief_page():
                 output.textContent = data.answer || 'Intet svar modtaget.';
             } catch (error) { output.textContent = error.message || 'Kunne ikke hente svar.'; }
         });
-        document.getElementById('hazmat-submit').addEventListener('click', async () => {
-            const query = document.getElementById('hazmat-query').value.trim();
-            const output = document.getElementById('hazmat-result');
-            if (!query) { output.textContent = 'Indtast UN-nummer eller stofnavn.'; output.style.display = 'block'; return; }
-            output.textContent = 'Slår op...'; output.style.display = 'block';
-            try {
-                const data = await fetchJson(`/hazmat?${new URLSearchParams({ query }).toString()}`);
-                const official = data.official_lookup || {};
-                output.replaceChildren();
-                const lines = [`Søgt stof/UN: ${data.search_text || data.query}`];
-                if (official.instruction) lines.push(official.instruction);
-                if (Array.isArray(data.safety_note) && data.safety_note[0]) lines.push(data.safety_note[0]);
-                lines.push('Forbehold: Slå altid op i officiel kilde/app før indsatsbeslutninger.');
-                lines.forEach(line => { const item = document.createElement('div'); item.textContent = line; output.appendChild(item); });
-                if (official.url) { const link = document.createElement('a'); link.href = official.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Åbn Kemikalieberedskab.dk'; output.appendChild(link); }
-            } catch (error) { output.textContent = error.message || 'Kunne ikke slå stoffet op.'; }
-        });
         assistanceButton.addEventListener('click', async () => {
             const address = latestIncidentData?.requested_address || document.getElementById('address').value.trim();
             if (!address) return;
             assistanceSection.style.display = 'block';
             assistanceResult.textContent = 'Henter brand/redningsstationer...';
             try {
-                const params = new URLSearchParams({ address, radius_km: assistanceRadius.value });
+                const params = new URLSearchParams({ address, radius_km: assistanceRadius.value, limit: assistanceLimit.value });
                 const data = await fetchJson(`/assistance-stations?${params.toString()}`);
                 assistanceResult.replaceChildren();
+                const count = document.createElement('p');
+                count.textContent = `Viser ${data.stations.length} nærmeste brand-/redningsberedskaber`;
+                assistanceResult.appendChild(count);
                 const list = document.createElement('div');
                 list.className = 'station-list';
                 data.stations.forEach(station => {
@@ -3544,13 +3795,14 @@ def brief_page():
                     const title = document.createElement('h3');
                     title.textContent = station.name;
                     card.appendChild(title);
-                    const parts = [station.type, station.organization, station.area, `Luftlinje ${String(station.air_distance_km).replace('.', ',')} km`].filter(Boolean);
+                    const parts = [station.type, station.organization && `Organisation: ${station.organization}`, station.area, `Luftlinje: ${String(station.air_distance_km).replace('.', ',')} km`].filter(Boolean);
                     if (station.road_distance_km !== null && station.drive_time_min !== null) {
-                        parts.push(`Vej ${String(station.road_distance_km).replace('.', ',')} km`);
+                        parts.push(`Vej: ${String(station.road_distance_km).replace('.', ',')} km`);
                         parts.push(`Ca. ${station.drive_time_min} min.`);
                     } else {
                         parts.push('Vejafstand ikke tilgængelig.');
                     }
+                    parts.push(`Kilde: ${station.source || 'ikke angivet'}`);
                     parts.forEach(part => { const line = document.createElement('p'); line.textContent = part; card.appendChild(line); });
                     list.appendChild(card);
                 });
@@ -4019,6 +4271,8 @@ def build_incident_brief_data(address, radius_m):
     water_supply_data = get_possible_hydrants_from_osm(latitude, longitude, radius_m)
     aerial_check_data = get_aerial_check(address_data, radius_m)
     osm_risk_check_data = get_osm_risk_check(latitude, longitude, radius_m)
+    nearby_main_road = get_nearby_main_roads(latitude, longitude) if latitude is not None and longitude is not None else None
+    traffic_events_nearby = get_traffic_events_nearby(latitude, longitude) if latitude is not None and longitude is not None else []
     short_report_data = build_short_report_data(
         address,
         normalized_address,
@@ -4068,6 +4322,8 @@ def build_incident_brief_data(address, radius_m):
         "road": get_road_placeholder(address_data),
         "water_supply": water_supply_data,
         "osm_risk_check": osm_risk_check_data,
+        "nearby_main_road": nearby_main_road,
+        "traffic_events_nearby": traffic_events_nearby,
 
         "utilities": {
             "gas": "Ikke verificeret",
@@ -4138,10 +4394,17 @@ def build_osm_findings_for_ai(osm_risk_check, limit=10):
         }
 
         findings_for_ai.append({
-            "categories": categories,
+            "category": categories[0] if categories else None,
+            "type": (
+                tags.get("barrier") or tags.get("railway") or tags.get("amenity")
+                or tags.get("landuse") or tags.get("waterway") or tags.get("man_made")
+            ),
             "name": finding.get("name"),
             "distance_m": finding.get("distance_m"),
-            "relevant_tags": relevant_tags,
+            "lat": finding.get("latitude"),
+            "lon": finding.get("longitude"),
+            "map_url": finding.get("map_url"),
+            "tags": relevant_tags,
         })
 
     return findings_for_ai
@@ -4156,13 +4419,14 @@ def build_concrete_osm_risk_lines(osm_risk_check):
         categories = finding.get("categories", []) or []
         category_names = [item.get("category") for item in categories if item.get("category")]
         category = category_names[0] if category_names else "OSM-fund"
-        group = grouped.setdefault(category, {"distance_m": None, "types": [], "names": []})
+        group = grouped.setdefault(category, {"distance_m": None, "types": [], "names": [], "map_url": None})
 
         distance_m = parse_positive_number(finding.get("distance_m"))
         if distance_m is not None and (
             group["distance_m"] is None or distance_m < group["distance_m"]
         ):
             group["distance_m"] = distance_m
+            group["map_url"] = finding.get("map_url")
 
         name = clean_short_report_text(finding.get("name"))
         if is_positive_report_value(name) and name not in group["names"]:
@@ -4200,7 +4464,8 @@ def build_concrete_osm_risk_lines(osm_risk_check):
             f", nærmeste ca. {round(group['distance_m'])} m"
             if group["distance_m"] is not None else ""
         )
-        lines.append(f"{category}: {description} registreret i OSM{name_suffix}{distance_suffix}.")
+        map_suffix = f" [kort]({group['map_url']})" if group["map_url"] else ""
+        lines.append(f"{category}: {description} registreret i OSM{name_suffix}{distance_suffix}.{map_suffix}")
 
     return lines
 
@@ -4244,6 +4509,8 @@ def build_openai_brief_payload(raw_incident_data):
         "osm_risk_summary": osm_risk_check.get("osm_risk_summary", []),
         "grouped_summary": osm_risk_check.get("grouped_summary", {}),
         "osm_findings_for_ai": build_osm_findings_for_ai(osm_risk_check),
+        "nearby_main_road": raw_incident_data.get("nearby_main_road"),
+        "traffic_events_nearby": raw_incident_data.get("traffic_events_nearby", []),
         "water_supply": raw_incident_data.get("water_supply"),
     }
 
@@ -4305,6 +4572,7 @@ def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
         "weather_lines": clean_lines(report.get("weather_lines")),
         "water_supply_lines": clean_lines(report.get("water_supply_lines")),
         "supplementary_lines": clean_lines(report.get("supplementary_lines")),
+        "traffic_lines": clean_lines(report.get("traffic_lines")),
         "disclaimer": REPORT_DISCLAIMER,
     }
 
@@ -4440,6 +4708,27 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
     if parse_positive_number(water_supply.get("hydrant_count")) is not None:
         water_supply_lines.append(f"Brandhanefund: {water_supply['hydrant_count']}")
 
+    traffic_lines = []
+    for event in raw_incident_data.get("traffic_events_nearby", []) or []:
+        event_type = clean_short_report_text(event.get("type"))
+        road_name = clean_short_report_text(event.get("road_name"))
+        distance_m = parse_positive_number(event.get("distance_m"))
+        if is_positive_report_value(event_type):
+            line = f"{event_type}"
+            if is_positive_report_value(road_name):
+                line += f" på/ved {road_name}"
+            if distance_m is not None:
+                line += f", ca. {round(distance_m)} m fra adressen"
+            traffic_lines.append(line + ".")
+
+    supplementary_lines = []
+    main_road = raw_incident_data.get("nearby_main_road") or {}
+    if main_road.get("nearest_main_road") and main_road.get("distance_m") is not None:
+        supplementary_lines.append(
+            f"Adressen ligger på/ved sidevej tæt ved {main_road['nearest_main_road']}, "
+            f"ca. {main_road['distance_m']} m fra nærmeste større vej."
+        )
+
     building_lines = build_deterministic_building_findings(raw_incident_data)
 
     return {
@@ -4451,7 +4740,8 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
         "osm_risk_lines": [] if report_mode == "full" else list(dict.fromkeys(osm_lines)),
         "weather_lines": list(dict.fromkeys(weather_lines)),
         "water_supply_lines": water_supply_lines,
-        "supplementary_lines": [],
+        "supplementary_lines": supplementary_lines,
+        "traffic_lines": traffic_lines,
         "disclaimer": REPORT_DISCLAIMER,
     }
 
@@ -4501,12 +4791,16 @@ def build_report_text(report_structured):
         ("OSM-risikotjek", "osm_risk_lines"),
         ("Vejr/vind", "weather_lines"),
         ("Vandforsyning", "water_supply_lines"),
+        ("Trafik/vejarbejde", "traffic_lines"),
         ("Supplerende oplysninger", "supplementary_lines"),
     ]:
         section_lines = report_structured.get(field, [])
         if section_lines:
             lines.extend([f"{heading}:"])
-            lines.extend(f"* {line}" for line in section_lines)
+            lines.extend(
+                "* " + re.sub(r"\[kort\]\((https?://[^)]+)\)", r"kort: \1", line)
+                for line in section_lines
+            )
             lines.append("")
 
     lines.extend(["Forbehold:", f"* {REPORT_DISCLAIMER}"])
@@ -4522,6 +4816,19 @@ def incident_brief():
         return jsonify({"error": "Adresse mangler"}), 400
 
     return jsonify(build_incident_brief_data(address, radius_m))
+
+
+@app.route("/address-autocomplete", methods=["GET"])
+def address_autocomplete():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+
+    query = request.args.get("q", "").strip()
+    if len(query) < 3:
+        return jsonify({"suggestions": []})
+
+    return jsonify({"suggestions": get_address_autocomplete(query)})
 
 
 def analyze_brief_response(address, radius_m, report_mode="short"):
@@ -4692,6 +4999,11 @@ def assistance_stations():
 
     address = request.args.get("address", "").strip()
     radius_km = parse_assistance_radius(request.args.get("radius_km", 40), 40)
+    try:
+        limit = int(request.args.get("limit", 5))
+    except Exception:
+        limit = 5
+    limit = min(max(limit, 1), 10)
 
     if not address:
         return jsonify({"error": "Adresse mangler"}), 400
@@ -4709,15 +5021,19 @@ def assistance_stations():
     if incident_lat is None or incident_lon is None:
         return jsonify({"error": "Adresse kunne ikke slås op"}), 400
 
-    stations_with_coordinates = [
+    manual_stations = [
         station for station in FIRE_RESCUE_STATIONS
         if station.get("lat") is not None and station.get("lon") is not None
     ]
-    if not stations_with_coordinates:
+    osm_stations = get_osm_fire_rescue_stations_nearby(
+        incident_lat, incident_lon, radius_km
+    )
+    all_stations = merge_fire_rescue_stations(manual_stations, osm_stations)
+    if not all_stations:
         return jsonify({"error": "Ingen brand/redningsstationer med koordinater i stationslisten"}), 404
 
     nearby_stations = []
-    for station in stations_with_coordinates:
+    for station in all_stations:
         try:
             air_distance_km = haversine_distance_km(
                 incident_lat, incident_lon, station["lat"], station["lon"]
@@ -4735,7 +5051,7 @@ def assistance_stations():
         }), 404
 
     stations = []
-    for station in sorted(nearby_stations, key=lambda item: item["air_distance_km"])[:10]:
+    for station in sorted(nearby_stations, key=lambda item: item["air_distance_km"])[:limit]:
         route = get_driving_route_osrm(
             incident_lat, incident_lon, station["lat"], station["lon"]
         )
@@ -4745,6 +5061,7 @@ def assistance_stations():
             "organization": station.get("organization"),
             "area": station["area"],
             "air_distance_km": station["air_distance_km"],
+            "source": station.get("source", "manual"),
             **route,
         })
 
@@ -4758,8 +5075,13 @@ def assistance_stations():
         "incident_address": address_data.get("normalized_address") or address,
         "coordinates": {"lat": incident_lat, "lon": incident_lon},
         "radius_km": radius_km,
+        "station_sources": {
+            "manual_count": len(manual_stations),
+            "osm_count": len(osm_stations),
+            "merged_count": len(all_stations),
+        },
         "stations": stations,
-        "disclaimer": "Listen viser brand- og redningsstationer i den manuelle stationsliste inden for valgt radius. Afstande og køretid er vejledende. Køretid er almindelig vejberegning og ikke udrykningskørsel.",
+        "disclaimer": "Listen viser brand- og redningsstationer fundet i OSM og/eller den manuelle stationsliste inden for valgt radius. Afstande og køretid er vejledende. Køretid er almindelig vejberegning og ikke udrykningskørsel.",
     })
 
 

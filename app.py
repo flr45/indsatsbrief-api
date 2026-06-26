@@ -8,6 +8,7 @@ import math
 import base64
 import re
 from openai import OpenAI
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -22,6 +23,7 @@ Du analyserer rå adresse-, BBR-, OSM-, vejr-, kort-, satellit-, kælder-, etage
 Du må gerne analysere rå data.
 Du må gerne sammenfatte og prioritere positive fund.
 Du må gerne bruge data fra BBR, OSM og vejr.
+Du skal aktivt udtrække positive fund fra både short_report_data og raw_incident_data. Hvis short_report_data er mangelfuld, brug de rå felter building, weather, osm_risk_check, water_supply og secondary_buildings.
 Du må ikke lave taktisk plan.
 Du må ikke skrive taktisk oplæg.
 Du må ikke skrive taktisk fokus.
@@ -112,6 +114,42 @@ REPORT_SCHEMA = {
 }
 
 REPORT_DISCLAIMER = "Data fra OSM, BBR og kort-/luftfotolinks er støtteoplysninger."
+
+API_ERROR_PREFIXES = (
+    "/incident-brief",
+    "/analyze-brief",
+    "/test-bbr",
+    "/test-hydrants",
+    "/osm-risk-check",
+    "/aerial-check",
+    "/aerial-image",
+    "/hazmat",
+)
+
+
+def is_api_request_path():
+    return request.path.startswith(API_ERROR_PREFIXES)
+
+
+@app.errorhandler(HTTPException)
+def handle_api_http_error(error):
+    if is_api_request_path():
+        return jsonify({
+            "error": error.description or "API-fejl",
+            "route": request.path,
+        }), error.code
+    return error
+
+
+@app.errorhandler(Exception)
+def handle_api_unexpected_error(error):
+    if is_api_request_path():
+        return jsonify({
+            "error": "Uventet serverfejl",
+            "details": str(error),
+            "route": request.path,
+        }), 500
+    return "Internal Server Error", 500
 
 
 # -------------------------------------------------------
@@ -328,7 +366,8 @@ def translate_bbr_code(code, mapping):
 
 def parse_radius(value, default=250):
     try:
-        return int(value)
+        radius = int(value)
+        return radius if radius > 0 else default
     except Exception:
         return default
 
@@ -2947,6 +2986,35 @@ def brief_page():
         const rawJson = document.getElementById('raw-json');
         let reportText = '';
 
+        async function fetchJson(url) {
+            const response = await fetch(url);
+            const text = await response.text();
+            let data;
+
+            try {
+                data = JSON.parse(text);
+            } catch (error) {
+                throw new Error('API’en returnerede ikke JSON. Serveren sendte sandsynligvis en HTML-fejlside. Tjek Render logs.');
+            }
+
+            if (!response.ok) {
+                const apiError = new Error(data.error || `API-fejl ${response.status}`);
+                apiError.data = data;
+                throw apiError;
+            }
+
+            return data;
+        }
+
+        function showReport(text, rawData) {
+            reportText = text;
+            reportElement.textContent = reportText;
+            rawJson.textContent = JSON.stringify(rawData, null, 2);
+            result.style.display = 'block';
+            actions.style.display = 'flex';
+            debug.style.display = 'block';
+        }
+
         form.addEventListener('submit', async event => {
             event.preventDefault();
             const address = document.getElementById('address').value.trim();
@@ -2958,19 +3026,28 @@ def brief_page():
             actions.style.display = 'none';
             debug.style.display = 'none';
             try {
-                const response = await fetch(`/analyze-brief?address=${encodeURIComponent(address)}&radius_m=${encodeURIComponent(radius)}`);
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Kunne ikke hente indsatsbrief');
-                reportText = data.report_text;
-                if (!reportText) throw new Error('Analyse returnerede ingen rapporttekst');
-                reportElement.textContent = reportText;
-                rawJson.textContent = JSON.stringify(data.raw_incident_data || data, null, 2);
-                result.style.display = 'block';
-                actions.style.display = 'flex';
-                debug.style.display = 'block';
+                const params = new URLSearchParams({ address: address, radius_m: radius });
+                const url = `/analyze-brief?${params.toString()}`;
+                const data = await fetchJson(url);
+                if (!data.report_text) throw new Error('Analyse returnerede ingen rapporttekst');
+                showReport(data.report_text, data.raw_incident_data || data);
                 status.textContent = 'Indsatsbrief klar.';
             } catch (error) {
-                status.textContent = error.message || 'Kunne ikke hente indsatsbrief.';
+                const fallbackData = error.data && error.data.raw_incident_data;
+
+                if (fallbackData) {
+                    showReport(error.data.report_text || buildReport(fallbackData), fallbackData);
+                    status.textContent = `${error.message}. Viser rapport uden AI-analyse.`;
+                } else {
+                    try {
+                        const params = new URLSearchParams({ address: address, radius_m: radius });
+                        const fallback = await fetchJson(`/incident-brief?${params.toString()}`);
+                        showReport(buildReport(fallback), fallback);
+                        status.textContent = 'AI-analyse fejlede. Viser rapport uden AI-analyse.';
+                    } catch (fallbackError) {
+                        status.textContent = fallbackError.message || error.message || 'Kunne ikke hente indsatsbrief.';
+                    }
+                }
             } finally {
                 document.getElementById('submit').disabled = false;
             }
@@ -3461,6 +3538,8 @@ def build_incident_brief_data(address, radius_m):
 
     data = {
         "normalized_address": normalized_address,
+        "requested_address": address,
+        "matched_address": normalized_address,
         "municipality": municipality,
         "postal_code": postal_code,
         "city": city,
@@ -3532,12 +3611,6 @@ AI_BLOCKED_REPORT_PHRASES = (
     "taktisk fokus",
     "kritiske mangler",
     "mangler",
-    "ikke verificeret",
-    "skal verificeres",
-    "ikke verificeret operativt",
-    "ikke oplyst",
-    "ukendt",
-    "ikke tilgængeligt",
     "ikke fundet",
     "manglende",
     "ingen data",
@@ -3546,17 +3619,17 @@ AI_BLOCKED_REPORT_PHRASES = (
 
 
 def build_openai_brief_payload(raw_incident_data):
-    """Limit the model input to incident data relevant to the short report."""
+    """Provide both curated and relevant raw incident data to the model."""
     building = raw_incident_data.get("building", {})
     map_data = raw_incident_data.get("map", {})
     aerial_photo = raw_incident_data.get("aerial_photo", {})
+    osm_risk_check = raw_incident_data.get("osm_risk_check", {})
 
     return {
         "short_report_data": raw_incident_data.get("short_report_data"),
-        "address": {
-            "normalized_address": raw_incident_data.get("normalized_address"),
-            "address_details": raw_incident_data.get("address_details"),
-        },
+        "address": raw_incident_data.get("address_details"),
+        "requested_address": raw_incident_data.get("requested_address"),
+        "matched_address": raw_incident_data.get("matched_address"),
         "coordinates": {
             "latitude": raw_incident_data.get("latitude"),
             "longitude": raw_incident_data.get("longitude"),
@@ -3565,6 +3638,11 @@ def build_openai_brief_payload(raw_incident_data):
         "google_maps_satellite": aerial_photo.get("links", {}).get("google_maps_satellite"),
         "building": building,
         "secondary_buildings": building.get("secondary_buildings", []),
+        "floors_raw": building.get("floors_raw", []),
+        "basement_present": building.get("basement_present"),
+        "basement_area_m2": building.get("basement_area_m2"),
+        "basement_living_area_m2": building.get("basement_living_area_m2"),
+        "basement_commercial_area_m2": building.get("basement_commercial_area_m2"),
         "floors_and_basement": {
             "floors_count": building.get("floors_count"),
             "floors_summary": building.get("floors_summary"),
@@ -3575,7 +3653,9 @@ def build_openai_brief_payload(raw_incident_data):
             "attic_used_area_m2": building.get("attic_used_area_m2"),
         },
         "weather": raw_incident_data.get("weather"),
-        "osm_risk_check": raw_incident_data.get("osm_risk_check"),
+        "osm_risk_check": osm_risk_check,
+        "osm_risk_summary": osm_risk_check.get("osm_risk_summary", []),
+        "grouped_summary": osm_risk_check.get("grouped_summary", {}),
         "water_supply": raw_incident_data.get("water_supply"),
     }
 
@@ -3597,7 +3677,12 @@ def sanitize_ai_report(report, raw_incident_data):
         if not isinstance(line, str):
             return None
 
-        cleaned = line.strip()
+        # Preserve positive BBR facts while removing presentation-only caveats.
+        cleaned = clean_short_report_text(line)
+        if not isinstance(cleaned, str):
+            return None
+
+        cleaned = cleaned.strip()
         lowered = cleaned.lower()
 
         if not cleaned or any(phrase in lowered for phrase in AI_BLOCKED_REPORT_PHRASES):
@@ -3633,6 +3718,192 @@ def sanitize_ai_report(report, raw_incident_data):
     }
 
 
+def build_deterministic_building_findings(raw_incident_data):
+    """Create presentation-safe BBR findings when the model leaves them out."""
+    building = raw_incident_data.get("building") or {}
+    findings = []
+
+    def text_value(*keys):
+        for key in keys:
+            value = clean_short_report_text(building.get(key))
+            if is_positive_report_value(value):
+                return value
+        return None
+
+    def number_value(key):
+        value = building.get(key)
+        return value if parse_positive_number(value) is not None else None
+
+    building_type = text_value("building_type_text", "usage_text")
+    if building_type:
+        findings.append(f"Bygning: {building_type}")
+
+    area_m2 = number_value("area_m2")
+    if area_m2 is not None:
+        findings.append(f"Areal: {area_m2} m²")
+
+    construction_year = number_value("construction_year")
+    if construction_year is not None:
+        findings.append(f"Opført: {construction_year}")
+
+    renovation_year = number_value("renovation_year")
+    if renovation_year is not None:
+        findings.append(f"Ombygget: {renovation_year}")
+
+    outer_wall = text_value("outer_wall_material_text")
+    if outer_wall:
+        findings.append(f"Ydervæg: {outer_wall}")
+
+    roof = text_value("roof_material_text")
+    if roof:
+        findings.append(f"Tag: {roof}")
+
+    heating = [
+        value for value in [
+            text_value("heating_installation_text"),
+            text_value("heating_fuel_text"),
+            text_value("supplementary_heating_text"),
+        ] if value
+    ]
+    if heating:
+        findings.append(f"Varme: {', '.join(dict.fromkeys(heating))}")
+
+    basement_area = number_value("basement_area_m2")
+    if raw_incident_has_basement(raw_incident_data):
+        findings.append(
+            f"Kælder: {basement_area} m²"
+            if basement_area is not None else "Kælder registreret"
+        )
+
+    for secondary in building.get("secondary_buildings", []) or []:
+        secondary_type = (
+            clean_short_report_text(secondary.get("building_type_text"))
+            or clean_short_report_text(secondary.get("usage_text"))
+        )
+        if not is_positive_report_value(secondary_type):
+            continue
+
+        parts = [secondary_type]
+        secondary_year = parse_positive_number(secondary.get("construction_year"))
+        secondary_roof = clean_short_report_text(secondary.get("roof_material_text"))
+
+        if secondary_year is not None:
+            parts.append(f"fra {secondary_year}")
+        if is_positive_report_value(secondary_roof):
+            parts.append(f"tag {secondary_roof}")
+
+        findings.append(f"Sekundær bygning: {', '.join(parts)}")
+
+    return list(dict.fromkeys(findings))
+
+
+def build_deterministic_report_structured(raw_incident_data):
+    """Build a short report from incident data when OpenAI is unavailable."""
+    short_report_data = raw_incident_data.get("short_report_data") or {}
+    short_address = short_report_data.get("address") or {}
+    address_lines = []
+    requested_address = (
+        short_address.get("requested_address")
+        or raw_incident_data.get("requested_address")
+    )
+    matched_address = (
+        short_address.get("matched_address")
+        or raw_incident_data.get("matched_address")
+    )
+
+    for address in [requested_address, matched_address]:
+        cleaned = clean_short_report_text(address)
+        if is_positive_report_value(cleaned) and cleaned not in address_lines:
+            address_lines.append(cleaned)
+
+    coordinates = short_report_data.get("coordinates") or {}
+    latitude = coordinates.get("latitude", raw_incident_data.get("latitude"))
+    longitude = coordinates.get("longitude", raw_incident_data.get("longitude"))
+    if latitude is not None and longitude is not None:
+        address_lines.append(f"Koordinater: {latitude}, {longitude}")
+
+    map_url = short_report_data.get("map_url") or (raw_incident_data.get("map") or {}).get("map_url")
+    if is_positive_report_value(clean_short_report_text(map_url)):
+        address_lines.append(f"Kort: {map_url}")
+
+    osm_lines = []
+    osm_risk_check = raw_incident_data.get("osm_risk_check") or {}
+    for item in osm_risk_check.get("osm_risk_summary", []) or []:
+        category = clean_short_report_text(item.get("category"))
+        if not is_positive_report_value(category):
+            continue
+
+        details = [category]
+        if item.get("count"):
+            details.append(f"{item['count']} fund")
+        if item.get("nearest_distance_m") is not None:
+            details.append(f"{item['nearest_distance_m']} m")
+        osm_lines.append(" - ".join(details))
+
+    weather_lines = []
+    weather = raw_incident_data.get("weather") or {}
+    if not weather.get("error"):
+        weather_fields = [
+            ("temperature_c", "Temperatur", " °C"),
+            ("wind_direction_text", "Vindretning", ""),
+            ("wind_speed_ms", "Vindhastighed", " m/s"),
+            ("wind_gust_ms", "Vindstød", " m/s"),
+            ("precipitation", "Nedbør", " mm"),
+        ]
+        for field, label, unit in weather_fields:
+            value = clean_short_report_text(weather.get(field))
+            if is_positive_report_value(value):
+                weather_lines.append(f"{label}: {value}{unit}")
+
+    water_supply_lines = []
+    water_supply = raw_incident_data.get("water_supply") or {}
+    if parse_positive_number(water_supply.get("hydrant_count")) is not None:
+        water_supply_lines.append(f"Brandhanefund: {water_supply['hydrant_count']}")
+
+    return {
+        "title": "HURTIG INDSATSBRIEF",
+        "address_lines": list(dict.fromkeys(address_lines)),
+        "findings": build_deterministic_building_findings(raw_incident_data),
+        "osm_risk_lines": list(dict.fromkeys(osm_lines)),
+        "weather_lines": list(dict.fromkeys(weather_lines)),
+        "water_supply_lines": water_supply_lines,
+        "disclaimer": REPORT_DISCLAIMER,
+    }
+
+
+def build_analyze_debug(raw_incident_data, payload=None):
+    building = raw_incident_data.get("building") or {}
+    weather = raw_incident_data.get("weather") or {}
+    osm_risk_check = raw_incident_data.get("osm_risk_check") or {}
+    short_report_data = raw_incident_data.get("short_report_data") or {}
+    address_details = raw_incident_data.get("address_details") or {}
+
+    return {
+        "model_used": OPENAI_MODEL,
+        "openai_payload_keys": sorted(payload.keys()) if payload else [],
+        "incident_has_address": bool(address_details and not address_details.get("error")),
+        "incident_has_building": bbr_building_has_real_data(building),
+        "incident_has_weather": bool(
+            not weather.get("error") and any(
+                weather.get(field) is not None
+                for field in [
+                    "temperature_c",
+                    "wind_direction_degrees",
+                    "wind_speed_ms",
+                    "wind_gust_ms",
+                    "precipitation",
+                ]
+            )
+        ),
+        "incident_has_osm": bool(
+            osm_risk_check.get("finding_count")
+            or osm_risk_check.get("osm_risk_summary")
+            or osm_risk_check.get("grouped_summary")
+        ),
+        "short_report_data_keys": sorted(short_report_data.keys()),
+    }
+
+
 def build_report_text(report_structured):
     """Render the accepted structured result in a stable short-report format."""
     lines = ["HURTIG INDSATSBRIEF", ""]
@@ -3660,27 +3931,36 @@ def incident_brief():
     radius_m = parse_radius(request.args.get("radius_m", 250), 250)
 
     if not address:
-        return jsonify({"error": "Missing address"}), 400
+        return jsonify({"error": "Adresse mangler"}), 400
 
     return jsonify(build_incident_brief_data(address, radius_m))
 
 
 @app.route("/analyze-brief", methods=["GET"])
 def analyze_brief():
-    address = request.args.get("address", "").strip()
-    radius_m = parse_radius(request.args.get("radius_m", 250), 250)
-
-    if not address:
-        return jsonify({"error": "Missing address"}), 400
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return jsonify({"error": "OPENAI_API_KEY is not configured"}), 503
-
-    raw_incident_data = build_incident_brief_data(address, radius_m)
-    payload = build_openai_brief_payload(raw_incident_data)
-
+    raw_incident_data = None
+    payload = None
     try:
+        address = request.args.get("address", "").strip()
+        radius_m = parse_radius(request.args.get("radius_m", 250), 250)
+
+        if not address:
+            return jsonify({"error": "Adresse mangler"}), 400
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return jsonify({"error": "OPENAI_API_KEY is not configured"}), 503
+
+        raw_incident_data = build_incident_brief_data(address, radius_m)
+        if not raw_incident_data.get("address_details") or raw_incident_data.get("address_details", {}).get("error"):
+            return jsonify({
+                "error": "Adresse kunne ikke slås op",
+                "suggestion": "Prøv med fuld adresse inkl. bynavn, fx 'Ingemansvej 50, 4200 Slagelse'",
+                "raw_incident_data": raw_incident_data,
+                **build_analyze_debug(raw_incident_data),
+            }), 404
+
+        payload = build_openai_brief_payload(raw_incident_data)
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.responses.create(
             model=OPENAI_MODEL,
@@ -3698,17 +3978,46 @@ def analyze_brief():
         )
         report_from_model = json.loads(response.output_text)
         report_structured = sanitize_ai_report(report_from_model, raw_incident_data)
-    except json.JSONDecodeError:
-        return jsonify({"error": "OpenAI returnerede ugyldig JSON"}), 502
-    except Exception:
-        return jsonify({"error": "OpenAI-analyse kunne ikke gennemføres"}), 502
 
-    return jsonify({
-        "report_text": build_report_text(report_structured),
-        "report_structured": report_structured,
-        "raw_incident_data": raw_incident_data,
-        "model_used": OPENAI_MODEL,
-    })
+        if not report_structured["findings"]:
+            fallback_findings = build_deterministic_building_findings(raw_incident_data)
+            if fallback_findings:
+                report_structured["findings"] = fallback_findings
+
+        return jsonify({
+            "report_text": build_report_text(report_structured),
+            "report_structured": report_structured,
+            "raw_incident_data": raw_incident_data,
+            **build_analyze_debug(raw_incident_data, payload),
+        })
+    except json.JSONDecodeError as error:
+        fallback_report = (
+            build_deterministic_report_structured(raw_incident_data)
+            if raw_incident_data else None
+        )
+        return jsonify({
+            "error": "OpenAI returnerede ugyldig JSON",
+            "details": str(error),
+            "route": "/analyze-brief",
+            "report_text": build_report_text(fallback_report) if fallback_report else None,
+            "report_structured": fallback_report,
+            "raw_incident_data": raw_incident_data,
+            **build_analyze_debug(raw_incident_data or {}, payload),
+        }), 502
+    except Exception as error:
+        fallback_report = (
+            build_deterministic_report_structured(raw_incident_data)
+            if raw_incident_data else None
+        )
+        return jsonify({
+            "error": "OpenAI-analyse kunne ikke gennemføres" if raw_incident_data else "Kort fejlbesked",
+            "details": str(error),
+            "route": "/analyze-brief",
+            "report_text": build_report_text(fallback_report) if fallback_report else None,
+            "report_structured": fallback_report,
+            "raw_incident_data": raw_incident_data,
+            **build_analyze_debug(raw_incident_data or {}, payload),
+        }), 502 if raw_incident_data else 500
 
 
 if __name__ == "__main__":

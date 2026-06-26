@@ -16,38 +16,92 @@
       {
         "name": "M1",
         "type": "sprøjte",
-        "aliases": ["autosprøjte", "basisenhed"],
-        "capabilities": ["brand", "basisindsats"]
+        "aliases": [
+          "autosprøjte",
+          "basisenhed"
+        ],
+        "capabilities": [
+          "brand",
+          "basisindsats"
+        ]
       },
       {
         "name": "M2",
         "type": "sprøjte",
-        "aliases": ["autosprøjte", "basisenhed"],
-        "capabilities": ["brand", "basisindsats"]
+        "aliases": [
+          "autosprøjte",
+          "basisenhed"
+        ],
+        "capabilities": [
+          "brand",
+          "basisindsats"
+        ]
       },
       {
         "name": "R1",
         "type": "redningsvogn",
-        "aliases": ["frigørelse", "kemi", "CBRN"],
-        "capabilities": ["frigørelse", "kemi", "CBRN"]
+        "aliases": [
+          "frigørelse",
+          "kemi",
+          "CBRN"
+        ],
+        "capabilities": [
+          "frigørelse",
+          "kemi",
+          "CBRN"
+        ]
       },
       {
         "name": "R3",
         "type": "redningsvogn",
-        "aliases": ["højderedning", "brøndredning", "dybderedning", "overfladeredning"],
-        "capabilities": ["højderedning", "brøndredning/dybderedning", "overfladeredning"]
+        "aliases": [
+          "højderedning",
+          "brøndredning",
+          "dybderedning",
+          "overfladeredning"
+        ],
+        "capabilities": [
+          "højderedning",
+          "brøndredning/dybderedning",
+          "overfladeredning"
+        ]
       },
       {
         "name": "R6 / TAF 60",
         "type": "robot",
-        "aliases": ["TAF 60", "TAF60", "robot"],
-        "capabilities": ["fjernstyret slukningsenhed", "robot/TAF 60"]
+        "aliases": [
+          "TAF 60",
+          "TAF60",
+          "robot"
+        ],
+        "capabilities": [
+          "fjernstyret slukningsenhed",
+          "robot/TAF 60"
+        ]
       }
     ],
     "trailers": [],
     "containers": [],
-    "special_resources": ["MIRG", "robot/TAF 60", "kemi/CBRN", "frigørelse", "højderedning", "overfladeredning"],
-    "resource_aliases": ["stige", "kemi", "CBRN", "frigørelse", "TAF 60", "robot", "MIRG", "overfladeredning", "brøndredning", "dybderedning"],
+    "special_resources": [
+      "MIRG",
+      "robot/TAF 60",
+      "kemi/CBRN",
+      "frigørelse",
+      "højderedning",
+      "overfladeredning"
+    ],
+    "resource_aliases": [
+      "stige",
+      "kemi",
+      "CBRN",
+      "frigørelse",
+      "TAF 60",
+      "robot",
+      "MIRG",
+      "overfladeredning",
+      "brøndredning",
+      "dybderedning"
+    ],
     "notes": "M1 og M2 er registreret uden frigørelse. R1 har frigørelse og kemi/CBRN. R3 har højderedning, brøndredning/dybderedning og overfladeredning. Stationen har R6 / TAF 60 og MIRG. Stationen har ikke tavlevogn, KST eller ledelsesstøtte.",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -65,11 +119,24 @@
     "address": "Agertoften 4, 4281 Gørlev",
     "lat": 55.5399,
     "lon": 11.2268,
-    "vehicles": [{"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]}],
+    "vehicles": [
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      }
+    ],
     "trailers": [],
     "containers": [],
     "special_resources": [],
-    "resource_aliases": ["sprøjte"],
+    "resource_aliases": [
+      "sprøjte"
+    ],
     "notes": "",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -87,11 +154,56 @@
     "address": "Rynkevangen 12, 4400 Kalundborg",
     "lat": 55.6768,
     "lon": 11.0895,
-    "vehicles": [{"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]}],
+    "vehicles": [
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      },
+      {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "stige",
+          "drejestige",
+          "stigevogn",
+          "højderedning",
+          "hoejderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "capabilities": [
+          "højderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "source": "manual"
+      }
+    ],
     "trailers": [],
     "containers": [],
-    "special_resources": [],
-    "resource_aliases": ["sprøjte"],
+    "special_resources": [
+      "drejestige",
+      "højderedning"
+    ],
+    "resource_aliases": [
+      "sprøjte",
+      "stige",
+      "drejestige",
+      "stigevogn",
+      "redningslift",
+      "lift",
+      "højderedning",
+      "hoejderedning",
+      "redning fra højde",
+      "tagarbejde"
+    ],
     "notes": "",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -109,11 +221,24 @@
     "address": "Næstvedvej 10, 4250 Fuglebjerg",
     "lat": 55.3062,
     "lon": 11.5475,
-    "vehicles": [{"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]}],
+    "vehicles": [
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      }
+    ],
     "trailers": [],
     "containers": [],
     "special_resources": [],
-    "resource_aliases": ["sprøjte"],
+    "resource_aliases": [
+      "sprøjte"
+    ],
     "notes": "",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -132,13 +257,38 @@
     "lat": 55.2237,
     "lon": 11.7629,
     "vehicles": [
-      {"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]},
-      {"name": "Stige", "type": "stige", "aliases": ["drejestige", "stigevogn"], "capabilities": ["højderedning"]}
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      },
+      {
+        "name": "Stige",
+        "type": "stige",
+        "aliases": [
+          "drejestige",
+          "stigevogn"
+        ],
+        "capabilities": [
+          "højderedning"
+        ]
+      }
     ],
     "trailers": [],
     "containers": [],
-    "special_resources": ["stige"],
-    "resource_aliases": ["sprøjte", "stige", "højderedning"],
+    "special_resources": [
+      "stige"
+    ],
+    "resource_aliases": [
+      "sprøjte",
+      "stige",
+      "højderedning"
+    ],
     "notes": "",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -156,11 +306,56 @@
     "address": "Sorø",
     "lat": 55.4319,
     "lon": 11.5557,
-    "vehicles": [{"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]}],
+    "vehicles": [
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      },
+      {
+        "name": "S2",
+        "type": "lift/redningslift",
+        "aliases": [
+          "S2",
+          "stige",
+          "lift",
+          "redningslift",
+          "højderedning",
+          "hoejderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "capabilities": [
+          "højderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "source": "manual"
+      }
+    ],
     "trailers": [],
     "containers": [],
-    "special_resources": [],
-    "resource_aliases": ["sprøjte"],
+    "special_resources": [
+      "højderedning"
+    ],
+    "resource_aliases": [
+      "sprøjte",
+      "stige",
+      "drejestige",
+      "stigevogn",
+      "redningslift",
+      "lift",
+      "højderedning",
+      "hoejderedning",
+      "redning fra højde",
+      "tagarbejde",
+      "S2"
+    ],
     "notes": "Organisation ikke sat manuelt for at undgå forkert kobling.",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -179,13 +374,38 @@
     "lat": 55.4427,
     "lon": 11.7901,
     "vehicles": [
-      {"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]},
-      {"name": "Tankvogn", "type": "tankvogn", "aliases": ["vandtankvogn", "vandforsyning"], "capabilities": ["vandforsyning"]}
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      },
+      {
+        "name": "Tankvogn",
+        "type": "tankvogn",
+        "aliases": [
+          "vandtankvogn",
+          "vandforsyning"
+        ],
+        "capabilities": [
+          "vandforsyning"
+        ]
+      }
     ],
     "trailers": [],
     "containers": [],
-    "special_resources": ["tankvogn"],
-    "resource_aliases": ["sprøjte", "tankvogn", "vandforsyning"],
+    "special_resources": [
+      "tankvogn"
+    ],
+    "resource_aliases": [
+      "sprøjte",
+      "tankvogn",
+      "vandforsyning"
+    ],
     "notes": "",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -203,11 +423,24 @@
     "address": "Jægerspris",
     "lat": 55.8527,
     "lon": 11.9851,
-    "vehicles": [{"name": "Sprøjte", "type": "sprøjte", "aliases": ["brandbil"], "capabilities": ["brand"]}],
+    "vehicles": [
+      {
+        "name": "Sprøjte",
+        "type": "sprøjte",
+        "aliases": [
+          "brandbil"
+        ],
+        "capabilities": [
+          "brand"
+        ]
+      }
+    ],
     "trailers": [],
     "containers": [],
     "special_resources": [],
-    "resource_aliases": ["sprøjte"],
+    "resource_aliases": [
+      "sprøjte"
+    ],
     "notes": "Stationen er ikke registreret med K1, miljøvogn eller kemi/CBRN i denne stationsfil.",
     "source": "manual",
     "last_updated": "2026-06-26"
@@ -228,8 +461,22 @@
     "vehicles": [],
     "trailers": [],
     "containers": [],
-    "special_resources": ["støtteberedskab", "logistik", "pumpe", "klima", "container"],
-    "resource_aliases": ["Beredskabsstyrelsen", "frivillige", "støtteberedskab", "logistik", "pumpe", "klima", "container"],
+    "special_resources": [
+      "støtteberedskab",
+      "logistik",
+      "pumpe",
+      "klima",
+      "container"
+    ],
+    "resource_aliases": [
+      "Beredskabsstyrelsen",
+      "frivillige",
+      "støtteberedskab",
+      "logistik",
+      "pumpe",
+      "klima",
+      "container"
+    ],
     "notes": "Støtteressource i stationsfilen. Ikke live disponering.",
     "source": "manual",
     "last_updated": "2026-06-26"

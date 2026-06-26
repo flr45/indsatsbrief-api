@@ -631,6 +631,38 @@ def score_resource_text(value, expanded_terms, base_score):
     return best_score, matched_terms
 
 
+def height_resource_priority_bonus(item, expanded_terms):
+    query_term = normalize_text(expanded_terms[0]) if expanded_terms else ""
+    text = normalize_text(" ".join([
+        str(item.get("name") or ""),
+        str(item.get("type") or ""),
+        " ".join(item.get("aliases") or []),
+        " ".join(item.get("capabilities") or []),
+    ]))
+
+    has_drejestige = any(term in text for term in ["drejestige", "stigevogn"])
+    has_lift = any(term in text for term in ["redningslift", "lift"])
+    asks_drejestige = query_term in ["drejestige", "stigevogn"]
+    asks_lift = query_term in ["lift", "redningslift"]
+    asks_height = query_term in ["hoejderedning", "højderedning"]
+    asks_generic_stige = query_term == "stige"
+
+    if asks_drejestige:
+        if has_drejestige:
+            return 18
+        if has_lift:
+            return -8
+    if asks_lift:
+        if has_lift:
+            return 18
+        if has_drejestige:
+            return -8
+    if asks_generic_stige or asks_height:
+        if has_drejestige or has_lift:
+            return 10
+    return 0
+
+
 def score_station_resource(item, expanded_terms, item_kind):
     candidates = [
         (item.get("name"), 100),
@@ -652,6 +684,8 @@ def score_station_resource(item, expanded_terms, item_kind):
 
     if best is None:
         return None
+
+    best += height_resource_priority_bonus(item, expanded_terms)
 
     return {
         "matched_resource": item.get("name") or item.get("type") or item_kind,
@@ -777,10 +811,10 @@ def rank_stations_by_distance(origin_lat, origin_lon, matches, limit=5, radius_k
         })
 
     ranked.sort(key=lambda item: (
+        -item.get("match_score", 0),
         item["road_time_min"] is None,
         item["road_time_min"] if item["road_time_min"] is not None else item["air_distance_km"],
         item["air_distance_km"],
-        -item.get("match_score", 0),
     ))
     return ranked[:max(1, int(limit or 5))]
 

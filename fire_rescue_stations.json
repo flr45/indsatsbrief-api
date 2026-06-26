@@ -541,12 +541,20 @@
         "type": "lift/redningslift",
         "aliases": [
           "S2",
-          "lift/redningslift"
+          "stige",
+          "lift",
+          "redningslift",
+          "højderedning",
+          "hoejderedning",
+          "redning fra højde",
+          "tagarbejde"
         ],
         "capabilities": [
           "højderedning",
-          "redning fra højde"
-        ]
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "source": "manual"
       },
       {
         "name": "T1",
@@ -641,7 +649,15 @@
       "miljø",
       "kemi/CBRN",
       "efterløbspumpe",
-      "frigørelse"
+      "frigørelse",
+      "stige",
+      "drejestige",
+      "stigevogn",
+      "redningslift",
+      "lift",
+      "hoejderedning",
+      "redning fra højde",
+      "tagarbejde"
     ],
     "notes": "",
     "source": "manual",
@@ -1073,14 +1089,23 @@
       },
       {
         "name": "S1",
-        "type": "redningslift",
+        "type": "drejestige",
         "aliases": [
           "S1",
-          "redningslift"
+          "stige",
+          "drejestige",
+          "stigevogn",
+          "højderedning",
+          "hoejderedning",
+          "redning fra højde",
+          "tagarbejde"
         ],
         "capabilities": [
-          "højderedning"
-        ]
+          "højderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "source": "manual"
       },
       {
         "name": "R1",
@@ -1174,7 +1199,8 @@
       "kemi/CBRN",
       "redningsbåd",
       "vandredning",
-      "frigørelse"
+      "frigørelse",
+      "drejestige"
     ],
     "resource_aliases": [
       "højderedning",
@@ -1184,7 +1210,15 @@
       "kemi/CBRN",
       "redningsbåd",
       "vandredning",
-      "frigørelse"
+      "frigørelse",
+      "stige",
+      "drejestige",
+      "stigevogn",
+      "redningslift",
+      "lift",
+      "hoejderedning",
+      "redning fra højde",
+      "tagarbejde"
     ],
     "notes": "",
     "source": "manual",

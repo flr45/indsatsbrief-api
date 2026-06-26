@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, redirect, session, url_for
 from datetime import datetime, timezone
 from urllib.parse import quote
 import requests
@@ -7,11 +7,18 @@ import json
 import math
 import base64
 import re
+import hmac
 from openai import OpenAI
 from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
+
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+BRIEF_ACCESS_CODE = os.getenv("BRIEF_ACCESS_CODE")
+
+if FLASK_SECRET_KEY:
+    app.secret_key = FLASK_SECRET_KEY
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
@@ -60,6 +67,8 @@ Hvis vejrdata mangler, skal vejrsektionen udelades.
 Hvis OSM-fund mangler, skal OSM-sektionen udelades.
 Hvis vandforsyning mangler, skal vandforsyning udelades.
 Hvis en sektion ikke har positive fund, skal sektionen udelades.
+
+Ved OSM-risikofund skal du skrive hvad fundene er, ikke kun antal. Skriv kort kategori/type og nærmeste afstand. Hvis der er flere ens fund, saml dem i én linje, men nævn typen, fx port, låge, adgangsbegrænsning, jernbane, tank, oplag, solceller eller vand.
 
 Ved lejligheder må adresseafvigelser ikke kaldes kritiske.
 Hvis requested_address og matched_address afviger, skriv højst:
@@ -2786,9 +2795,82 @@ def home():
     return '<a href="/brief">Åbn IndsatsBrief Brand</a>'
 
 
+def brief_configuration_message():
+    if not BRIEF_ACCESS_CODE:
+        return "BRIEF_ACCESS_CODE mangler i Render Environment."
+    if not FLASK_SECRET_KEY:
+        return "FLASK_SECRET_KEY mangler i Render Environment."
+    return None
+
+
+def brief_login_html(error_message=None):
+    error_html = f'<p class="error">{error_message}</p>' if error_message else ""
+    return f"""
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IndsatsBrief Brand</title>
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef2f3; color: #162126; font-family: Arial, sans-serif; padding: 20px; }}
+        main {{ width: min(100%, 420px); background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 28px; }}
+        h1 {{ margin: 0 0 24px; font-size: 26px; }}
+        label {{ display: grid; gap: 8px; font-weight: 700; }}
+        input, button {{ width: 100%; min-height: 48px; border-radius: 4px; font: inherit; }}
+        input {{ border: 1px solid #aebbc0; padding: 10px 12px; }}
+        button {{ margin-top: 18px; border: 0; background: #b91f2b; color: #fff; font-weight: 700; cursor: pointer; }}
+        .error {{ color: #a31824; margin: 0 0 16px; }}
+        @media (max-width: 520px) {{ main {{ padding: 22px; }} h1 {{ font-size: 23px; }} }}
+    </style>
+</head>
+<body><main>
+    <h1>IndsatsBrief Brand</h1>
+    {error_html}
+    <form method="post" action="/brief-login">
+        <label>Adgangskode<input type="password" name="access_code" required autofocus autocomplete="current-password"></label>
+        <button type="submit">Åbn</button>
+    </form>
+</main></body>
+</html>
+    """
+
+
+@app.route("/brief-login", methods=["GET", "POST"])
+def brief_login():
+    configuration_message = brief_configuration_message()
+    if configuration_message:
+        return Response(configuration_message, status=503, mimetype="text/plain")
+
+    if request.method == "POST":
+        submitted_code = request.form.get("access_code", "")
+        if hmac.compare_digest(submitted_code, BRIEF_ACCESS_CODE):
+            session["brief_authenticated"] = True
+            return redirect(url_for("brief_page"))
+        return Response(brief_login_html("Forkert adgangskode."), status=401, mimetype="text/html")
+
+    return Response(brief_login_html(), mimetype="text/html")
+
+
+@app.route("/brief-logout", methods=["GET"])
+def brief_logout():
+    configuration_message = brief_configuration_message()
+    if configuration_message:
+        return Response(configuration_message, status=503, mimetype="text/plain")
+    session.pop("brief_authenticated", None)
+    return redirect(url_for("brief_login"))
+
+
 @app.route("/brief", methods=["GET"])
 def brief_page():
     """Small browser client for the short, presentation-safe incident brief."""
+    configuration_message = brief_configuration_message()
+    if configuration_message:
+        return Response(configuration_message, status=503, mimetype="text/plain")
+    if not session.get("brief_authenticated"):
+        return redirect(url_for("brief_login"))
+
     html = r"""
 <!DOCTYPE html>
 <html lang="da">
@@ -2800,26 +2882,33 @@ def brief_page():
         :root { color-scheme: light; }
         * { box-sizing: border-box; }
         body { margin: 0; background: #eef2f3; color: #162126; font-family: Arial, sans-serif; }
-        main { max-width: 860px; margin: 0 auto; padding: 32px 20px 56px; }
+        main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 56px; }
         h1 { margin: 0 0 6px; font-size: 28px; }
         .intro { margin: 0 0 24px; color: #526168; }
         .search { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 12px; align-items: end; }
         label { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
-        input { width: 100%; min-height: 42px; border: 1px solid #aebbc0; border-radius: 4px; padding: 9px 10px; font: inherit; }
-        button { min-height: 42px; border: 0; border-radius: 4px; padding: 9px 14px; background: #b91f2b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+        input { width: 100%; min-height: 48px; border: 1px solid #aebbc0; border-radius: 4px; padding: 10px 12px; font: inherit; }
+        button { min-height: 48px; border: 0; border-radius: 4px; padding: 10px 16px; background: #b91f2b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
         button:hover { background: #941722; }
         button.secondary { background: #34464e; }
         button.secondary:hover { background: #223239; }
         button:disabled { cursor: wait; opacity: .65; }
         #status { min-height: 24px; margin: 16px 0 8px; color: #44555d; }
         #result { display: none; background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 22px; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
-        #report { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.55 Arial, sans-serif; }
+        #report { font: 16px/1.55 Arial, sans-serif; overflow-wrap: anywhere; }
+        #report h2 { margin: 0 0 20px; font-size: 21px; }
+        #report h3 { margin: 20px 0 7px; font-size: 16px; }
+        #report ul { margin: 0; padding-left: 21px; }
+        #report li { margin: 5px 0; }
+        a { color: #075d78; overflow-wrap: anywhere; }
         .actions { display: none; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-        details { display: none; margin-top: 18px; }
-        summary { cursor: pointer; font-weight: 700; }
-        #raw-json { margin: 10px 0 0; max-height: 360px; overflow: auto; background: #162126; color: #e7f0f2; border-radius: 4px; padding: 12px; font: 12px/1.45 monospace; }
-        @media print { .search, #status, .actions, details, .intro { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
-        @media (max-width: 620px) { .search { grid-template-columns: 1fr; } }
+        #map-section { display: none; margin-top: 18px; background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 18px; }
+        #map-section h2 { margin: 0 0 12px; font-size: 20px; }
+        #map-frame { width: 100%; height: 360px; border: 0; border-radius: 4px; }
+        .map-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+        @media print { .search, #status, .actions, .intro, #map-section { display: none !important; } body { background: #fff; } main { max-width: none; padding: 0; } #result { display: block !important; border: 0; box-shadow: none; padding: 0; } }
+        @media (max-width: 800px) { main { padding: 24px 20px 48px; } .search { grid-template-columns: minmax(0, 1fr) auto; } .search label:first-child { grid-column: 1 / -1; } }
+        @media (max-width: 520px) { main { padding: 20px 14px 36px; } h1 { font-size: 25px; } .search { grid-template-columns: 1fr; } .search label:first-child { grid-column: auto; } .search button { width: 100%; } #result, #map-section { padding: 16px; } #map-frame { height: 280px; } }
     </style>
 </head>
 <body>
@@ -2832,13 +2921,19 @@ def brief_page():
             <button id="submit" type="submit">Lav indsatsbrief</button>
         </form>
         <p id="status" role="status"></p>
-        <section id="result" aria-live="polite"><pre id="report"></pre></section>
+        <section id="result" aria-live="polite"><div id="report"></div></section>
         <div id="actions" class="actions">
             <button id="copy" type="button" class="secondary">Kopiér rapport</button>
             <button id="print" type="button" class="secondary">Print/gem som PDF</button>
-            <button id="toggle-json" type="button" class="secondary">Vis rå JSON</button>
         </div>
-        <details id="debug"><summary>Rå JSON (debug)</summary><pre id="raw-json"></pre></details>
+        <section id="map-section">
+            <h2>Kort</h2>
+            <iframe id="map-frame" title="Kort over adresse"></iframe>
+            <div class="map-links">
+                <a id="open-map" target="_blank" rel="noopener noreferrer">Åbn kort i nyt vindue</a>
+                <a id="open-satellite" target="_blank" rel="noopener noreferrer" hidden>Åbn Google satellit</a>
+            </div>
+        </section>
     </main>
     <script>
         const forbiddenKeys = new Set([
@@ -2982,8 +3077,10 @@ def brief_page():
         const result = document.getElementById('result');
         const reportElement = document.getElementById('report');
         const actions = document.getElementById('actions');
-        const debug = document.getElementById('debug');
-        const rawJson = document.getElementById('raw-json');
+        const mapSection = document.getElementById('map-section');
+        const mapFrame = document.getElementById('map-frame');
+        const openMap = document.getElementById('open-map');
+        const openSatellite = document.getElementById('open-satellite');
         let reportText = '';
 
         async function fetchJson(url) {
@@ -3006,13 +3103,116 @@ def brief_page():
             return data;
         }
 
-        function showReport(text, rawData) {
+        function appendLinkedText(container, text) {
+            const urlPattern = /(https?:\/\/[^\s]+)/g;
+            String(text).split(urlPattern).forEach(part => {
+                if (/^https?:\/\//.test(part)) {
+                    const link = document.createElement('a');
+                    link.href = part;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = part;
+                    container.appendChild(link);
+                } else {
+                    container.appendChild(document.createTextNode(part));
+                }
+            });
+        }
+
+        function parseReportText(text) {
+            const sections = [];
+            let current = null;
+            String(text).split('\n').forEach(line => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+                if (trimmed === 'HURTIG INDSATSBRIEF') {
+                    sections.push({ heading: trimmed, lines: [] });
+                    return;
+                }
+                if (trimmed.endsWith(':')) {
+                    current = { heading: trimmed.slice(0, -1), lines: [] };
+                    sections.push(current);
+                } else if (current && /^[*-]\s+/.test(trimmed)) {
+                    current.lines.push(trimmed.replace(/^[*-]\s+/, ''));
+                }
+            });
+            return sections;
+        }
+
+        function reportSections(reportStructured, text) {
+            if (!reportStructured || !reportStructured.title) return parseReportText(text);
+            const definitions = [
+                ['Adresse', 'address_lines'], ['Fund', 'findings'], ['OSM-risikotjek', 'osm_risk_lines'],
+                ['Vejr/vind', 'weather_lines'], ['Vandforsyning', 'water_supply_lines'], ['Forbehold', 'disclaimer']
+            ];
+            const sections = [{ heading: reportStructured.title, lines: [] }];
+            definitions.forEach(([heading, key]) => {
+                const value = reportStructured[key];
+                const lines = Array.isArray(value) ? value : (value ? [value] : []);
+                if (lines.length) sections.push({ heading, lines });
+            });
+            return sections;
+        }
+
+        function renderReport(text, reportStructured) {
+            reportElement.replaceChildren();
+            reportSections(reportStructured, text).forEach((section, index) => {
+                if (index === 0 && !section.lines.length) {
+                    const title = document.createElement('h2');
+                    title.textContent = section.heading;
+                    reportElement.appendChild(title);
+                    return;
+                }
+                const heading = document.createElement('h3');
+                heading.textContent = section.heading;
+                reportElement.appendChild(heading);
+                const list = document.createElement('ul');
+                section.lines.forEach(line => {
+                    const item = document.createElement('li');
+                    appendLinkedText(item, line);
+                    list.appendChild(item);
+                });
+                reportElement.appendChild(list);
+            });
+        }
+
+        function findCoordinates(rawData) {
+            const short = rawData.short_report_data || {};
+            const coordinates = short.coordinates || {};
+            const latitude = rawData.latitude ?? coordinates.latitude;
+            const longitude = rawData.longitude ?? coordinates.longitude;
+            if (latitude === null || latitude === undefined || longitude === null || longitude === undefined) return null;
+            return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
+                ? { latitude: Number(latitude), longitude: Number(longitude) }
+                : null;
+        }
+
+        function updateMap(rawData) {
+            const coordinates = findCoordinates(rawData || {});
+            if (!coordinates) {
+                mapSection.style.display = 'none';
+                return;
+            }
+            const { latitude, longitude } = coordinates;
+            const bbox = [longitude - 0.004, latitude - 0.003, longitude + 0.004, latitude + 0.003].join(',');
+            mapFrame.src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${latitude},${longitude}`)}`;
+            openMap.href = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=17/${latitude}/${longitude}`;
+            const satellite = rawData.google_maps_satellite || (rawData.aerial_photo || {}).links?.google_maps_satellite || (rawData.short_report_data || {}).google_maps_satellite;
+            if (satellite) {
+                openSatellite.href = satellite;
+                openSatellite.hidden = false;
+            } else {
+                openSatellite.hidden = true;
+            }
+            mapSection.style.display = 'block';
+        }
+
+        function showReport(text, rawData, reportStructured) {
             reportText = text;
-            reportElement.textContent = reportText;
-            rawJson.textContent = JSON.stringify(rawData, null, 2);
+            renderReport(reportText, reportStructured);
+            updateMap(rawData);
             result.style.display = 'block';
             actions.style.display = 'flex';
-            debug.style.display = 'block';
         }
 
         form.addEventListener('submit', async event => {
@@ -3024,19 +3224,19 @@ def brief_page():
             status.textContent = 'Henter indsatsbrief...';
             result.style.display = 'none';
             actions.style.display = 'none';
-            debug.style.display = 'none';
+            mapSection.style.display = 'none';
             try {
                 const params = new URLSearchParams({ address: address, radius_m: radius });
                 const url = `/analyze-brief?${params.toString()}`;
                 const data = await fetchJson(url);
                 if (!data.report_text) throw new Error('Analyse returnerede ingen rapporttekst');
-                showReport(data.report_text, data.raw_incident_data || data);
+                showReport(data.report_text, data.raw_incident_data || data, data.report_structured);
                 status.textContent = 'Indsatsbrief klar.';
             } catch (error) {
                 const fallbackData = error.data && error.data.raw_incident_data;
 
                 if (fallbackData) {
-                    showReport(error.data.report_text || buildReport(fallbackData), fallbackData);
+                    showReport(error.data.report_text || buildReport(fallbackData), fallbackData, error.data.report_structured);
                     status.textContent = `${error.message}. Viser rapport uden AI-analyse.`;
                 } else {
                     try {
@@ -3059,10 +3259,6 @@ def brief_page():
             status.textContent = 'Rapporten er kopieret.';
         });
         document.getElementById('print').addEventListener('click', () => window.print());
-        document.getElementById('toggle-json').addEventListener('click', () => {
-            debug.open = !debug.open;
-            debug.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        });
     </script>
 </body>
 </html>
@@ -3618,6 +3814,94 @@ AI_BLOCKED_REPORT_PHRASES = (
 )
 
 
+def build_osm_findings_for_ai(osm_risk_check, limit=10):
+    """Keep the most useful OSM detail while keeping the model payload compact."""
+    findings_for_ai = []
+
+    for finding in (osm_risk_check or {}).get("findings", [])[:limit]:
+        tags = finding.get("raw_tags") or {}
+        categories = [
+            category.get("category")
+            for category in finding.get("categories", [])
+            if category.get("category")
+        ]
+        relevant_tags = {
+            key: tags.get(key)
+            for key in [
+                "barrier", "access", "gate", "locked", "amenity",
+                "landuse", "railway", "waterway", "natural", "man_made",
+            ]
+            if tags.get(key) is not None
+        }
+
+        findings_for_ai.append({
+            "categories": categories,
+            "name": finding.get("name"),
+            "distance_m": finding.get("distance_m"),
+            "relevant_tags": relevant_tags,
+        })
+
+    return findings_for_ai
+
+
+def build_concrete_osm_risk_lines(osm_risk_check):
+    """Render OSM tags as short concrete lines instead of count-only summaries."""
+    grouped = {}
+
+    for finding in (osm_risk_check or {}).get("findings", []):
+        tags = finding.get("raw_tags") or {}
+        categories = finding.get("categories", []) or []
+        category_names = [item.get("category") for item in categories if item.get("category")]
+        category = category_names[0] if category_names else "OSM-fund"
+        group = grouped.setdefault(category, {"distance_m": None, "types": [], "names": []})
+
+        distance_m = parse_positive_number(finding.get("distance_m"))
+        if distance_m is not None and (
+            group["distance_m"] is None or distance_m < group["distance_m"]
+        ):
+            group["distance_m"] = distance_m
+
+        name = clean_short_report_text(finding.get("name"))
+        if is_positive_report_value(name) and name not in group["names"]:
+            group["names"].append(name)
+
+        if tags.get("barrier") in ["gate", "lift_gate"]:
+            detail = "port/låge"
+        elif tags.get("barrier"):
+            detail = f"barriere ({tags['barrier']})"
+        elif tags.get("access"):
+            detail = f"adgangsbegrænsning ({tags['access']})"
+        elif tags.get("railway"):
+            detail = "jernbane/spor"
+        elif tags.get("amenity"):
+            detail = tags["amenity"]
+        elif tags.get("landuse"):
+            detail = tags["landuse"]
+        elif tags.get("waterway"):
+            detail = "vandløb"
+        elif tags.get("natural") == "water":
+            detail = "vand/sø"
+        elif tags.get("man_made") == "storage_tank":
+            detail = "tank/oplag"
+        else:
+            detail = None
+
+        if detail and detail not in group["types"]:
+            group["types"].append(detail)
+
+    lines = []
+    for category, group in grouped.items():
+        description = ", ".join(group["types"][:2]) or category.lower()
+        name_suffix = f" ({group['names'][0]})" if group["names"] else ""
+        distance_suffix = (
+            f", nærmeste ca. {round(group['distance_m'])} m"
+            if group["distance_m"] is not None else ""
+        )
+        lines.append(f"{category}: {description} registreret i OSM{name_suffix}{distance_suffix}.")
+
+    return lines
+
+
 def build_openai_brief_payload(raw_incident_data):
     """Provide both curated and relevant raw incident data to the model."""
     building = raw_incident_data.get("building", {})
@@ -3656,6 +3940,7 @@ def build_openai_brief_payload(raw_incident_data):
         "osm_risk_check": osm_risk_check,
         "osm_risk_summary": osm_risk_check.get("osm_risk_summary", []),
         "grouped_summary": osm_risk_check.get("grouped_summary", {}),
+        "osm_findings_for_ai": build_osm_findings_for_ai(osm_risk_check),
         "water_supply": raw_incident_data.get("water_supply"),
     }
 
@@ -3826,19 +4111,8 @@ def build_deterministic_report_structured(raw_incident_data):
     if is_positive_report_value(clean_short_report_text(map_url)):
         address_lines.append(f"Kort: {map_url}")
 
-    osm_lines = []
     osm_risk_check = raw_incident_data.get("osm_risk_check") or {}
-    for item in osm_risk_check.get("osm_risk_summary", []) or []:
-        category = clean_short_report_text(item.get("category"))
-        if not is_positive_report_value(category):
-            continue
-
-        details = [category]
-        if item.get("count"):
-            details.append(f"{item['count']} fund")
-        if item.get("nearest_distance_m") is not None:
-            details.append(f"{item['nearest_distance_m']} m")
-        osm_lines.append(" - ".join(details))
+    osm_lines = build_concrete_osm_risk_lines(osm_risk_check)
 
     weather_lines = []
     weather = raw_incident_data.get("weather") or {}
@@ -3978,6 +4252,16 @@ def analyze_brief():
         )
         report_from_model = json.loads(response.output_text)
         report_structured = sanitize_ai_report(report_from_model, raw_incident_data)
+
+        concrete_osm_lines = build_concrete_osm_risk_lines(
+            raw_incident_data.get("osm_risk_check") or {}
+        )
+        model_osm_lines = report_structured.get("osm_risk_lines", [])
+        if concrete_osm_lines and (
+            not model_osm_lines
+            or all("fund" in line.lower() for line in model_osm_lines)
+        ):
+            report_structured["osm_risk_lines"] = concrete_osm_lines
 
         if not report_structured["findings"]:
             fallback_findings = build_deterministic_building_findings(raw_incident_data)

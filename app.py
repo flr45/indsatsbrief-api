@@ -82,6 +82,15 @@ Brug altid tekstfelter frem for rå BBR-koder.
 Skriv “Garage”, “Carport”, “Udhus” osv. hvis tekst findes.
 Skriv aldrig kun rå BBR-koder i rapporten.
 
+Findings/FUND må ikke indeholde almindelige bygningsdata.
+Læg bygningstype, opførelsesår, ombygningsår, arealer og etager i building_lines.
+Læg facade/ydervægge og tag/tagdækning i building_details.
+Læg varme, brændsel/opvarmningsmiddel og supplerende varme i heating_lines.
+Læg sekundære bygninger i secondary_buildings.
+Læg kælder i basement_lines, kun hvis kælder faktisk er registreret.
+Gentag ikke samme oplysninger i flere sektioner.
+Findings/FUND må kun være særlige fund og korte bemærkninger, fx adresseafvigelse, kælder registreret, sekundære bygninger registreret, nærmeste større vej, OSM/adgangs-/risikofund eller brandhanefund.
+
 Skriv kort, skarpt og i punktopstilling.
 Returnér kun JSON efter det angivne schema.
 Brug assistance_lines og resource_lines kun til neutrale afstands-/ressourcefund, hvis de er sendt i input. Skriv aldrig at noget skal afsendes eller anbefales.
@@ -3701,15 +3710,10 @@ def brief_page():
         .logout { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.06); }
         .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { width: 100%; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; box-shadow: 0 16px 45px rgba(0,0,0,.24); }
         .search-card { margin-bottom: 14px; }
-        .tabs { display: flex; gap: 8px; flex-wrap: wrap; max-width: 100%; min-width: 0; margin: 0 0 18px; }
-        .tab { background: rgba(255,255,255,.08); color: var(--muted); min-height: 44px; }
-        .tab.active, .tab:hover { background: var(--card-soft); color: var(--text); }
-        .panel { display: none; max-width: 100%; min-width: 0; }
-        .panel.active { display: block; }
         .search { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 130px); gap: 14px; align-items: end; max-width: 100%; min-width: 0; }
-        .search > *, .commands > *, .main-grid > *, .side-stack > *, .resource-form > * { min-width: 0; }
+        .search > *, .commands > *, .assistance-controls > *, .main-grid > *, .side-stack > *, .resource-form > * { min-width: 0; }
         .address-field { position: relative; }
-        .commands { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) repeat(2, minmax(0, 150px)); gap: 10px; align-items: end; max-width: 100%; }
+        .commands { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; max-width: 100%; }
         .autocomplete-list { display: none; position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 8px); max-width: 100%; max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: #020617; box-shadow: 0 24px 60px rgba(0,0,0,.42); }
         .autocomplete-option { display: block; width: 100%; min-height: 52px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
         .autocomplete-option:hover, .autocomplete-option:focus { background: rgba(37,99,235,.22); }
@@ -3747,19 +3751,20 @@ def brief_page():
         .tool-result { display: none; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 12px; background: rgba(2,6,23,.52); overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); }
         #assistance-section, #resource-section { display: block; }
         .empty-hint { color: var(--muted); margin: 0; }
+        .assistance-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 130px) minmax(0, 130px); gap: 10px; align-items: end; max-width: 100%; margin-bottom: 14px; }
         .station-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-width: 100%; margin-top: 14px; }
         .station-card { width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--card-soft); overflow-wrap: anywhere; word-break: break-word; }
         .station-card h3 { margin: 0 0 8px; font-size: 17px; }
         .station-card p { margin: 5px 0; color: var(--muted); }
         .badge { display: inline-flex; align-items: center; min-height: 26px; border-radius: 999px; padding: 3px 9px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; font-weight: 850; }
         .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; max-width: 100%; }
-        @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } .commands { grid-template-columns: repeat(3, minmax(150px, 1fr)); } #map-frame { height: 320px; } }
-        @media (max-width: 700px) { main { padding-left: 12px; padding-right: 12px; } .topline { align-items: flex-start; } .search, .commands, .resource-form { grid-template-columns: minmax(0, 1fr); } .commands { gap: 9px; } button, select { width: 100%; } .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { padding: 16px; } #map-frame { height: 280px; } }
+        @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } #map-frame { height: 320px; } }
+        @media (max-width: 700px) { main { padding-left: 12px; padding-right: 12px; } .topline { align-items: flex-start; } .search, .commands, .assistance-controls, .resource-form { grid-template-columns: minmax(0, 1fr); } .commands { gap: 9px; } button, select { width: 100%; } .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { padding: 16px; } #map-frame { height: 280px; } }
         @media (max-width: 480px) { main { padding: 14px 12px 34px; } h1 { font-size: 24px; } .topline { display: block; } .logout { margin-top: 14px; width: 100%; } #map-frame { height: 260px; } #report { font-size: 15px; } }
         @media print {
             body { background: #fff; color: #000; }
             main { max-width: none; padding: 0; }
-            .topline, .tabs, .panel, #status, .actions, #map-section, #assistance-section, #resource-section, .tool-panel, .side-stack { display: none !important; }
+            .topline, .search-card, #status, .actions, #map-section, #assistance-section, #resource-section, .tool-panel, .side-stack { display: none !important; }
             .main-grid { display: block; }
             #result { display: block !important; border: 0; box-shadow: none; padding: 0; background: #fff; color: #000; }
             #report h3 { color: #000; }
@@ -3770,20 +3775,13 @@ def brief_page():
 <body>
     <main>
         <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p></div><a class="logout" href="/brief-logout">Log ud</a></div>
-        <nav class="tabs" aria-label="Brief-funktioner">
-            <button class="tab active" type="button" data-tab="address">Adresseopslag</button>
-            <button class="tab" type="button" data-tab="full">Fuld rapport</button>
-            <button class="tab" type="button" data-tab="followup">Spørg til rapporten</button>
-        </nav>
-        <section class="panel active card search-card" data-panel="address">
+        <section class="card search-card" aria-label="Adresse og handlinger">
             <form id="brief-form" class="search">
                 <div class="address-field"><label>Adresse<input id="address" name="address" required autocomplete="off" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label><div id="autocomplete-list" class="autocomplete-list" role="listbox"></div></div>
                 <label>Radius (m)<input id="radius" name="radius" type="number" min="1" value="250"></label>
-                <div class="commands"><button id="submit" data-mode="short" type="submit">Kort brief</button><button data-mode="full" type="submit" class="secondary">Fuld rapport</button><button id="assistance-button" type="button" class="assistance-primary" disabled>Assistance</button><label>Assistance-radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><label>Vis stationer<select id="assistance-limit"><option value="5" selected>5</option><option value="10">10</option></select></label></div>
+                <div class="commands"><button id="submit" data-mode="short" type="submit">Kort brief</button><button data-mode="full" type="submit" class="secondary">Fuld rapport</button></div>
             </form>
         </section>
-        <section class="panel" data-panel="full"><div class="tool-panel"><h2>Fuld rapport</h2><p>Brug adresseopslaget for at lave en fuld rapport med flere dataafsnit.</p><button id="full-report" type="button">Lav fuld rapport</button></div></section>
-        <section class="panel" data-panel="followup"><div class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="followup-question" placeholder="Spørg fx: Er der kælder? Hvor er nærmeste stige? Er der adgangsforhold?"></textarea><button id="ask-followup" type="button">Spørg</button><div id="followup-result" class="tool-result"></div></div></section>
         <p id="status" role="status" data-state="ready">Klar</p>
         <div class="main-grid">
             <div>
@@ -3802,7 +3800,7 @@ def brief_page():
                         <a id="open-satellite" target="_blank" rel="noopener noreferrer" hidden>Link til Google satellit</a>
                     </div>
                 </section>
-                <section id="assistance-section"><h2>Assistance</h2><div id="assistance-result"><p class="empty-hint">Lav først et adresseopslag for at se nærmeste assistance.</p></div></section>
+                <section id="assistance-section"><h2>Assistance</h2><div class="assistance-controls"><button id="assistance-button" type="button" class="assistance-primary" disabled>Assistance</button><label>Radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><label>Vis stationer<select id="assistance-limit"><option value="5" selected>5</option><option value="10">10</option></select></label></div><div id="assistance-result"><p class="empty-hint">Lav først et adresseopslag for at se nærmeste assistance.</p></div></section>
                 <section id="resource-section"><h2>Ressourcesøgning</h2><div class="resource-form"><label>Ressource<input id="resource-search-input" placeholder="Søg fx stige, tankvogn, kemi, redningsbåd, TAF 60…"></label><button id="resource-search-button" type="button">Søg ressource</button></div><div id="resource-result" class="tool-result"></div></section>
                 <section class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="side-followup-question" placeholder="Spørg fx: Er der kælder? Hvad er tagmaterialet? Hvad viser OSM?"></textarea><button id="side-ask-followup" type="button">Spørg</button><div id="side-followup-result" class="tool-result"></div></section>
             </div>
@@ -3901,27 +3899,51 @@ def brief_page():
 
             const building = report.building || {};
             const findings = [];
-            const labels = [
-                ['building_type_text', 'Bygning'], ['area_m2', 'Areal', ' m²'], ['floors_count', 'Etager'],
-                ['apartments_with_kitchen', 'Lejligheder med køkken'], ['construction_year', 'Opførelsesår'],
-                ['renovation_year', 'Ombygningsår'], ['outer_wall_material_text', 'Ydervægge'],
-                ['roof_material_text', 'Tag'], ['heating_installation_text', 'Varmeinstallation'],
-                ['heating_fuel_text', 'Opvarmningsmiddel'], ['supplementary_heating_text', 'Supplerende varme'],
-                ['residential_area_m2', 'Boligareal', ' m²'], ['commercial_area_m2', 'Erhvervsareal', ' m²'],
-                ['attic_used_area_m2', 'Udnyttet tagetage', ' m²'], ['preservation_status_text', 'Fredning/bevaring']
+            const buildingLines = [];
+            const buildingLabels = [
+                ['building_type_text', 'Bygningstype'], ['construction_year', 'Opført'],
+                ['renovation_year', 'Ombygget'], ['area_m2', 'Samlet bygningsareal', ' m²'],
+                ['residential_area_m2', 'Boligareal', ' m²'], ['built_area_m2', 'Bebygget areal', ' m²'],
+                ['floors_count', 'Antal etager']
             ];
-            labels.forEach(([key, label, unit]) => {
+            buildingLabels.forEach(([key, label, unit]) => {
                 const value = formatValue(building[key], unit || '');
-                if (value) findings.push(`${label}: ${value}`);
+                if (value) buildingLines.push(`${label}: ${value}`);
             });
+
+            const detailLines = [];
+            [['outer_wall_material_text', 'Facade'], ['roof_material_text', 'Tagdækning'], ['preservation_status_text', 'Fredning/bevaring']].forEach(([key, label]) => {
+                const value = formatValue(building[key]);
+                if (value) detailLines.push(`${label}: ${value}`);
+            });
+
+            const heatingLines = [];
+            [['heating_installation_text', 'Varme'], ['heating_fuel_text', 'Brændsel'], ['supplementary_heating_text', 'Supplerende varme']].forEach(([key, label]) => {
+                const value = formatValue(building[key]);
+                if (value) heatingLines.push(`${label}: ${value}`);
+            });
+
             const basementArea = Number(building.basement_area_m2);
-            if (building.basement_present === true || basementArea > 0) findings.push(basementArea > 0 ? `Kælder: ${basementArea} m²` : 'Kælder registreret');
+            const basementLines = [];
+            if (building.basement_present === true || basementArea > 0) {
+                findings.push('Kælder registreret');
+                basementLines.push(basementArea > 0 ? `Kælder: ${basementArea} m²` : 'Kælder registreret');
+            }
+            const secondaryLines = [];
             (building.secondary_buildings || []).forEach(item => {
                 const secondary = cleanValue(item) || {};
                 const text = cleanValue(secondary.display_text) || [secondary.building_type_text || secondary.usage_text, secondary.construction_year && `fra ${secondary.construction_year}`, secondary.roof_material_text && `tag ${secondary.roof_material_text}`].filter(Boolean).join(', ');
-                if (text) findings.push(`Sekundær bygning: ${text}`);
+                if (text) secondaryLines.push(text);
             });
+            if (secondaryLines.length) {
+                findings.push('Sekundære bygninger registreret');
+            }
             if (findings.length) lines.push('Fund:', ...findings.map(item => `- ${item}`), '');
+            if (buildingLines.length) lines.push('Bygning:', ...buildingLines.map(item => `- ${item}`), '');
+            if (detailLines.length) lines.push('Bygningsdetaljer:', ...detailLines.map(item => `- ${item}`), '');
+            if (heatingLines.length) lines.push('Varme:', ...heatingLines.map(item => `- ${item}`), '');
+            if (secondaryLines.length) lines.push('Sekundære bygninger:', ...dedupeSecondaryLines(secondaryLines).map(item => `- ${item}`), '');
+            if (basementLines.length) lines.push('Kælder:', ...basementLines.map(item => `- ${item}`), '');
 
             const osmFindings = (report.osm_risk_summary || []).map(cleanValue).filter(Boolean).map(item => {
                 const detail = [item.category, item.count && `${item.count} fund`, item.nearest_distance_m && `${item.nearest_distance_m} m`].filter(Boolean);
@@ -3986,9 +4008,21 @@ def brief_page():
             actions.style.display = 'none';
         }
 
-        function clearAssistanceResults() {
+        function currentAssistanceAddress() {
+            return latestIncidentData?.requested_address || addressInput.value.trim();
+        }
+
+        function updateAssistanceButtonState() {
+            assistanceButton.disabled = !currentAssistanceAddress();
+        }
+
+        function clearAssistanceResults(message = null) {
             assistanceResults = [];
-            assistanceResult.innerHTML = '<p class="empty-hint">Lav først et adresseopslag for at se nærmeste assistance.</p>';
+            const text = message || (currentAssistanceAddress()
+                ? 'Tryk Assistance for at hente resultater for adressen.'
+                : 'Lav først et adresseopslag for at se nærmeste assistance.');
+            assistanceResult.innerHTML = `<p class="empty-hint">${text}</p>`;
+            updateAssistanceButtonState();
         }
 
         function clearNearestResourceResults() {
@@ -4001,10 +4035,7 @@ def brief_page():
         function clearFollowupArea() {
             followupAnswer = '';
             followupMessages = [];
-            document.getElementById('followup-question').value = '';
             document.getElementById('side-followup-question').value = '';
-            document.getElementById('followup-result').replaceChildren();
-            document.getElementById('followup-result').style.display = 'none';
             document.getElementById('side-followup-result').replaceChildren();
             document.getElementById('side-followup-result').style.display = 'none';
         }
@@ -4021,9 +4052,8 @@ def brief_page():
             latestIncidentData = null;
             latestReportText = '';
             latestReportStructured = null;
-            assistanceButton.disabled = true;
             clearRenderedReport();
-            clearAssistanceResults();
+            clearAssistanceResults(addressInput.value.trim() ? 'Tryk Assistance for at hente resultater for den nye adresse.' : null);
             clearNearestResourceResults();
             clearFollowupArea();
             clearMapArea();
@@ -4109,13 +4139,27 @@ def brief_page():
         function normalizeLine(line) {
             return translateReportLine(line)
                 .toLowerCase()
+                .replace(/[æøå]/g, char => ({ æ: 'ae', ø: 'oe', å: 'aa' }[char]))
                 .replace(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g, '')
                 .replace(/https?:\/\/\S+/g, '')
-                .replace(/^(bygning|bygningstype|anvendelse|etager|antal etager|opført|opførelsesår|ombygget|ombygningsår|ydervæg|ydervægge|tag|tagdækning|varme|varmeinstallation|opvarmningsmiddel|supplerende varme|bebygget areal|boligareal|erhvervsareal|kælder|udnyttet tagetage|attic used area|sekundær bygning)\s*:?\s*/i, '')
-                .replace(/[.:;]+/g, '')
+                .replace(/m²/g, 'm2')
+                .replace(/^(bygning|bygningstype|anvendelse|etager|antal etager|opfoert|opfoerelsesaar|ombygget|ombygningsaar|facade|ydervaeg|ydervaegge|tag|tagdaekning|areal|samlet bygningsareal|varme|braendsel|opvarmningsmiddel|supplerende varme|bebygget areal|boligareal|erhvervsareal|kaelder|udnyttet tagetage|attic used area|sekundaer bygning)\s*:?\s*/i, '')
+                .replace(/[.:;(),/]+/g, ' ')
                 .replace(/\s+etager?$/g, '')
                 .replace(/\s+/g, ' ')
                 .trim();
+        }
+
+        function isStandardBuildingFinding(line) {
+            const lowered = translateReportLine(line).toLowerCase();
+            return /\bbygningstype\b|\bopført\b|\bopforelsesår\b|\bopfoert\b|\bombygget\b|\bareal\b|\bboligareal\b|\bbebygget\b|\betager?\b|\bydervæg\b|\bydervaeg\b|\bfacade\b|\btag\b|\btagdækning\b|\bvarme\b|\bbrændsel\b|\bbraendsel\b|\bopvarmningsmiddel\b|\bsupplerende varme\b/.test(lowered);
+        }
+
+        function dedupeSecondaryLines(lines) {
+            const normalized = lines.map(line => [line, normalizeLine(line)]).filter(([, key]) => key);
+            return normalized
+                .filter(([line, key]) => !normalized.some(([otherLine, otherKey]) => key !== otherKey && key.length < otherKey.length && otherKey.includes(key)))
+                .map(([line]) => line);
         }
 
         function dedupeSections(sections) {
@@ -4138,14 +4182,15 @@ def brief_page():
                     const translated = translateReportLine(line);
                     const key = normalizeLine(translated);
                     if (!key) return;
-                    if (section.heading === 'Fund' && buildingLines.has(key)) return;
+                    if (section.heading === 'Fund' && (isStandardBuildingFinding(translated) || [...buildingLines].some(buildingKey => key === buildingKey || key.includes(buildingKey) || buildingKey.includes(key)))) return;
+                    if (section.heading === 'Bygningsdetaljer' && /\bareal\b|\bboligareal\b|\bbebygget\b/i.test(translated) && sections.some(item => item.heading === 'Bygning' && item.lines.length)) return;
                     if (seen.has(`${section.heading}:${key}`)) return;
                     if (seen.has(key) && section.heading === 'Fund') return;
                     seen.add(`${section.heading}:${key}`);
                     if (section.heading !== 'Fund') seen.add(key);
                     lines.push(translated);
                 });
-                return { ...section, lines };
+                return { ...section, lines: section.heading === 'Sekundære bygninger' ? dedupeSecondaryLines(lines) : lines };
             }).filter((section, index) => index === 0 || section.lines.length);
         }
 
@@ -4174,8 +4219,8 @@ def brief_page():
             const definitions = [
                 ['Adresse', 'address_lines'], ['Kortlinks', 'map_links'], ['Fund', 'findings'],
                 ['Bygning', 'building_lines'], ['Bygningsdetaljer', 'building_details'],
-                ['Adgang', 'access_lines'], ['Sekundære bygninger', 'secondary_buildings'],
-                ['Kælder', 'basement_lines'], ['Varme', 'heating_lines'],
+                ['Varme', 'heating_lines'], ['Adgang', 'access_lines'],
+                ['Sekundære bygninger', 'secondary_buildings'], ['Kælder', 'basement_lines'],
                 ['Omgivelser / OSM', 'surroundings_lines'], ['Risikokontekst', 'risk_context_lines'],
                 ['OSM-risikotjek', 'osm_risk_lines'], ['Vejr/vind', 'weather_lines'],
                 ['Vandforsyning', 'water_supply_lines'], ['Assistance', 'assistance_lines'],
@@ -4253,7 +4298,7 @@ def brief_page():
             updateMap(rawData);
             result.style.display = 'block';
             actions.style.display = 'flex';
-            assistanceButton.disabled = !latestIncidentData;
+            clearAssistanceResults('Tryk Assistance for at hente resultater for denne adresse.');
         }
 
         form.addEventListener('submit', async event => {
@@ -4309,6 +4354,7 @@ def brief_page():
                 setStatus('Klar', 'ready');
                 lastSearchedAddress = '';
             }
+            updateAssistanceButtonState();
             if (query.length < 3) { hideAutocomplete(); return; }
             autocompleteTimer = setTimeout(async () => {
                 try {
@@ -4327,17 +4373,6 @@ def brief_page():
             setStatus('Rapporten er kopieret.', 'done');
         });
         document.getElementById('print').addEventListener('click', () => window.print());
-        document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
-            document.querySelectorAll('.tab').forEach(item => item.classList.toggle('active', item === tab));
-            document.querySelectorAll('.panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tab.dataset.tab));
-        }));
-        document.getElementById('full-report').addEventListener('click', () => {
-            if (!document.getElementById('address').value.trim()) {
-                setStatus('Indtast først en adresse under Adresseopslag.', 'error');
-                return;
-            }
-            form.requestSubmit(document.querySelector('[data-mode="full"]'));
-        });
         async function askFollowup(questionElement, output) {
             const question = questionElement.value.trim();
             if (!latestIncidentData) { output.textContent = 'Lav først et adresseopslag.'; output.style.display = 'block'; return; }
@@ -4348,15 +4383,16 @@ def brief_page():
                 output.textContent = data.answer || 'Intet svar modtaget.';
             } catch (error) { output.textContent = error.message || 'Kunne ikke hente svar.'; }
         }
-        document.getElementById('ask-followup').addEventListener('click', async () => {
-            await askFollowup(document.getElementById('followup-question'), document.getElementById('followup-result'));
-        });
         document.getElementById('side-ask-followup').addEventListener('click', async () => {
             await askFollowup(document.getElementById('side-followup-question'), document.getElementById('side-followup-result'));
         });
         assistanceButton.addEventListener('click', async () => {
-            const address = latestIncidentData?.requested_address || document.getElementById('address').value.trim();
-            if (!address) return;
+            const address = currentAssistanceAddress();
+            if (!address) {
+                assistanceResult.innerHTML = '<p class="empty-hint">Indtast en adresse først.</p>';
+                updateAssistanceButtonState();
+                return;
+            }
             assistanceResult.textContent = 'Henter assistance…';
             try {
                 const params = new URLSearchParams({ address, radius_km: assistanceRadius.value, limit: assistanceLimit.value });
@@ -5195,6 +5231,164 @@ def translate_report_label_text(value):
     )
 
 
+REPORT_SECTION_FIELDS = [
+    "findings",
+    "building_lines",
+    "building_details",
+    "access_lines",
+    "secondary_buildings",
+    "basement_lines",
+    "heating_lines",
+    "surroundings_lines",
+    "risk_context_lines",
+    "osm_risk_lines",
+    "weather_lines",
+    "water_supply_lines",
+    "assistance_lines",
+    "resource_lines",
+    "traffic_lines",
+    "supplementary_lines",
+]
+
+
+def normalize_report_line(line):
+    """Normalize report bullets so duplicate facts can be compared across labels."""
+    if not isinstance(line, str):
+        return ""
+
+    normalized = line.lower().strip()
+    for source, target in [("æ", "ae"), ("ø", "oe"), ("å", "aa")]:
+        normalized = normalized.replace(source, target)
+    normalized = re.sub(r"\[[^\]]+\]\(https?://[^)]+\)", "", normalized)
+    normalized = re.sub(r"https?://\S+", "", normalized)
+    normalized = normalized.replace("m²", "m2")
+    normalized = re.sub(r"\b(iflg|ifolge|ifølge)\s+bbr\b", "", normalized)
+    normalized = re.sub(
+        r"^(bygningstype|bygning|anvendelse|facade|ydervaegge|ydervaeg|tagdaekning|tag|areal|samlet bygningsareal|boligareal|bebygget areal|varme|varmeinstallation|braendsel|opvarmningsmiddel|supplerende varme|kaelder|sekundaer bygning)\s*[:\-]\s*",
+        "",
+        normalized,
+    )
+    normalized = re.sub(r"[/.,:;()]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def is_standard_building_finding(line):
+    normalized = normalize_report_line(line)
+    lowered = line.lower() if isinstance(line, str) else ""
+    standard_patterns = [
+        r"\bbygningstype\b",
+        r"\bopfoert\b|\bopført\b|\bopfoerelsesaar\b|\bopførelsesår\b",
+        r"\bombygget\b|\bombygningsaar\b|\bombygningsår\b",
+        r"\bareal\b|\bboligareal\b|\bbebygget\b|\berhvervsareal\b",
+        r"\betager?\b|\betager\b",
+        r"\bydervaeg\b|\bydervæg\b|\bfacade\b",
+        r"\btag\b|\btagdaekning\b|\btagdækning\b",
+        r"\bvarme\b|\bbraendsel\b|\bbrændsel\b|\bopvarmningsmiddel\b",
+        r"\bsupplerende varme\b",
+    ]
+    if any(re.search(pattern, lowered) for pattern in standard_patterns):
+        return True
+    if re.search(r"\b(19|20)\d{2}\b", normalized) and re.search(r"\bm2\b|\bfra\b", normalized):
+        return True
+    return False
+
+
+def dedupe_secondary_building_lines(lines):
+    cleaned = [line for line in lines if normalize_report_line(line)]
+    result = []
+    normalized_lines = [(line, normalize_report_line(line)) for line in cleaned]
+    for line, key in normalized_lines:
+        if any(
+            key != other_key
+            and len(key) < len(other_key)
+            and key in other_key
+            for other_line, other_key in normalized_lines
+        ):
+            continue
+        if line not in result:
+            result.append(line)
+    return result
+
+
+def clean_report_sections(report_structured):
+    """Keep facts in their intended section and remove repeated BBR facts from Fund."""
+    if not isinstance(report_structured, dict):
+        return report_structured
+
+    cleaned = dict(report_structured)
+    protected_fields = [
+        "building_lines",
+        "building_details",
+        "heating_lines",
+        "secondary_buildings",
+        "basement_lines",
+    ]
+    protected_keys = set()
+    for field in protected_fields:
+        for line in cleaned.get(field, []) or []:
+            key = normalize_report_line(line)
+            if key:
+                protected_keys.add(key)
+
+    def is_protected_duplicate(line):
+        key = normalize_report_line(line)
+        if not key:
+            return True
+        if key in protected_keys:
+            return True
+        return any(
+            protected_key
+            and (
+                key == protected_key
+                or key in protected_key
+                or protected_key in key
+            )
+            for protected_key in protected_keys
+        )
+
+    findings = []
+    for line in cleaned.get("findings", []) or []:
+        if is_standard_building_finding(line) or is_protected_duplicate(line):
+            continue
+        if line not in findings:
+            findings.append(line)
+    cleaned["findings"] = findings
+
+    detail_lines = []
+    building_area_keys = [
+        normalize_report_line(line)
+        for line in cleaned.get("building_lines", []) or []
+        if re.search(r"\bareal\b|\bboligareal\b|\bbebygget\b", line.lower())
+    ]
+    for line in cleaned.get("building_details", []) or []:
+        key = normalize_report_line(line)
+        if building_area_keys and re.search(r"\bareal\b|\bboligareal\b|\bbebygget\b", line.lower()):
+            continue
+        if key and line not in detail_lines:
+            detail_lines.append(line)
+    cleaned["building_details"] = detail_lines
+
+    cleaned["secondary_buildings"] = dedupe_secondary_building_lines(
+        cleaned.get("secondary_buildings", []) or []
+    )
+
+    for field in REPORT_SECTION_FIELDS:
+        if field not in cleaned:
+            continue
+        seen = set()
+        lines = []
+        for line in cleaned.get(field, []) or []:
+            key = normalize_report_line(line)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            lines.append(line)
+        cleaned[field] = lines
+
+    return cleaned
+
+
 def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
     """Apply presentation rules again, even if the model ignores an instruction."""
     if not isinstance(report, dict):
@@ -5236,7 +5430,7 @@ def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
                 lines.append(cleaned)
         return lines
 
-    return {
+    cleaned_report = {
         "title": "FULD INDSATSBRIEF" if report_mode == "full" else "HURTIG INDSATSBRIEF",
         "address_lines": clean_lines(report.get("address_lines")),
         "findings": clean_lines(report.get("findings")),
@@ -5258,12 +5452,20 @@ def sanitize_ai_report(report, raw_incident_data, report_mode="short"):
         "traffic_lines": clean_lines(report.get("traffic_lines")),
         "disclaimer": REPORT_DISCLAIMER,
     }
+    return clean_report_sections(cleaned_report)
 
 
-def build_deterministic_building_findings(raw_incident_data):
-    """Create presentation-safe BBR findings when the model leaves them out."""
+def build_deterministic_building_sections(raw_incident_data):
+    """Create presentation-safe BBR sections when the model leaves them out."""
     building = raw_incident_data.get("building") or {}
-    findings = []
+    sections = {
+        "building_lines": [],
+        "building_details": [],
+        "heating_lines": [],
+        "secondary_buildings": [],
+        "basement_lines": [],
+        "findings": [],
+    }
 
     def text_value(*keys):
         for key in keys:
@@ -5278,45 +5480,61 @@ def build_deterministic_building_findings(raw_incident_data):
 
     building_type = text_value("building_type_text", "usage_text")
     if building_type:
-        findings.append(f"Bygning: {building_type}")
+        sections["building_lines"].append(f"Bygningstype: {building_type}")
 
     area_m2 = number_value("area_m2")
     if area_m2 is not None:
-        findings.append(f"Areal: {area_m2} m²")
+        sections["building_lines"].append(f"Samlet bygningsareal: {area_m2} m²")
+
+    residential_area = number_value("residential_area_m2")
+    if residential_area is not None:
+        sections["building_lines"].append(f"Boligareal: {residential_area} m²")
+
+    built_area = number_value("built_area_m2")
+    if built_area is not None:
+        sections["building_lines"].append(f"Bebygget areal: {built_area} m²")
+
+    floors_count = number_value("floors_count")
+    if floors_count is not None:
+        sections["building_lines"].append(f"Antal etager: {floors_count}")
 
     construction_year = number_value("construction_year")
     if construction_year is not None:
-        findings.append(f"Opført: {construction_year}")
+        sections["building_lines"].append(f"Opført: {construction_year}")
 
     renovation_year = number_value("renovation_year")
     if renovation_year is not None:
-        findings.append(f"Ombygget: {renovation_year}")
+        sections["building_lines"].append(f"Ombygget: {renovation_year}")
 
     outer_wall = text_value("outer_wall_material_text")
     if outer_wall:
-        findings.append(f"Ydervæg: {outer_wall}")
+        sections["building_details"].append(f"Facade: {outer_wall}")
 
     roof = text_value("roof_material_text")
     if roof:
-        findings.append(f"Tag: {roof}")
+        sections["building_details"].append(f"Tagdækning: {roof}")
 
-    heating = [
-        value for value in [
-            text_value("heating_installation_text"),
-            text_value("heating_fuel_text"),
-            text_value("supplementary_heating_text"),
-        ] if value
-    ]
-    if heating:
-        findings.append(f"Varme: {', '.join(dict.fromkeys(heating))}")
+    heating_installation = text_value("heating_installation_text")
+    if heating_installation:
+        sections["heating_lines"].append(f"Varme: {heating_installation}")
+
+    heating_fuel = text_value("heating_fuel_text")
+    if heating_fuel:
+        sections["heating_lines"].append(f"Brændsel: {heating_fuel}")
+
+    supplementary_heating = text_value("supplementary_heating_text")
+    if supplementary_heating:
+        sections["heating_lines"].append(f"Supplerende varme: {supplementary_heating}")
 
     basement_area = number_value("basement_area_m2")
     if raw_incident_has_basement(raw_incident_data):
-        findings.append(
+        sections["findings"].append("Kælder registreret")
+        sections["basement_lines"].append(
             f"Kælder: {basement_area} m²"
             if basement_area is not None else "Kælder registreret"
         )
 
+    has_secondary = False
     for secondary in building.get("secondary_buildings", []) or []:
         secondary_type = (
             clean_short_report_text(secondary.get("building_type_text"))
@@ -5334,9 +5552,24 @@ def build_deterministic_building_findings(raw_incident_data):
         if is_positive_report_value(secondary_roof):
             parts.append(f"tag {secondary_roof}")
 
-        findings.append(f"Sekundær bygning: {', '.join(parts)}")
+        sections["secondary_buildings"].append(", ".join(parts))
+        has_secondary = True
 
-    return list(dict.fromkeys(findings))
+    if has_secondary:
+        sections["findings"].append("Sekundære bygninger registreret")
+
+    for key, lines in list(sections.items()):
+        sections[key] = list(dict.fromkeys(lines))
+    return clean_report_sections(sections)
+
+
+def build_deterministic_building_findings(raw_incident_data):
+    """Backward-compatible combined building facts for older fallback paths."""
+    sections = build_deterministic_building_sections(raw_incident_data)
+    combined = []
+    for field in ["building_lines", "building_details", "heating_lines", "basement_lines", "secondary_buildings"]:
+        combined.extend(sections.get(field, []))
+    return list(dict.fromkeys(combined))
 
 
 def build_deterministic_report_structured(raw_incident_data, report_mode="short"):
@@ -5412,30 +5645,31 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
             f"ca. {main_road['distance_m']} m fra nærmeste større vej."
         )
 
-    building_lines = build_deterministic_building_findings(raw_incident_data)
+    building_sections = build_deterministic_building_sections(raw_incident_data)
 
-    return {
+    report = {
         "title": "FULD INDSATSBRIEF" if report_mode == "full" else "HURTIG INDSATSBRIEF",
         "address_lines": list(dict.fromkeys(address_lines)),
-        "findings": [] if report_mode == "full" else building_lines,
-        "building_lines": building_lines if report_mode == "full" else [],
+        "findings": building_sections.get("findings", []),
+        "building_lines": building_sections.get("building_lines", []),
         "surroundings_lines": list(dict.fromkeys(osm_lines)) if report_mode == "full" else [],
         "osm_risk_lines": [] if report_mode == "full" else list(dict.fromkeys(osm_lines)),
         "weather_lines": list(dict.fromkeys(weather_lines)),
         "water_supply_lines": water_supply_lines,
         "assistance_lines": [],
         "map_links": [],
-        "building_details": [],
+        "building_details": building_sections.get("building_details", []),
         "access_lines": [],
-        "secondary_buildings": [],
-        "basement_lines": [],
-        "heating_lines": [],
+        "secondary_buildings": building_sections.get("secondary_buildings", []),
+        "basement_lines": building_sections.get("basement_lines", []),
+        "heating_lines": building_sections.get("heating_lines", []),
         "risk_context_lines": [],
         "resource_lines": [],
         "supplementary_lines": supplementary_lines,
         "traffic_lines": traffic_lines,
         "disclaimer": REPORT_DISCLAIMER,
     }
+    return clean_report_sections(report)
 
 
 def build_analyze_debug(raw_incident_data, payload=None):
@@ -5481,10 +5715,10 @@ def build_report_text(report_structured):
         ("Fund", "findings"),
         ("Bygning", "building_lines"),
         ("Bygningsdetaljer", "building_details"),
+        ("Varme", "heating_lines"),
         ("Adgang", "access_lines"),
         ("Sekundære bygninger", "secondary_buildings"),
         ("Kælder", "basement_lines"),
-        ("Varme", "heating_lines"),
         ("Omgivelser / OSM", "surroundings_lines"),
         ("Risikokontekst", "risk_context_lines"),
         ("OSM-risikotjek", "osm_risk_lines"),
@@ -5593,11 +5827,11 @@ def analyze_brief_response(address, radius_m, report_mode="short"):
         ):
             report_structured[osm_field] = concrete_osm_lines
 
-        findings_field = "building_lines" if report_mode == "full" else "findings"
-        if not report_structured[findings_field]:
-            fallback_findings = build_deterministic_building_findings(raw_incident_data)
-            if fallback_findings:
-                report_structured[findings_field] = fallback_findings
+        fallback_sections = build_deterministic_building_sections(raw_incident_data)
+        for field in ["findings", "building_lines", "building_details", "heating_lines", "basement_lines", "secondary_buildings"]:
+            if not report_structured.get(field) and fallback_sections.get(field):
+                report_structured[field] = fallback_sections[field]
+        report_structured = clean_report_sections(report_structured)
 
         return jsonify({
             "report_text": build_report_text(report_structured),

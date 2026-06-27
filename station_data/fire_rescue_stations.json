@@ -129,7 +129,10 @@
   },
   {
     "id": "vbd_goerlev",
-    "name": "Station Gørlev",
+    "name": "Gørlev Brandstation",
+    "aliases": [
+      "Station Gørlev"
+    ],
     "organization": "Vestsjællands Brandvæsen",
     "authority": "Kalundborg Kommune / lokalt beredskab",
     "operator": "",
@@ -164,7 +167,10 @@
   },
   {
     "id": "vbd_kalundborg",
-    "name": "Station Kalundborg",
+    "name": "Kalundborg Brandstation",
+    "aliases": [
+      "Station Kalundborg"
+    ],
     "organization": "Vestsjællands Brandvæsen",
     "authority": "Kalundborg Kommune / lokalt beredskab",
     "operator": "",

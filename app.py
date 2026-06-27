@@ -778,6 +778,150 @@ def normalize_text(value):
     return re.sub(r"\s+", " ", normalized).strip()
 
 
+def normalize_station_identity_text(value):
+    text = str(value or "").strip().lower()
+    text = re.sub(r"[.,;:()]+", " ", text)
+    text = re.sub(r"\b(station|brandstation|beredskabsstation)\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def canonical_station_key(station):
+    if not isinstance(station, dict):
+        return ""
+    name = normalize_station_identity_text(
+        station.get("station_name")
+        or station.get("display_name")
+        or station.get("name")
+    )
+    area = normalize_station_identity_text(station.get("area"))
+    organization = normalize_station_identity_text(
+        station.get("organization")
+        or station.get("authority")
+        or station.get("operator")
+    )
+
+    if area and (not name or area == name or area in name or name in area):
+        return f"area:{area}"
+    address = normalize_station_identity_text(station.get("address"))
+    if address:
+        return f"address:{address}"
+    if area:
+        return f"area:{area}"
+    if name and organization:
+        return f"name-org:{name}:{organization}"
+    if name:
+        return f"name:{name}"
+
+    station_id = station.get("station_id") or station.get("id")
+    if station_id:
+        return f"id:{station_id}"
+    return ""
+
+
+def station_resource_richness(value):
+    if not isinstance(value, dict):
+        return 0
+    station = value.get("station") if isinstance(value.get("station"), dict) else value
+    richness = 0
+    for key in ["vehicles", "trailers", "containers", "special_resources", "resources"]:
+        collection = station.get(key) or []
+        if isinstance(collection, list):
+            richness += len(collection)
+    if value.get("matched_resource") or value.get("resource") or value.get("resource_text"):
+        richness += 100
+    return richness
+
+
+def station_pretty_name_score(name):
+    text = str(name or "")
+    score = 0
+    if "Brandstation" in text or "brandstation" in text:
+        score += 20
+    if text.lower().startswith("station "):
+        score -= 5
+    score -= len(text) / 1000
+    return score
+
+
+def station_distance_sort_tuple(item):
+    road_time = item.get("road_time_min", item.get("drive_time_min"))
+    road_distance = item.get("road_distance_km")
+    air_distance = item.get("air_distance_km")
+    return (
+        road_time is None,
+        float(road_time) if road_time is not None else 999999.0,
+        road_distance is None,
+        float(road_distance) if road_distance is not None else 999999.0,
+        air_distance is None,
+        float(air_distance) if air_distance is not None else 999999.0,
+    )
+
+
+def dedupe_station_results(results, resource_mode=False):
+    grouped = {}
+    order = []
+    for item in results or []:
+        key = canonical_station_key(item)
+        if not key:
+            key = f"fallback:{len(order)}"
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append(item)
+
+    deduped = []
+    for key in order:
+        group = grouped[key]
+        pretty_name = max(
+            [
+                item.get("display_name")
+                or item.get("station_name")
+                or item.get("name")
+                or ((item.get("station") or {}).get("name") if isinstance(item.get("station"), dict) else "")
+                for item in group
+            ],
+            key=station_pretty_name_score,
+            default="",
+        )
+
+        def winner_key(item):
+            road_time = item.get("road_time_min", item.get("drive_time_min"))
+            road_distance = item.get("road_distance_km")
+            air_distance = item.get("air_distance_km")
+            return (
+                0 if (item.get("matched_resource") or item.get("resource") or item.get("resource_text")) else 1,
+                -station_resource_richness(item),
+                float(road_time) if road_time is not None else 999999.0,
+                float(road_distance) if road_distance is not None else 999999.0,
+                float(air_distance) if air_distance is not None else 999999.0,
+                -station_pretty_name_score(item.get("station_name") or item.get("name")),
+            )
+
+        winner = dict(sorted(group, key=winner_key)[0])
+        if pretty_name:
+            if "station_name" in winner:
+                winner["station_name"] = pretty_name
+            if "name" in winner:
+                winner["name"] = pretty_name
+            winner["display_name"] = pretty_name
+        winner["station_key"] = key
+        deduped.append(winner)
+
+    if resource_mode:
+        deduped.sort(key=lambda item: (
+            *station_distance_sort_tuple(item),
+            -(item.get("match_score") or 0),
+            item.get("station_name") or item.get("name") or "",
+        ))
+    else:
+        deduped.sort(key=lambda item: (
+            *station_distance_sort_tuple(item),
+            item.get("station_name") or item.get("name") or "",
+        ))
+    return deduped
+
+
 def expand_resource_query(query):
     query_text = str(query or "").strip()
     if not query_text:
@@ -810,6 +954,7 @@ def station_text_fields(station):
         station.get("authority"),
         station.get("operator"),
         station.get("area"),
+        *(station.get("aliases") or []),
         *(station.get("special_resources") or []),
         *(station.get("resource_aliases") or []),
     ]
@@ -7432,7 +7577,7 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         origin_lat,
         origin_lon,
         matches,
-        limit=limit,
+        limit=min(max(limit * 3, limit), 30),
         radius_km=radius_km,
     )
 
@@ -7442,6 +7587,8 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         results.append({
             "station_id": station.get("id"),
             "station_name": station.get("name"),
+            "display_name": station.get("name"),
+            "station_key": canonical_station_key(station),
             "type": station.get("type"),
             "organization": station.get("organization"),
             "authority": station.get("authority"),
@@ -7461,7 +7608,9 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
             "road_time_min": item.get("road_time_min"),
             "source": station.get("source", "manual"),
             "notes": station.get("notes"),
+            "match_score": item.get("match_score"),
         })
+    results = dedupe_station_results(results, resource_mode=True)[:limit]
 
     payload = {
         "address": address_data.get("normalized_address") or address,
@@ -7656,26 +7805,33 @@ def assistance_stations():
         }), 404
 
     stations = []
-    for station in sorted(nearby_stations, key=lambda item: item["air_distance_km"])[:limit]:
+    for station in sorted(nearby_stations, key=lambda item: item["air_distance_km"])[:min(max(limit * 3, limit), 30)]:
         route = get_driving_route_osrm(
             incident_lat, incident_lon, station["lat"], station["lon"]
         )
         stations.append({
+            "station_id": station.get("id") or station.get("osm_id"),
             "name": station["name"],
+            "station_name": station["name"],
+            "display_name": station["name"],
+            "station_key": canonical_station_key(station),
             "type": station["type"],
             "organization": station.get("organization"),
             "authority": station.get("authority"),
             "operator": station.get("operator"),
             "area": station["area"],
+            "address": station.get("address"),
             "air_distance_km": station["air_distance_km"],
             "source": station.get("source", "manual"),
             **route,
         })
 
+    stations = dedupe_station_results(stations, resource_mode=False)[:limit]
     stations.sort(key=lambda item: (
         item["drive_time_min"] is None,
         item["drive_time_min"] if item["drive_time_min"] is not None else item["air_distance_km"],
         item["air_distance_km"],
+        item.get("name") or "",
     ))
 
     return jsonify({

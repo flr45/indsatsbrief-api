@@ -1099,7 +1099,7 @@ def station_resource_richness(value):
         collection = station.get(key) or []
         if isinstance(collection, list):
             richness += len(collection)
-    if value.get("matched_resource") or value.get("resource") or value.get("resource_text"):
+    if value.get("display_resource") or value.get("matched_resource") or value.get("resource") or value.get("resource_text"):
         richness += 100
     return richness
 
@@ -1161,7 +1161,7 @@ def dedupe_station_results(results, resource_mode=False):
             road_distance = item.get("road_distance_km")
             air_distance = item.get("air_distance_km")
             return (
-                0 if (item.get("matched_resource") or item.get("resource") or item.get("resource_text")) else 1,
+                0 if (item.get("display_resource") or item.get("matched_resource") or item.get("resource") or item.get("resource_text")) else 1,
                 -station_resource_richness(item),
                 float(road_time) if road_time is not None else 999999.0,
                 float(road_distance) if road_distance is not None else 999999.0,
@@ -1279,6 +1279,16 @@ def resource_display_name(name, resource_type):
     return name or resource_type
 
 
+def is_category_only_resource(item, item_kind):
+    if item_kind != "station_resource":
+        return False
+    name = normalize_text(item.get("name"))
+    item_type = normalize_text(item.get("type") or item.get("resource_type"))
+    aliases = [normalize_text(value) for value in item.get("aliases") or [] if normalize_text(value)]
+    capabilities = [normalize_text(value) for value in item.get("capabilities") or [] if normalize_text(value)]
+    return bool(name and (not item_type or item_type == name) and not aliases and set(capabilities).issubset({name}))
+
+
 def height_resource_priority_bonus(item, expanded_terms):
     query_term = normalize_text(expanded_terms[0]) if expanded_terms else ""
     text = normalize_text(" ".join([
@@ -1313,12 +1323,26 @@ def height_resource_priority_bonus(item, expanded_terms):
 
 def score_station_resource(item, expanded_terms, item_kind):
     strict = is_strict_resource_query(expanded_terms)
+    category_only = is_category_only_resource(item, item_kind)
+    if item_kind == "vehicle":
+        name_score, type_score, alias_score, capability_score = 130, 120, 90, 80
+    elif item_kind in ["trailer", "container"]:
+        name_score, type_score, alias_score, capability_score = 115, 105, 88, 78
+    else:
+        name_score, type_score, alias_score, capability_score = 110, 100, 88, 78
+    if category_only:
+        name_score -= 40
+        type_score -= 40
+        alias_score -= 20
+        capability_score -= 20
+
     candidates = [
-        (item.get("name"), 100),
-        (item.get("type"), 85),
+        (item.get("name"), name_score),
+        (item.get("callsign"), name_score),
+        (item.get("type") or item.get("vehicle_type") or item.get("resource_type"), type_score),
     ]
-    candidates.extend((alias, 82) for alias in item.get("aliases") or [])
-    candidates.extend((capability, 80) for capability in item.get("capabilities") or [])
+    candidates.extend((alias, alias_score) for alias in item.get("aliases") or [])
+    candidates.extend((capability, capability_score) for capability in item.get("capabilities") or [])
     best = None
     matched_terms = []
 
@@ -1335,12 +1359,18 @@ def score_station_resource(item, expanded_terms, item_kind):
         return None
 
     best += height_resource_priority_bonus(item, expanded_terms)
+    display_resource = resource_display_name(
+        item.get("name") or item.get("callsign"),
+        item.get("type") or item.get("vehicle_type") or item.get("resource_type"),
+    ) or item_kind
 
     return {
-        "matched_resource": resource_display_name(item.get("name"), item.get("type")) or item_kind,
+        "matched_resource": display_resource,
+        "display_resource": display_resource,
+        "resource": display_resource,
         "matched_type": item_kind,
-        "matched_resource_name": item.get("name"),
-        "matched_resource_type": item.get("type"),
+        "matched_resource_name": item.get("name") or item.get("callsign"),
+        "matched_resource_type": item.get("type") or item.get("vehicle_type") or item.get("resource_type"),
         "matched_resource_kind": item_kind,
         "matched_capabilities": item.get("capabilities") or [],
         "match_score": best,
@@ -1377,6 +1407,8 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                 score, terms = scored
                 station_matches.append({
                     "matched_resource": value,
+                    "display_resource": value,
+                    "resource": value,
                     "matched_type": "station_resource",
                     "matched_resource_name": value,
                     "matched_resource_type": None,
@@ -1392,6 +1424,8 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                 score, terms = scored
                 station_matches.append({
                     "matched_resource": value,
+                    "display_resource": value,
+                    "resource": value,
                     "matched_type": "alias",
                     "matched_resource_name": value,
                     "matched_resource_type": None,
@@ -5355,7 +5389,7 @@ def admin_users():
         """)
     body = f"""
     <div class="admin-shell">
-        <header><div><h1>Brugere</h1><p>Admin-godkendelse til IndsatsBrief Brand</p></div><a href="/brief">Til brief</a></header>
+        <header><div><h1>Brugere</h1><p>Admin-godkendelse til IndsatsBrief Brand</p></div><nav class="actions"><a href="/admin/stations">Stationer</a><a href="/admin/knowledge">Viden</a><a href="/brief">Til brief</a></nav></header>
         {status_message}
         {reset_message}
         <main>{''.join(rows) if rows else '<p>Ingen brugere.</p>'}</main>
@@ -5691,6 +5725,7 @@ def admin_resource_edit(resource_id):
 
 
 @app.route("/admin/vehicles/<int:vehicle_id>/delete", methods=["POST"])
+@app.route("/admin/vehicles/<int:vehicle_id>/toggle", methods=["POST"])
 @admin_required
 def admin_vehicle_toggle(vehicle_id):
     vehicle = db.session.get(StationVehicle, vehicle_id) if db and StationVehicle else None
@@ -5702,6 +5737,7 @@ def admin_vehicle_toggle(vehicle_id):
 
 
 @app.route("/admin/resources/<int:resource_id>/delete", methods=["POST"])
+@app.route("/admin/resources/<int:resource_id>/toggle", methods=["POST"])
 @admin_required
 def admin_resource_toggle(resource_id):
     resource = db.session.get(StationResource, resource_id) if db and StationResource else None
@@ -6452,11 +6488,14 @@ def brief_page():
         }
 
         function matchedResourceLabel(item) {
+            if (item.display_resource) return item.display_resource;
+            if (item.matched_resource) return item.matched_resource;
+            if (item.resource) return item.resource;
             const name = item.matched_resource_name;
             const type = item.matched_resource_type;
             if (name && type && String(name).toLowerCase() !== String(type).toLowerCase()) return `${name} – ${type}`;
             if (name || type) return name || type;
-            return item.matched_resource || null;
+            return null;
         }
 
         function appendBadgeList(container, values) {
@@ -8370,6 +8409,8 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
             "area": station.get("area"),
             "address": station.get("address"),
             "operational_response_station": station.get("operational_response_station") is not False,
+            "display_resource": item.get("display_resource") or item.get("matched_resource"),
+            "resource": item.get("resource") or item.get("matched_resource"),
             "matched_resource": item.get("matched_resource"),
             "matched_type": item.get("matched_type"),
             "matched_resource_name": item.get("matched_resource_name"),
@@ -8543,7 +8584,7 @@ def answer_resource_followup(question, incident_data):
 
     result = payload["results"][0]
     station = result.get("station_name")
-    resource = result.get("matched_resource") or resource_query
+    resource = result.get("display_resource") or result.get("matched_resource") or result.get("resource") or resource_query
     organization = result.get("organization") or result.get("authority") or result.get("operator")
     distance = result.get("air_distance_km")
     road_time = result.get("road_time_min")

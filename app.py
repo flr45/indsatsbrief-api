@@ -276,12 +276,12 @@ RESOURCE_ALIAS_CACHE = None
 STATION_GEOCODE_CACHE = {}
 RESOURCE_ALIAS_MAP = {
     "sprøjte": ["sprøjte", "autosprøjte", "automobilsprøjte", "automobilsproejte", "brandsprøjte", "brandbil", "basis", "basisenhed", "tanksprøjte", "tanksproejte"],
-    "tankvogn": ["tankvogn", "vandtankvogn", "vandtank", "vandforsyning", "vandressource", "vand"],
+    "tankvogn": ["tankvogn", "vandtankvogn", "vandtank", "vandforsyning", "vandressource", "vand", "tank"],
     "stige": ["stige", "drejestige", "stigevogn", "redningslift", "lift", "højderedning", "hoejderedning", "redning fra højde", "tagarbejde"],
-    "redningsvogn": ["redningsvogn", "pionervogn", "frigørelse", "frigoerelse", "tung frigørelse", "tung redning", "trafikuheld", "fastklemt", "redning"],
-    "kemi": ["kemi", "CBRN", "cbrn", "kemivogn", "miljøvogn", "miljoevogn", "miljø", "miljoe", "farlige stoffer", "forurening", "rens", "renseplads"],
+    "redningsvogn": ["redningsvogn", "pionervogn", "frigørelse", "frigoerelse", "tung frigørelse", "tung redning", "trafikuheld", "fastklemt", "redning", "frigørelsesværktøj", "frigoerelsesvaerktoej", "hydraulisk værktøj", "hydraulisk vaerktoej"],
+    "kemi": ["kemi", "kemikalie", "CBRN", "cbrn", "kemivogn", "miljøvogn", "miljoevogn", "miljø", "miljoe", "farlige stoffer", "hazmat", "forurening", "rens", "renseplads"],
     "båd": ["båd", "baad", "redningsbåd", "redningsbaad", "bådtrækker", "baadtraekker", "vandredning", "overfladeredning", "søredning", "soeredning", "SAR", "hovercraft", "dykker", "vanddykker", "dykkervogn"],
-    "robot": ["robot", "R6", "TAF 60", "TAF60", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "fjernstyret indsats", "robot/TAF 60"],
+    "robot": ["robot", "R6", "TAF", "TAF 60", "TAF60", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "fjernstyret indsats", "robot/TAF 60"],
     "MIRG": ["MIRG", "mirg", "skibsbrand", "skib", "maritim indsats", "slukning til søs", "brandslukning til søs", "Maritime Incident Response Group"],
     "slangetender": ["slangetender", "slange", "slanger", "slangeudlægning", "A-slange", "B-slange", "taktisk vandforsyning"],
     "indsatsleder": ["indsatsleder", "ISL", "isl", "ledervogn", "indsatsledervogn", "holdleder", "ledelse"],
@@ -848,6 +848,11 @@ def station_float_value(value):
         return None
 
 
+def invalidate_station_data_cache():
+    global STATION_DATA_CACHE
+    STATION_DATA_CACHE = None
+
+
 def split_station_postal_city(address):
     match = re.search(r"\b(\d{4})\s+([^,]+)$", str(address or "").strip())
     if not match:
@@ -1016,9 +1021,18 @@ def load_fire_rescue_stations_from_db(include_inactive=False):
 
 
 def load_fire_rescue_stations():
-    """Load station/resource data from DB, with JSON fallback."""
-    db_stations = load_fire_rescue_stations_from_db(include_inactive=False)
-    return db_stations or load_fire_rescue_stations_from_json()
+    """Load fresh DB station/resource data, with JSON only when DB has no stations."""
+    if db and Station:
+        try:
+            if Station.query.count() > 0:
+                return load_fire_rescue_stations_from_db(include_inactive=False)
+            seed_fire_rescue_stations_if_empty()
+            db_stations = load_fire_rescue_stations_from_db(include_inactive=False)
+            if db_stations:
+                return db_stations
+        except Exception as error:
+            app.logger.warning("Kunne ikke læse stationsdata fra database: %s", error)
+    return load_fire_rescue_stations_from_json()
 
 
 def load_resource_aliases():
@@ -1325,34 +1339,51 @@ def score_station_resource(item, expanded_terms, item_kind):
     strict = is_strict_resource_query(expanded_terms)
     category_only = is_category_only_resource(item, item_kind)
     if item_kind == "vehicle":
-        name_score, type_score, alias_score, capability_score = 130, 120, 90, 80
+        name_score, type_score, alias_score, capability_score, description_score = 100, 90, 70, 60, 40
     elif item_kind in ["trailer", "container"]:
-        name_score, type_score, alias_score, capability_score = 115, 105, 88, 78
+        name_score, type_score, alias_score, capability_score, description_score = 90, 82, 70, 60, 40
     else:
-        name_score, type_score, alias_score, capability_score = 110, 100, 88, 78
+        name_score, type_score, alias_score, capability_score, description_score = 85, 80, 70, 60, 40
     if category_only:
-        name_score -= 40
-        type_score -= 40
-        alias_score -= 20
-        capability_score -= 20
+        name_score = min(name_score, 60)
+        type_score = min(type_score, 55)
+        alias_score = min(alias_score, 50)
+        capability_score = min(capability_score, 45)
+        description_score = min(description_score, 30)
+
+    if item_kind == "vehicle":
+        name_source = "vehicle.name"
+        callsign_source = "vehicle.callsign"
+        type_source = "vehicle.vehicle_type"
+    elif item_kind in ["trailer", "container"]:
+        name_source = f"{item_kind}.name"
+        callsign_source = f"{item_kind}.callsign"
+        type_source = f"{item_kind}.type"
+    else:
+        name_source = "resource.name"
+        callsign_source = "resource.callsign"
+        type_source = "resource.resource_type"
 
     candidates = [
-        (item.get("name"), name_score),
-        (item.get("callsign"), name_score),
-        (item.get("type") or item.get("vehicle_type") or item.get("resource_type"), type_score),
+        (item.get("name"), name_score, name_source),
+        (item.get("callsign"), name_score, callsign_source),
+        (item.get("type") or item.get("vehicle_type") or item.get("resource_type"), type_score, type_source),
     ]
-    candidates.extend((alias, alias_score) for alias in item.get("aliases") or [])
-    candidates.extend((capability, capability_score) for capability in item.get("capabilities") or [])
+    candidates.extend((alias, alias_score, f"{item_kind}.aliases") for alias in item.get("aliases") or [])
+    candidates.extend((capability, capability_score, f"{item_kind}.capabilities") for capability in item.get("capabilities") or [])
+    candidates.append((item.get("description"), description_score, f"{item_kind}.description"))
     best = None
+    best_source = None
     matched_terms = []
 
-    for value, base_score in candidates:
+    for value, base_score, source in candidates:
         scored = score_resource_text(value, expanded_terms, base_score, strict=strict)
         if not scored:
             continue
         score, terms = scored
         if best is None or score > best:
             best = score
+            best_source = source
         matched_terms.extend(term for term in terms if term not in matched_terms)
 
     if best is None:
@@ -1373,6 +1404,7 @@ def score_station_resource(item, expanded_terms, item_kind):
         "matched_resource_type": item.get("type") or item.get("vehicle_type") or item.get("resource_type"),
         "matched_resource_kind": item_kind,
         "matched_capabilities": item.get("capabilities") or [],
+        "match_source": best_source,
         "match_score": best,
         "matched_terms": matched_terms,
     }
@@ -1402,7 +1434,7 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                     station_matches.append(scored)
 
         for value in station.get("special_resources") or []:
-            scored = score_resource_text(value, expanded_terms, 70, strict=strict)
+            scored = score_resource_text(value, expanded_terms, 45, strict=strict)
             if scored:
                 score, terms = scored
                 station_matches.append({
@@ -1414,12 +1446,13 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                     "matched_resource_type": None,
                     "matched_resource_kind": "station_resource",
                     "matched_capabilities": [],
+                    "match_source": "station.special_resources",
                     "match_score": score,
                     "matched_terms": terms,
                 })
 
         for value in station_text_fields(station):
-            scored = score_resource_text(value, expanded_terms, 55, strict=strict)
+            scored = score_resource_text(value, expanded_terms, 20, strict=strict)
             if scored:
                 score, terms = scored
                 station_matches.append({
@@ -1431,6 +1464,7 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                     "matched_resource_type": None,
                     "matched_resource_kind": "station_resource",
                     "matched_capabilities": [],
+                    "match_source": "station.text",
                     "match_score": score,
                     "matched_terms": terms,
                 })
@@ -5575,6 +5609,7 @@ def admin_station_new():
             apply_station_values(station, values)
             db.session.add(station)
             db.session.commit()
+            invalidate_station_data_cache()
             session["station_admin_message"] = "Stationen er oprettet."
             return redirect(url_for("admin_stations"))
     return Response(admin_layout("Opret station", station_form_html("/admin/stations/new", None, error)), status=400 if error else 200, mimetype="text/html")
@@ -5594,6 +5629,7 @@ def admin_station_edit(station_id):
         else:
             apply_station_values(station, values)
             db.session.commit()
+            invalidate_station_data_cache()
             session["station_admin_message"] = "Stationen er gemt."
             return redirect(url_for("admin_stations"))
     return Response(admin_layout("Rediger station", station_form_html(f"/admin/stations/{station.id}/edit", station, error)), status=400 if error else 200, mimetype="text/html")
@@ -5606,6 +5642,7 @@ def admin_station_toggle(station_id):
     if station:
         station.is_active = not station.is_active
         db.session.commit()
+        invalidate_station_data_cache()
         session["station_admin_message"] = "Stationens status er opdateret."
     return redirect(url_for("admin_stations"))
 
@@ -5618,6 +5655,9 @@ def admin_station_items(station_id, kind):
     items = station.vehicles if is_vehicle else station.resources
     title = "Køretøjer" if is_vehicle else "Ressourcer"
     new_url = f"/admin/stations/{station.id}/{kind}/new"
+    message = session.pop("station_admin_message", None)
+    message_kind = session.pop("station_admin_kind", "success")
+    status_html = f'<section class="admin-message {html.escape(message_kind)}">{html.escape(message)}</section>' if message else ""
     cards = []
     for item in sorted(items, key=lambda entry: (entry.sort_order or 0, entry.name or "")):
         type_text = item.vehicle_type if is_vehicle else item.resource_type
@@ -5634,6 +5674,7 @@ def admin_station_items(station_id, kind):
 </article>
 """)
     body = f"""
+{status_html}
 <section class="card"><h2>{html.escape(station.name)}</h2><p class="actions"><a class="button" href="{new_url}">Opret {'køretøj' if is_vehicle else 'ressource'}</a><a class="button secondary" href="/admin/stations">Til stationer</a></p></section>
 <section class="grid">{''.join(cards) or '<article class="card"><p>Ingen poster endnu.</p></article>'}</section>
 """
@@ -5668,6 +5709,8 @@ def admin_vehicle_new(station_id):
             apply_vehicle_values(vehicle, values)
             db.session.add(vehicle)
             db.session.commit()
+            invalidate_station_data_cache()
+            session["station_admin_message"] = "Køretøj gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_vehicles", station_id=station.id))
     return Response(admin_layout("Opret køretøj", resource_form_html(f"/admin/stations/{station.id}/vehicles/new", station, kind="vehicle", error=error)), status=400 if error else 200, mimetype="text/html")
 
@@ -5688,6 +5731,8 @@ def admin_resource_new(station_id):
             apply_resource_values(resource, values)
             db.session.add(resource)
             db.session.commit()
+            invalidate_station_data_cache()
+            session["station_admin_message"] = "Ressource gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_resources", station_id=station.id))
     return Response(admin_layout("Opret ressource", resource_form_html(f"/admin/stations/{station.id}/resources/new", station, kind="resource", error=error)), status=400 if error else 200, mimetype="text/html")
 
@@ -5704,6 +5749,8 @@ def admin_vehicle_edit(vehicle_id):
         if values["name"]:
             apply_vehicle_values(vehicle, values)
             db.session.commit()
+            invalidate_station_data_cache()
+            session["station_admin_message"] = "Køretøj gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_vehicles", station_id=vehicle.station_id))
     return Response(admin_layout("Rediger køretøj", resource_form_html(f"/admin/vehicles/{vehicle.id}/edit", vehicle.station, item, "vehicle")), mimetype="text/html")
 
@@ -5720,6 +5767,8 @@ def admin_resource_edit(resource_id):
         if values["name"]:
             apply_resource_values(resource, values)
             db.session.commit()
+            invalidate_station_data_cache()
+            session["station_admin_message"] = "Ressource gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_resources", station_id=resource.station_id))
     return Response(admin_layout("Rediger ressource", resource_form_html(f"/admin/resources/{resource.id}/edit", resource.station, item, "resource")), mimetype="text/html")
 
@@ -5732,6 +5781,8 @@ def admin_vehicle_toggle(vehicle_id):
     if vehicle:
         vehicle.is_active = not vehicle.is_active
         db.session.commit()
+        invalidate_station_data_cache()
+        session["station_admin_message"] = "Køretøjets status er opdateret. Ændringen bruges nu i ressourcesøgningen."
         return redirect(url_for("admin_station_vehicles", station_id=vehicle.station_id))
     return redirect(url_for("admin_stations"))
 
@@ -5744,6 +5795,8 @@ def admin_resource_toggle(resource_id):
     if resource:
         resource.is_active = not resource.is_active
         db.session.commit()
+        invalidate_station_data_cache()
+        session["station_admin_message"] = "Ressourcens status er opdateret. Ændringen bruges nu i ressourcesøgningen."
         return redirect(url_for("admin_station_resources", station_id=resource.station_id))
     return redirect(url_for("admin_stations"))
 
@@ -8399,6 +8452,7 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         station = item.get("station") or {}
         results.append({
             "station_id": station.get("id"),
+            "name": station.get("name"),
             "station_name": station.get("name"),
             "display_name": station.get("name"),
             "station_key": canonical_station_key(station),
@@ -8418,6 +8472,7 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
             "matched_resource_kind": item.get("matched_resource_kind"),
             "matched_capabilities": item.get("matched_capabilities", []),
             "matched_terms": item.get("matched_terms", []),
+            "match_source": item.get("match_source"),
             "air_distance_km": item.get("air_distance_km"),
             "road_distance_km": item.get("road_distance_km"),
             "road_time_min": item.get("road_time_min"),

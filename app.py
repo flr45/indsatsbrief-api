@@ -1132,12 +1132,93 @@ def load_fire_rescue_stations():
     return load_fire_rescue_stations_from_json()
 
 
+def get_searchable_stations(include_non_operational=True):
+    """Return normalized searchable station data and the active source."""
+    data_source = station_resource_data_source()
+    stations = load_fire_rescue_stations()
+    normalized = []
+    for station in stations:
+        if station.get("is_active") is False:
+            continue
+        if not include_non_operational and station.get("operational_response_station") is False:
+            continue
+        normalized.append({
+            "id": station.get("id") or station.get("source_ref_id"),
+            "source_ref_id": station.get("source_ref_id"),
+            "name": station.get("name"),
+            "aliases": station_list_value(station.get("aliases")),
+            "type": station.get("type") or "Brand/redning",
+            "organization": station.get("organization") or station.get("organisation"),
+            "organisation": station.get("organization") or station.get("organisation"),
+            "authority": station.get("authority"),
+            "operator": station.get("operator"),
+            "area": station.get("area"),
+            "address": station.get("address"),
+            "postal_code": station.get("postal_code"),
+            "city": station.get("city"),
+            "lat": station.get("lat"),
+            "lon": station.get("lon"),
+            "source": station.get("source") or data_source,
+            "is_active": station.get("is_active", True) is not False,
+            "operational_response_station": station.get("operational_response_station", True) is not False,
+            "notes": station.get("notes"),
+            "tags": station_search_values(station.get("tags")),
+            "raw_data": station_search_values(station.get("raw_data")),
+            "vehicles": [
+                {
+                    "id": vehicle.get("id"),
+                    "name": vehicle.get("name"),
+                    "callsign": vehicle.get("callsign"),
+                    "type": vehicle.get("vehicle_type") or vehicle.get("type"),
+                    "vehicle_type": vehicle.get("vehicle_type") or vehicle.get("type"),
+                    "description": vehicle.get("description"),
+                    "aliases": station_list_value(vehicle.get("aliases")),
+                    "capabilities": station_list_value(vehicle.get("capabilities")),
+                    "tags": station_search_values(vehicle.get("tags")),
+                    "raw_data": station_search_values(vehicle.get("raw_data")),
+                    "is_active": vehicle.get("is_active", True) is not False,
+                }
+                for vehicle in station.get("vehicles") or []
+                if vehicle.get("is_active", True) is not False
+            ],
+            "resources": [
+                {
+                    "id": resource.get("id"),
+                    "name": resource.get("name"),
+                    "type": resource.get("resource_type") or resource.get("type"),
+                    "resource_type": resource.get("resource_type") or resource.get("type"),
+                    "description": resource.get("description"),
+                    "aliases": station_list_value(resource.get("aliases")),
+                    "capabilities": station_list_value(resource.get("capabilities")),
+                    "tags": station_search_values(resource.get("tags")),
+                    "raw_data": station_search_values(resource.get("raw_data")),
+                    "is_active": resource.get("is_active", True) is not False,
+                }
+                for resource in station.get("resources") or []
+                if resource.get("is_active", True) is not False
+            ],
+            "trailers": station.get("trailers") or [],
+            "containers": station.get("containers") or [],
+            "special_resources": station_list_value(station.get("special_resources")),
+            "resource_aliases": station_list_value(station.get("resource_aliases")),
+        })
+    return normalized, data_source
+
+
 def load_resource_aliases():
     """Load centralized resource aliases for natural-language resource search."""
     global RESOURCE_ALIAS_CACHE
     if RESOURCE_ALIAS_CACHE is None:
         data = load_json_file(RESOURCE_ALIASES_FILE, {})
-        RESOURCE_ALIAS_CACHE = {**RESOURCE_ALIAS_MAP, **data} if isinstance(data, dict) else dict(RESOURCE_ALIAS_MAP)
+        merged = {}
+        for source in [RESOURCE_ALIAS_MAP, data if isinstance(data, dict) else {}]:
+            for canonical, terms in source.items():
+                key = str(canonical)
+                merged.setdefault(key, [])
+                for term in [key, *(terms or [])]:
+                    if term not in merged[key]:
+                        merged[key].append(term)
+        RESOURCE_ALIAS_CACHE = merged
     return RESOURCE_ALIAS_CACHE
 
 def normalize_text(value):
@@ -1566,69 +1647,75 @@ def match_resource_query(query_terms, station, vehicle=None, resource=None):
     }
 
 
+def match_station_resource(query_terms, station):
+    station_matches = []
+    for vehicle in station.get("vehicles") or []:
+        match = match_resource_query(query_terms, station, vehicle=vehicle)
+        if match.get("matched"):
+            station_matches.append({
+                **match,
+                "matched_object_type": "vehicle",
+                "matched_object_id": vehicle.get("id"),
+            })
+
+    for resource in station.get("resources") or []:
+        match = match_resource_query(query_terms, station, resource=resource)
+        if match.get("matched"):
+            station_matches.append({
+                **match,
+                "matched_object_type": "resource",
+                "matched_object_id": resource.get("id"),
+            })
+
+    for collection_name, object_type in [("trailers", "trailer"), ("containers", "container")]:
+        for item in station.get(collection_name) or []:
+            match = score_station_resource(item, query_terms, object_type)
+            if match:
+                station_matches.append({
+                    **match,
+                    "matched": True,
+                    "matched_object_type": object_type,
+                    "matched_object_id": item.get("id"),
+                })
+
+    if station_matches:
+        def concrete_sort_key(match):
+            type_priority = {"vehicle": 0, "resource": 1, "trailer": 2, "container": 3}
+            return (
+                -(match.get("match_score") or 0),
+                type_priority.get(match.get("matched_object_type"), 9),
+                match.get("display_resource") or "",
+            )
+        return sorted(station_matches, key=concrete_sort_key)[0]
+
+    station_match = match_resource_query(query_terms, station)
+    if station_match.get("matched"):
+        return {
+            **station_match,
+            "matched_object_type": "station",
+            "matched_object_id": station.get("id"),
+        }
+    return {
+        "matched": False,
+        "match_score": 0,
+        "match_source": None,
+        "display_resource": None,
+        "matched_terms": [],
+        "matched_object_type": None,
+        "matched_object_id": None,
+    }
+
+
 def find_matching_station_resources(resource_query, include_non_operational=False):
     expanded_terms = expand_resource_query(resource_query)
     if not expanded_terms:
         return []
-    strict = is_strict_resource_query(expanded_terms)
-
     matches = []
-    for station in load_fire_rescue_stations():
-        if not include_non_operational and station.get("operational_response_station") is False:
+    stations, _data_source = get_searchable_stations(include_non_operational=include_non_operational)
+    for station in stations:
+        best_match = match_station_resource(expanded_terms, station)
+        if not best_match.get("matched"):
             continue
-
-        station_matches = []
-        for collection_name, match_type in [
-            ("vehicles", "vehicle"),
-            ("trailers", "trailer"),
-            ("containers", "container"),
-            ("resources", "station_resource"),
-        ]:
-            for item in station.get(collection_name) or []:
-                scored = score_station_resource(item, expanded_terms, match_type)
-                if scored:
-                    station_matches.append(scored)
-
-        for value in station.get("special_resources") or []:
-            scored = score_resource_text(value, expanded_terms, 45, strict=strict)
-            if scored:
-                score, terms = scored
-                station_matches.append({
-                    "matched_resource": value,
-                    "display_resource": value,
-                    "resource": value,
-                    "matched_type": "station_resource",
-                    "matched_resource_name": value,
-                    "matched_resource_type": None,
-                    "matched_resource_kind": "station_resource",
-                    "matched_capabilities": [],
-                    "match_source": "station.special_resources",
-                    "match_score": score,
-                    "matched_terms": terms,
-                })
-
-        for value in station_text_fields(station):
-            scored = score_resource_text(value, expanded_terms, 20, strict=strict)
-            if scored:
-                score, terms = scored
-                station_matches.append({
-                    "matched_resource": value,
-                    "display_resource": value,
-                    "resource": value,
-                    "matched_type": "alias",
-                    "matched_resource_name": value,
-                    "matched_resource_type": None,
-                    "matched_resource_kind": "station_resource",
-                    "matched_capabilities": [],
-                    "match_source": "station.text",
-                    "match_score": score,
-                    "matched_terms": terms,
-                })
-
-        if not station_matches:
-            continue
-
-        best_match = sorted(station_matches, key=lambda item: item["match_score"], reverse=True)[0]
         matches.append({
             "station": station,
             **best_match,
@@ -1719,6 +1806,24 @@ def rank_stations_by_distance(origin_lat, origin_lon, matches, limit=5, radius_k
 
     ranked.sort(key=result_sort_key)
     return ranked[:max(1, int(limit or 5))]
+
+
+def search_resources(query, origin_lat, origin_lon, limit=10, radius_km=None, include_non_operational=True):
+    """Central resource-search core used by nearest-resource and debug tooling."""
+    matches = find_matching_station_resources(query, include_non_operational=include_non_operational)
+    ranked = rank_stations_by_distance(
+        origin_lat,
+        origin_lon,
+        matches,
+        limit=min(max(int(limit or 10), 1), 30),
+        radius_km=radius_km,
+    )
+    return {
+        "query": query,
+        "expanded_terms": expand_resource_query(query),
+        "data_source": station_resource_data_source(),
+        "matches": ranked,
+    }
 
 
 def detect_resource_question(question):
@@ -5812,6 +5917,7 @@ def admin_debug_resource_search():
     query = request.args.get("q", "").strip()
     expanded_terms = expand_resource_query(query)
     data_source = station_resource_data_source()
+    searchable_stations, searchable_source = get_searchable_stations(include_non_operational=True)
 
     if not db or not Station:
         return jsonify({
@@ -5820,6 +5926,36 @@ def admin_debug_resource_search():
             "data_source": "json_fallback",
             "error": "Database er ikke konfigureret.",
         })
+
+    matched_results = []
+    near_matches = []
+    for station in searchable_stations:
+        match = match_station_resource(expanded_terms, station)
+        if match.get("matched"):
+            matched_results.append({
+                "station_id": station.get("id"),
+                "station_name": station.get("name"),
+                "matched_object_type": match.get("matched_object_type"),
+                "matched_object_id": match.get("matched_object_id"),
+                "display_resource": match.get("display_resource"),
+                "match_source": match.get("match_source"),
+                "match_score": match.get("match_score"),
+                "matched_terms": match.get("matched_terms", []),
+            })
+        else:
+            normalized_blob = " ".join(normalize_terms([
+                station.get("name"),
+                station.get("area"),
+                station.get("organization"),
+                station.get("notes"),
+                station.get("aliases"),
+            ]))
+            if any(normalize_text(term) in normalized_blob for term in expanded_terms):
+                near_matches.append({
+                    "station_id": station.get("id"),
+                    "station_name": station.get("name"),
+                    "reason": "station text contains expanded term but no concrete resource matched",
+                })
 
     stations = Station.query.order_by(Station.name.asc()).all()
     active_stations = [station for station in stations if station.is_active]
@@ -5834,7 +5970,7 @@ def admin_debug_resource_search():
             "vehicles_count": StationVehicle.query.filter_by(station_id=station.id, is_active=True).count(),
             "resources_count": StationResource.query.filter_by(station_id=station.id, is_active=True).count(),
         })
-        if "vesterbro" in normalize_text(station.name):
+        if "vesterbro" in normalize_text(station.name) or normalize_text(query) in normalize_text(station.name):
             vesterbro_details.append({
                 "station_id": station.id,
                 "station_name": station.name,
@@ -5855,9 +5991,12 @@ def admin_debug_resource_search():
         "expanded_terms": expanded_terms,
         "expanded_terms_normalized": normalize_terms(expanded_terms),
         "data_source": data_source,
+        "searchable_data_source": searchable_source,
         "postgres_active_station_count": len(active_stations),
         "postgres_active_vehicle_count": StationVehicle.query.filter_by(is_active=True).count(),
         "postgres_active_resource_count": StationResource.query.filter_by(is_active=True).count(),
+        "matched_results": matched_results,
+        "near_matches": near_matches,
         "stations_reviewed": station_summaries,
         "vesterbro": vesterbro_details,
     })
@@ -8706,15 +8845,17 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
     if origin_lat is None or origin_lon is None:
         return {"error": "Adresse kunne ikke slås op"}, 400
 
-    expanded_terms = expand_resource_query(resource_query)
-    matches = find_matching_station_resources(resource_query, include_non_operational=True)
-    ranked = rank_stations_by_distance(
+    search_result = search_resources(
+        resource_query,
         origin_lat,
         origin_lon,
-        matches,
         limit=min(max(limit * 3, limit), 30),
         radius_km=radius_km,
+        include_non_operational=True,
     )
+    expanded_terms = search_result["expanded_terms"]
+    ranked = search_result["matches"]
+    data_source = search_result["data_source"]
 
     results = []
     for item in ranked:
@@ -8741,11 +8882,14 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
             "matched_resource_kind": item.get("matched_resource_kind"),
             "matched_capabilities": item.get("matched_capabilities", []),
             "matched_terms": item.get("matched_terms", []),
+            "matched_object_type": item.get("matched_object_type"),
+            "matched_object_id": item.get("matched_object_id"),
             "match_source": item.get("match_source"),
             "air_distance_km": item.get("air_distance_km"),
             "road_distance_km": item.get("road_distance_km"),
             "road_time_min": item.get("road_time_min"),
             "source": station.get("source", "manual"),
+            "data_source": data_source,
             "notes": station.get("notes"),
             "match_score": item.get("match_score"),
         })
@@ -8755,7 +8899,7 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         "address": address_data.get("normalized_address") or address,
         "resource_query": resource_query,
         "expanded_terms": expanded_terms,
-        "data_source": station_resource_data_source(),
+        "data_source": data_source,
         "results": results,
         "message": (
             None if results

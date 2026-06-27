@@ -1,0 +1,25 @@
+{
+  "name": "Tidsregistrering",
+  "short_name": "Tidsreg",
+  "description": "Statisk PWA til tidsregistrering for døgnvagt.",
+  "start_url": ".",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f4f8",
+  "theme_color": "#007bff",
+  "lang": "da",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%23007bff'/%3E%3Cpath fill='white' d='M96 38a58 58 0 1 0 0 116 58 58 0 0 0 0-116Zm0 18a40 40 0 1 1 0 80 40 40 0 0 1 0-80Zm8 16H88v31l29 18 8-13-21-13V72Z'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='86' fill='%23007bff'/%3E%3Cpath fill='white' d='M256 100a156 156 0 1 0 0 312 156 156 0 0 0 0-312Zm0 48a108 108 0 1 1 0 216 108 108 0 0 1 0-216Zm22 43h-44v84l79 49 22-36-57-35v-62Z'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

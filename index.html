@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#007bff">
+    <title>Tidsregistrering</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css?v=9">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="header-inner">
+        <h1>Tidsregistrering</h1>
+        <div id="visDato" class="header-subtitle"></div>
+        <div id="vagtStartVis" class="shift-badge">Vagtstart: -</div>
+      </div>
+    </header>
+
+    <main class="container" id="altIndhold">
+      <section class="card input-card">
+        <div class="field-stack">
+          <label for="beredskab">Beredskabsnavn</label>
+          <input type="text" id="beredskab" placeholder="Beredskabsnavn">
+        </div>
+
+        <div class="time-sections">
+          <section class="time-section" aria-labelledby="startHeading">
+            <div class="time-section-header">
+              <h2 id="startHeading">Start</h2>
+            </div>
+            <div class="time-row">
+              <input type="time" id="starttid" aria-label="Starttid">
+              <button type="button" class="btn btn-green" id="startNuBtn">Nu</button>
+              <button type="button" class="auto-chip" id="startChip" aria-label="Skift automatisk placering for start">Auto</button>
+            </div>
+          </section>
+
+          <section class="time-section" aria-labelledby="slutHeading">
+            <div class="time-section-header">
+              <h2 id="slutHeading">Slut</h2>
+            </div>
+            <div class="time-row">
+              <input type="time" id="sluttid" aria-label="Sluttid">
+              <button type="button" class="btn btn-green" id="slutNuBtn">Nu</button>
+              <button type="button" class="auto-chip" id="slutChip" aria-label="Skift automatisk placering for slut">Auto</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="button-row action-row">
+          <button type="button" class="btn btn-primary" id="gemTurBtn" disabled>Gem tur</button>
+          <button type="button" class="btn btn-secondary" id="clearDraftBtn">Ryd felter</button>
+        </div>
+
+        <p class="hint" id="vagtstartHint">Vælg først vagtstart via "Ny vagt", før du kan gemme ture.</p>
+      </section>
+
+      <section class="card table-card">
+        <h2>Ture</h2>
+        <div class="table-wrap">
+          <table id="turTabel">
+            <thead>
+              <tr>
+                <th>Start</th>
+                <th>Slut</th>
+                <th>Total</th>
+                <th>A</th>
+                <th>B</th>
+                <th>OV før</th>
+                <th>OV efter</th>
+                <th>Slet</th>
+              </tr>
+            </thead>
+            <tbody id="turTabelBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card pause-card">
+        <h2>Pauser</h2>
+
+        <div class="field-stack">
+          <label for="fremskudtPause">Fremskudt pause</label>
+          <select id="fremskudtPause">
+            <option value="0">Ingen</option>
+            <option value="30">30 min</option>
+            <option value="60">60 min</option>
+          </select>
+        </div>
+
+        <div class="pause-group">
+          <div class="pause-box">
+            <strong>Pause 1</strong>
+            <label><input type="radio" name="pause1" value="Afbrudt"> <span>Afbrudt</span></label>
+            <label><input type="radio" name="pause1" value="Ikke afholdt"> <span>Ikke afholdt</span></label>
+          </div>
+
+          <div class="pause-box">
+            <strong>Pause 2</strong>
+            <label><input type="radio" name="pause2" value="Afbrudt"> <span>Afbrudt</span></label>
+            <label><input type="radio" name="pause2" value="Ikke afholdt"> <span>Ikke afholdt</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card summary-card">
+        <h2>Opsummering</h2>
+
+        <div class="summary-grid">
+          <div class="summary-item summary-total">
+            <span>Total A+B</span>
+            <strong id="sumTotal">0 min</strong>
+          </div>
+
+          <div class="summary-item summary-a">
+            <span>A-tid</span>
+            <strong id="sumA">0 min</strong>
+          </div>
+
+          <div class="summary-item summary-b">
+            <span>B-tid</span>
+            <strong id="sumB">0 min</strong>
+          </div>
+
+          <div class="summary-item summary-overtime">
+            <span>Overtid før vagt</span>
+            <strong id="sumOvertidFor">0 min</strong>
+          </div>
+
+          <div class="summary-item summary-overtime">
+            <span>Overtid efter vagt</span>
+            <strong id="sumOvertidEfter">0 min</strong>
+          </div>
+
+          <div class="summary-item summary-extra">
+            <span>1-4 minutter</span>
+            <strong id="sumEkstra">0 min</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Indstillinger</h2>
+        <label class="toggle-row">
+          <input type="checkbox" id="darkModeToggle">
+          Mørk tilstand
+        </label>
+
+        <details>
+          <summary>Teststatus</summary>
+          <pre id="testOutput">Tester...</pre>
+        </details>
+      </section>
+    </main>
+
+    <nav class="bottom-bar">
+      <button type="button" id="opdaterBtn" class="btn-bottom btn-grey">Opdater</button>
+      <button type="button" id="gemBilledeBtn" class="btn-bottom">Gem billede</button>
+      <button type="button" id="nyVagtBtn" class="btn-bottom btn-yellow">Ny vagt</button>
+    </nav>
+
+    <script src="app.js?v=9"></script>
+  </body>
+</html>

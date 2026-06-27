@@ -38,6 +38,26 @@
         ]
       },
       {
+        "name": "S1",
+        "type": "drejestige",
+        "aliases": [
+          "S1",
+          "stige",
+          "drejestige",
+          "stigevogn",
+          "højderedning",
+          "hoejderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "capabilities": [
+          "højderedning",
+          "redning fra højde",
+          "tagarbejde"
+        ],
+        "source": "manual"
+      },
+      {
         "name": "R1",
         "type": "redningsvogn",
         "aliases": [
@@ -83,6 +103,7 @@
     "trailers": [],
     "containers": [],
     "special_resources": [
+      "drejestige",
       "MIRG",
       "robot/TAF 60",
       "kemi/CBRN",

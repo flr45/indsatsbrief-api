@@ -837,12 +837,27 @@ def rank_stations_by_distance(origin_lat, origin_lon, matches, limit=5, radius_k
             "route_source": route.get("route_source"),
         })
 
-    ranked.sort(key=lambda item: (
-        -item.get("match_score", 0),
-        item["road_time_min"] is None,
-        item["road_time_min"] if item["road_time_min"] is not None else item["air_distance_km"],
-        item["air_distance_km"],
-    ))
+    def result_sort_key(item):
+        road_time = item.get("road_time_min")
+        air_distance = item.get("air_distance_km")
+        match_score = item.get("match_score", 0)
+        station = item.get("station") or {}
+
+        if road_time is not None:
+            primary = float(road_time)
+        elif air_distance is not None:
+            primary = float(air_distance) * 2.0
+        else:
+            primary = 999999.0
+
+        return (
+            primary,
+            -match_score,
+            station.get("name") or "",
+            item.get("matched_resource") or "",
+        )
+
+    ranked.sort(key=result_sort_key)
     return ranked[:max(1, int(limit or 5))]
 
 
@@ -1196,7 +1211,7 @@ def get_address_autocomplete(query, limit=8):
 
 def get_nearby_main_roads(lat, lon, radius_m=400):
     if lat is None or lon is None:
-        return None
+        return {"ok": False, "summary": "", "source": "OSM", "error": "Mangler koordinater"}
 
     priority = {
         "motorway": 0, "trunk": 1, "primary": 2, "secondary": 3,
@@ -1226,16 +1241,30 @@ def get_nearby_main_roads(lat, lon, radius_m=400):
             if distance is not None:
                 candidates.append((priority.get(tags.get("highway"), 99), distance, tags))
         if not candidates:
-            return None
+            return {"ok": False, "summary": "", "source": "OSM"}
         _, distance, tags = sorted(candidates, key=lambda item: (item[0], item[1]))[0]
+        road_name = tags.get("name")
+        distance_rounded = round(distance)
+        if distance_rounded <= 25:
+            summary = f"Adressen ligger på/ved {road_name}."
+        else:
+            summary = (
+                f"Adressen ligger på/ved sidevej tæt på {road_name}, "
+                f"ca. {distance_rounded} m fra nærmeste større vej."
+            )
         return {
-            "nearest_main_road": tags.get("name"),
+            "ok": True,
+            "nearest_main_road": road_name,
+            "nearest_road_name": road_name,
             "highway_type": tags.get("highway"),
-            "distance_m": round(distance),
+            "distance_m": distance_rounded,
+            "summary": summary,
             "source": "OSM",
         }
-    except Exception:
-        return None
+    except (requests.exceptions.Timeout, requests.exceptions.RequestException, ValueError) as error:
+        return {"ok": False, "summary": "", "source": "OSM", "error": str(error)}
+    except Exception as error:
+        return {"ok": False, "summary": "", "source": "OSM", "error": str(error)}
 
 
 def get_traffic_events_nearby(lat, lon, radius_km=5):
@@ -4965,6 +4994,9 @@ def build_incident_brief_data(address, radius_m):
         warnings.append("OSM-risikodata kunne ikke hentes inden for timeout.")
         osm_risk_check_data = osm_overpass_fallback(str(e), radius_m=radius_m)
     nearby_main_road = get_nearby_main_roads(latitude, longitude) if latitude is not None and longitude is not None else None
+    access_context_lines = []
+    if isinstance(nearby_main_road, dict) and is_positive_report_value(nearby_main_road.get("summary")):
+        access_context_lines.append(nearby_main_road["summary"])
     traffic_events_nearby = get_traffic_events_nearby(latitude, longitude) if latitude is not None and longitude is not None else []
     short_report_data = build_short_report_data(
         address,
@@ -5016,6 +5048,8 @@ def build_incident_brief_data(address, radius_m):
         "water_supply": water_supply_data,
         "osm_risk_check": osm_risk_check_data,
         "nearby_main_road": nearby_main_road,
+        "nearest_main_road": nearby_main_road,
+        "access_context_lines": access_context_lines,
         "traffic_events_nearby": traffic_events_nearby,
         "warnings": warnings,
 
@@ -5209,6 +5243,8 @@ def build_openai_brief_payload(raw_incident_data):
         "grouped_summary": osm_risk_check.get("grouped_summary", {}),
         "osm_findings_for_ai": build_osm_findings_for_ai(osm_risk_check),
         "nearby_main_road": raw_incident_data.get("nearby_main_road"),
+        "nearest_main_road": raw_incident_data.get("nearest_main_road"),
+        "access_context_lines": raw_incident_data.get("access_context_lines", []),
         "traffic_events_nearby": raw_incident_data.get("traffic_events_nearby", []),
         "water_supply": raw_incident_data.get("water_supply"),
     }
@@ -5637,11 +5673,17 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
                 line += f", ca. {round(distance_m)} m fra adressen"
             traffic_lines.append(line + ".")
 
-    supplementary_lines = []
+    access_lines = []
     main_road = raw_incident_data.get("nearby_main_road") or {}
-    if main_road.get("nearest_main_road") and main_road.get("distance_m") is not None:
-        supplementary_lines.append(
-            f"Adressen ligger på/ved sidevej tæt ved {main_road['nearest_main_road']}, "
+    for line in raw_incident_data.get("access_context_lines", []) or []:
+        cleaned = clean_short_report_text(line)
+        if is_positive_report_value(cleaned):
+            access_lines.append(cleaned)
+    if not access_lines and main_road.get("summary"):
+        access_lines.append(main_road["summary"])
+    if not access_lines and main_road.get("nearest_main_road") and main_road.get("distance_m") is not None:
+        access_lines.append(
+            f"Adressen ligger på/ved sidevej tæt på {main_road['nearest_main_road']}, "
             f"ca. {main_road['distance_m']} m fra nærmeste større vej."
         )
 
@@ -5659,13 +5701,13 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
         "assistance_lines": [],
         "map_links": [],
         "building_details": building_sections.get("building_details", []),
-        "access_lines": [],
+        "access_lines": list(dict.fromkeys(access_lines)),
         "secondary_buildings": building_sections.get("secondary_buildings", []),
         "basement_lines": building_sections.get("basement_lines", []),
         "heating_lines": building_sections.get("heating_lines", []),
         "risk_context_lines": [],
         "resource_lines": [],
-        "supplementary_lines": supplementary_lines,
+        "supplementary_lines": [],
         "traffic_lines": traffic_lines,
         "disclaimer": REPORT_DISCLAIMER,
     }
@@ -5831,6 +5873,14 @@ def analyze_brief_response(address, radius_m, report_mode="short"):
         for field in ["findings", "building_lines", "building_details", "heating_lines", "basement_lines", "secondary_buildings"]:
             if not report_structured.get(field) and fallback_sections.get(field):
                 report_structured[field] = fallback_sections[field]
+        if not report_structured.get("access_lines"):
+            access_lines = [
+                clean_short_report_text(line)
+                for line in raw_incident_data.get("access_context_lines", []) or []
+            ]
+            report_structured["access_lines"] = [
+                line for line in access_lines if is_positive_report_value(line)
+            ]
         report_structured = clean_report_sections(report_structured)
 
         return jsonify({

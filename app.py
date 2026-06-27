@@ -281,7 +281,7 @@ RESOURCE_ALIAS_MAP = {
     "redningsvogn": ["redningsvogn", "pionervogn", "frigørelse", "frigoerelse", "tung frigørelse", "tung redning", "trafikuheld", "fastklemt", "redning", "frigørelsesværktøj", "frigoerelsesvaerktoej", "hydraulisk værktøj", "hydraulisk vaerktoej"],
     "kemi": ["kemi", "kemikalie", "CBRN", "cbrn", "kemivogn", "miljøvogn", "miljoevogn", "miljø", "miljoe", "farlige stoffer", "hazmat", "forurening", "rens", "renseplads"],
     "båd": ["båd", "baad", "redningsbåd", "redningsbaad", "bådtrækker", "baadtraekker", "vandredning", "overfladeredning", "søredning", "soeredning", "SAR", "hovercraft", "dykker", "vanddykker", "dykkervogn"],
-    "robot": ["robot", "R6", "TAF", "TAF 60", "TAF60", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "fjernstyret indsats", "robot/TAF 60"],
+    "robot": ["robot", "luf", "luf-60", "crawler", "R6", "TAF", "TAF 60", "TAF60", "fjernstyret", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "fjernstyret indsats", "slukningsrobot", "indsatsrobot", "robot/TAF 60"],
     "MIRG": ["MIRG", "mirg", "skibsbrand", "skib", "maritim indsats", "slukning til søs", "brandslukning til søs", "Maritime Incident Response Group"],
     "slangetender": ["slangetender", "slange", "slanger", "slangeudlægning", "A-slange", "B-slange", "taktisk vandforsyning"],
     "indsatsleder": ["indsatsleder", "ISL", "isl", "ledervogn", "indsatsledervogn", "holdleder", "ledelse"],
@@ -299,7 +299,6 @@ RESOURCE_ALIAS_MAP = {
 STRICT_RESOURCE_QUERIES = {
     "kran",
     "redningskran",
-    "robot",
     "taf 60",
     "mirg",
     "dykker",
@@ -455,6 +454,8 @@ if db:
         description = db.Column(db.Text, nullable=True)
         aliases = db.Column(db.JSON, nullable=False, default=list)
         capabilities = db.Column(db.JSON, nullable=False, default=list)
+        tags = db.Column(db.JSON, nullable=False, default=list)
+        raw_data = db.Column(db.JSON, nullable=False, default=dict)
         is_active = db.Column(db.Boolean, nullable=False, default=True)
         sort_order = db.Column(db.Integer, nullable=False, default=0)
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -471,6 +472,8 @@ if db:
         description = db.Column(db.Text, nullable=True)
         aliases = db.Column(db.JSON, nullable=False, default=list)
         capabilities = db.Column(db.JSON, nullable=False, default=list)
+        tags = db.Column(db.JSON, nullable=False, default=list)
+        raw_data = db.Column(db.JSON, nullable=False, default=dict)
         is_active = db.Column(db.Boolean, nullable=False, default=True)
         sort_order = db.Column(db.Integer, nullable=False, default=0)
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -522,6 +525,30 @@ def ensure_user_schema():
         app.logger.exception("Database schema kunne ikke opdateres: %s", error)
 
 
+def ensure_station_schema():
+    """Add station search columns when an existing DB predates this release."""
+    if not db or not inspect:
+        return
+    try:
+        inspector = inspect(db.engine)
+        table_names = set(inspector.get_table_names())
+        is_postgres = db.engine.dialect.name == "postgresql"
+        json_type = "JSONB" if is_postgres else "JSON"
+        empty_list_default = "'[]'::jsonb" if is_postgres else "'[]'"
+        empty_object_default = "'{}'::jsonb" if is_postgres else "'{}'"
+        with db.engine.begin() as connection:
+            for table_name in ["station_vehicles", "station_resources"]:
+                if table_name not in table_names:
+                    continue
+                existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+                if "tags" not in existing_columns:
+                    connection.exec_driver_sql(f"ALTER TABLE {table_name} ADD COLUMN tags {json_type} DEFAULT {empty_list_default}")
+                if "raw_data" not in existing_columns:
+                    connection.exec_driver_sql(f"ALTER TABLE {table_name} ADD COLUMN raw_data {json_type} DEFAULT {empty_object_default}")
+    except Exception as error:
+        app.logger.exception("Stationsschema kunne ikke opdateres: %s", error)
+
+
 def init_database():
     if not db:
         app.logger.warning("Flask-SQLAlchemy er ikke installeret. Brugerlogin er ikke aktivt.")
@@ -530,6 +557,7 @@ def init_database():
         with app.app_context():
             db.create_all()
             ensure_user_schema()
+            ensure_station_schema()
     except Exception as error:
         app.logger.exception("Database kunne ikke initialiseres: %s", error)
 
@@ -856,7 +884,16 @@ def station_list_value(value):
                     return parsed_values
             except Exception:
                 pass
-        return [line.strip().strip("'\"") for line in re.split(r"[\n,;]+", text) if line.strip().strip("'\"")]
+        parts = [line.strip().strip("'\"") for line in re.split(r"[\n,;]+", text) if line.strip().strip("'\"")]
+        expanded = []
+        for part in parts:
+            if part not in expanded:
+                expanded.append(part)
+            if " " in part and not re.search(r"\s+(fra|til|med|og|af|i|på|paa)\s+", part, flags=re.IGNORECASE):
+                for token in part.split():
+                    if token and token not in expanded:
+                        expanded.append(token)
+        return expanded
     return [str(value).strip()] if str(value).strip() else []
 
 
@@ -866,6 +903,15 @@ def station_search_values(value):
         if item and item not in values:
             values.append(item)
     return values
+
+
+def normalize_terms(value):
+    terms = []
+    for item in station_search_values(value):
+        normalized = normalize_text(item)
+        if normalized and normalized not in terms:
+            terms.append(normalized)
+    return terms
 
 
 def station_float_value(value):
@@ -993,6 +1039,8 @@ def station_json_to_db(station_data):
             description=vehicle_data.get("description"),
             aliases=station_list_value(vehicle_data.get("aliases")),
             capabilities=station_list_value(vehicle_data.get("capabilities")),
+            tags=station_list_value(vehicle_data.get("tags")),
+            raw_data=vehicle_data.get("raw_data") or {},
             is_active=vehicle_data.get("is_active", True) is not False,
             sort_order=vehicle_data.get("sort_order") or sort_order,
         ))
@@ -1006,6 +1054,8 @@ def station_json_to_db(station_data):
                 description=resource_data.get("description"),
                 aliases=station_list_value(resource_data.get("aliases")),
                 capabilities=station_list_value(resource_data.get("capabilities")),
+                tags=station_list_value(resource_data.get("tags")),
+                raw_data=resource_data.get("raw_data") or {},
                 is_active=resource_data.get("is_active", True) is not False,
                 sort_order=resource_data.get("sort_order") or sort_order,
             ))
@@ -1053,12 +1103,26 @@ def load_fire_rescue_stations_from_db(include_inactive=False):
         return []
 
 
+def station_resource_data_source():
+    if db and Station:
+        try:
+            if Station.query.filter(Station.is_active.is_(True)).count() > 0:
+                return "postgres"
+            if Station.query.count() > 0:
+                return "postgres_no_active_stations"
+        except Exception as error:
+            app.logger.warning("Kunne ikke afgøre stationsdatakilde: %s", error)
+    return "json_fallback"
+
+
 def load_fire_rescue_stations():
     """Load fresh DB station/resource data, with JSON only when DB has no stations."""
     if db and Station:
         try:
-            if Station.query.count() > 0:
+            if Station.query.filter(Station.is_active.is_(True)).count() > 0:
                 return load_fire_rescue_stations_from_db(include_inactive=False)
+            if Station.query.count() > 0:
+                return []
             seed_fire_rescue_stations_if_empty()
             db_stations = load_fire_rescue_stations_from_db(include_inactive=False)
             if db_stations:
@@ -1445,6 +1509,60 @@ def score_station_resource(item, expanded_terms, item_kind):
         "match_source": best_source,
         "match_score": best,
         "matched_terms": matched_terms,
+    }
+
+
+def match_resource_query(query_terms, station, vehicle=None, resource=None):
+    if vehicle is not None:
+        scored = score_station_resource(vehicle, query_terms, "vehicle")
+        return {
+            "matched": bool(scored),
+            **(scored or {
+                "score": 0,
+                "match_score": 0,
+                "match_source": None,
+                "display_resource": None,
+            }),
+        }
+    if resource is not None:
+        scored = score_station_resource(resource, query_terms, "station_resource")
+        return {
+            "matched": bool(scored),
+            **(scored or {
+                "score": 0,
+                "match_score": 0,
+                "match_source": None,
+                "display_resource": None,
+            }),
+        }
+
+    best = None
+    strict = is_strict_resource_query(query_terms)
+    for value in station_text_fields(station or {}):
+        scored = score_resource_text(value, query_terms, 20, strict=strict)
+        if not scored:
+            continue
+        score, terms = scored
+        if not best or score > best["match_score"]:
+            best = {
+                "matched": True,
+                "matched_resource": "Generelt stationsmatch",
+                "display_resource": "Generelt stationsmatch",
+                "resource": "Generelt stationsmatch",
+                "matched_type": "station",
+                "matched_resource_name": None,
+                "matched_resource_type": None,
+                "matched_resource_kind": "station",
+                "matched_capabilities": [],
+                "match_source": "station.text",
+                "match_score": score,
+                "matched_terms": terms,
+            }
+    return best or {
+        "matched": False,
+        "match_score": 0,
+        "match_source": None,
+        "display_resource": None,
     }
 
 
@@ -5361,6 +5479,7 @@ def resource_form_values(item=None, kind="vehicle"):
         "description": (request.form.get("description") or item.get("description") or "").strip(),
         "aliases": lines_from_form("aliases") if request.method == "POST" else station_list_value(item.get("aliases")),
         "capabilities": lines_from_form("capabilities") if request.method == "POST" else station_list_value(item.get("capabilities")),
+        "tags": lines_from_form("tags") if request.method == "POST" else station_list_value(item.get("tags")),
         "is_active": checkbox_value("is_active") if request.method == "POST" else item.get("is_active", True),
         "sort_order": request.form.get("sort_order") if request.method == "POST" else item.get("sort_order", 0),
     }
@@ -5383,6 +5502,7 @@ def resource_form_html(action, station, item=None, kind="vehicle", error=None):
 <label class="full">Beskrivelse<textarea name="description">{html.escape(values['description'])}</textarea></label>
 <label class="full">Aliases, én pr. linje<textarea name="aliases">{html.escape(chr(10).join(values['aliases']))}</textarea></label>
 <label class="full">Capabilities, én pr. linje<textarea name="capabilities">{html.escape(chr(10).join(values['capabilities']))}</textarea></label>
+<label class="full">Tags, én pr. linje<textarea name="tags">{html.escape(chr(10).join(values['tags']))}</textarea></label>
 <label><input type="checkbox" name="is_active" {active_checked}> Aktiv</label>
 </div>
 <p class="actions"><button type="submit">Gem {html.escape(title.lower())}</button><a class="button secondary" href="/admin/stations/{station.id}/{kind}s">Tilbage</a></p>
@@ -5397,6 +5517,7 @@ def apply_vehicle_values(vehicle, values):
     vehicle.description = values["description"]
     vehicle.aliases = values["aliases"]
     vehicle.capabilities = values["capabilities"]
+    vehicle.tags = values["tags"]
     vehicle.is_active = bool(values["is_active"])
     try:
         vehicle.sort_order = int(values["sort_order"] or 0)
@@ -5410,6 +5531,7 @@ def apply_resource_values(resource, values):
     resource.description = values["description"]
     resource.aliases = values["aliases"]
     resource.capabilities = values["capabilities"]
+    resource.tags = values["tags"]
     resource.is_active = bool(values["is_active"])
     try:
         resource.sort_order = int(values["sort_order"] or 0)
@@ -5633,6 +5755,114 @@ def admin_import_stations_json():
     return redirect(url_for("admin_stations"))
 
 
+def debug_station_item_payload(item, kind, expanded_terms):
+    if kind == "vehicle":
+        item_dict = {
+            "id": item.id,
+            "name": item.name,
+            "callsign": item.callsign,
+            "type": item.vehicle_type,
+            "vehicle_type": item.vehicle_type,
+            "description": item.description,
+            "aliases": item.aliases,
+            "capabilities": item.capabilities,
+            "tags": getattr(item, "tags", None),
+            "raw_data": getattr(item, "raw_data", None),
+        }
+    else:
+        item_dict = {
+            "id": item.id,
+            "name": item.name,
+            "type": item.resource_type,
+            "resource_type": item.resource_type,
+            "description": item.description,
+            "aliases": item.aliases,
+            "capabilities": item.capabilities,
+            "tags": getattr(item, "tags", None),
+            "raw_data": getattr(item, "raw_data", None),
+        }
+
+    search_values = []
+    for key in ["name", "callsign", "type", "vehicle_type", "resource_type", "description", "aliases", "capabilities", "tags", "raw_data"]:
+        search_values.extend(station_search_values(item_dict.get(key)))
+    match = match_resource_query(
+        expanded_terms,
+        {},
+        vehicle=item_dict if kind == "vehicle" else None,
+        resource=item_dict if kind == "resource" else None,
+    )
+    return {
+        **item_dict,
+        "is_active": bool(item.is_active),
+        "aliases_normalized": normalize_terms(item.aliases),
+        "capabilities_normalized": normalize_terms(item.capabilities),
+        "tags_normalized": normalize_terms(getattr(item, "tags", None)),
+        "normalized_search_terms": sorted(set(normalize_terms(search_values))),
+        "matched": bool(match.get("matched")),
+        "match_source": match.get("match_source"),
+        "match_score": match.get("match_score"),
+        "display_resource": match.get("display_resource"),
+        "matched_terms": match.get("matched_terms", []),
+    }
+
+
+@app.route("/admin/debug/resource-search", methods=["GET"])
+@admin_required
+def admin_debug_resource_search():
+    query = request.args.get("q", "").strip()
+    expanded_terms = expand_resource_query(query)
+    data_source = station_resource_data_source()
+
+    if not db or not Station:
+        return jsonify({
+            "query": query,
+            "expanded_terms": expanded_terms,
+            "data_source": "json_fallback",
+            "error": "Database er ikke konfigureret.",
+        })
+
+    stations = Station.query.order_by(Station.name.asc()).all()
+    active_stations = [station for station in stations if station.is_active]
+    station_summaries = []
+    vesterbro_details = []
+    for station in stations:
+        station_summaries.append({
+            "station_id": station.id,
+            "station_name": station.name,
+            "is_active": bool(station.is_active),
+            "operational_response_station": bool(station.operational_response_station),
+            "vehicles_count": StationVehicle.query.filter_by(station_id=station.id, is_active=True).count(),
+            "resources_count": StationResource.query.filter_by(station_id=station.id, is_active=True).count(),
+        })
+        if "vesterbro" in normalize_text(station.name):
+            vesterbro_details.append({
+                "station_id": station.id,
+                "station_name": station.name,
+                "is_active": bool(station.is_active),
+                "operational_response_station": bool(station.operational_response_station),
+                "vehicles": [
+                    debug_station_item_payload(vehicle, "vehicle", expanded_terms)
+                    for vehicle in sorted(station.vehicles or [], key=lambda item: (item.sort_order or 0, item.name or ""))
+                ],
+                "resources": [
+                    debug_station_item_payload(resource, "resource", expanded_terms)
+                    for resource in sorted(station.resources or [], key=lambda item: (item.sort_order or 0, item.name or ""))
+                ],
+            })
+
+    return jsonify({
+        "query": query,
+        "expanded_terms": expanded_terms,
+        "expanded_terms_normalized": normalize_terms(expanded_terms),
+        "data_source": data_source,
+        "postgres_active_station_count": len(active_stations),
+        "postgres_active_vehicle_count": StationVehicle.query.filter_by(is_active=True).count(),
+        "postgres_active_resource_count": StationResource.query.filter_by(is_active=True).count(),
+        "stations_reviewed": station_summaries,
+        "vesterbro": vesterbro_details,
+    })
+
+
 @app.route("/admin/stations/new", methods=["GET", "POST"])
 @admin_required
 def admin_station_new():
@@ -5782,7 +6012,7 @@ def admin_vehicle_edit(vehicle_id):
     vehicle = db.session.get(StationVehicle, vehicle_id) if db and StationVehicle else None
     if not vehicle:
         return Response(admin_layout("Køretøj", '<section class="admin-message warning">Køretøjet blev ikke fundet.</section>'), status=404, mimetype="text/html")
-    item = {"name": vehicle.name, "vehicle_type": vehicle.vehicle_type, "description": vehicle.description, "aliases": vehicle.aliases, "capabilities": vehicle.capabilities, "is_active": vehicle.is_active, "sort_order": vehicle.sort_order}
+    item = {"name": vehicle.name, "vehicle_type": vehicle.vehicle_type, "description": vehicle.description, "aliases": vehicle.aliases, "capabilities": vehicle.capabilities, "tags": getattr(vehicle, "tags", []), "is_active": vehicle.is_active, "sort_order": vehicle.sort_order}
     if request.method == "POST":
         values = resource_form_values(item, kind="vehicle")
         if values["name"]:
@@ -5800,7 +6030,7 @@ def admin_resource_edit(resource_id):
     resource = db.session.get(StationResource, resource_id) if db and StationResource else None
     if not resource:
         return Response(admin_layout("Ressource", '<section class="admin-message warning">Ressourcen blev ikke fundet.</section>'), status=404, mimetype="text/html")
-    item = {"name": resource.name, "resource_type": resource.resource_type, "description": resource.description, "aliases": resource.aliases, "capabilities": resource.capabilities, "is_active": resource.is_active, "sort_order": resource.sort_order}
+    item = {"name": resource.name, "resource_type": resource.resource_type, "description": resource.description, "aliases": resource.aliases, "capabilities": resource.capabilities, "tags": getattr(resource, "tags", []), "is_active": resource.is_active, "sort_order": resource.sort_order}
     if request.method == "POST":
         values = resource_form_values(item, kind="resource")
         if values["name"]:
@@ -8525,6 +8755,7 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         "address": address_data.get("normalized_address") or address,
         "resource_query": resource_query,
         "expanded_terms": expanded_terms,
+        "data_source": station_resource_data_source(),
         "results": results,
         "message": (
             None if results

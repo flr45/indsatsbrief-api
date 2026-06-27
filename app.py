@@ -294,6 +294,7 @@ RESOURCE_ALIAS_MAP = {
     "lys": ["lys", "belysning", "arbejdslys", "lysgiraf"],
     "kran": ["kran", "redningskran", "køretøjskran", "koeretoejskran", "lastbil med kran", "kranvogn"],
     "frivillige": ["frivillige", "frivilligenhed", "supplerende beredskab", "forplejning", "logistik", "støtteberedskab"],
+    "drone": ["drone", "droner", "uas", "rpas", "uav", "luftfoto", "luftrekognoscering", "rekognoscering", "overblik", "termisk", "termisk kamera", "varmesøgende kamera", "kamera", "indsatsdrone", "beredskabsdrone"],
 }
 STRICT_RESOURCE_QUERIES = {
     "kran",
@@ -833,10 +834,38 @@ def station_list_value(value):
     if value is None:
         return []
     if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
+        values = []
+        for item in value:
+            values.extend(station_list_value(item))
+        return values
+    if isinstance(value, dict):
+        values = []
+        for key, item in value.items():
+            values.extend(station_list_value(key))
+            values.extend(station_list_value(item))
+        return values
     if isinstance(value, str):
-        return [line.strip() for line in re.split(r"[\n,]+", value) if line.strip()]
-    return []
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("[") or text.startswith("{"):
+            try:
+                parsed = json.loads(text.replace("'", '"'))
+                parsed_values = station_list_value(parsed)
+                if parsed_values:
+                    return parsed_values
+            except Exception:
+                pass
+        return [line.strip().strip("'\"") for line in re.split(r"[\n,;]+", text) if line.strip().strip("'\"")]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def station_search_values(value):
+    values = []
+    for item in station_list_value(value):
+        if item and item not in values:
+            values.append(item)
+    return values
 
 
 def station_float_value(value):
@@ -874,6 +903,8 @@ def station_db_to_dict(station, include_inactive=False):
             "description": vehicle.description,
             "aliases": station_list_value(vehicle.aliases),
             "capabilities": station_list_value(vehicle.capabilities),
+            "tags": station_list_value(getattr(vehicle, "tags", None)),
+            "raw_data": station_list_value(getattr(vehicle, "raw_data", None)),
             "is_active": bool(vehicle.is_active),
             "sort_order": vehicle.sort_order or 0,
         })
@@ -890,6 +921,8 @@ def station_db_to_dict(station, include_inactive=False):
             "description": resource.description,
             "aliases": station_list_value(resource.aliases),
             "capabilities": station_list_value(resource.capabilities),
+            "tags": station_list_value(getattr(resource, "tags", None)),
+            "raw_data": station_list_value(getattr(resource, "raw_data", None)),
             "is_active": bool(resource.is_active),
             "sort_order": resource.sort_order or 0,
         })
@@ -1239,7 +1272,10 @@ def station_text_fields(station):
         station.get("authority"),
         station.get("operator"),
         station.get("area"),
+        station.get("notes"),
         *(station.get("aliases") or []),
+        *(station_search_values(station.get("tags"))),
+        *(station_search_values(station.get("raw_data"))),
         *(station.get("special_resources") or []),
         *(station.get("resource_aliases") or []),
     ]
@@ -1339,11 +1375,11 @@ def score_station_resource(item, expanded_terms, item_kind):
     strict = is_strict_resource_query(expanded_terms)
     category_only = is_category_only_resource(item, item_kind)
     if item_kind == "vehicle":
-        name_score, type_score, alias_score, capability_score, description_score = 100, 90, 70, 60, 40
+        name_score, type_score, alias_score, capability_score, description_score = 100, 90, 75, 65, 45
     elif item_kind in ["trailer", "container"]:
-        name_score, type_score, alias_score, capability_score, description_score = 90, 82, 70, 60, 40
+        name_score, type_score, alias_score, capability_score, description_score = 100, 90, 75, 65, 45
     else:
-        name_score, type_score, alias_score, capability_score, description_score = 85, 80, 70, 60, 40
+        name_score, type_score, alias_score, capability_score, description_score = 100, 90, 75, 65, 45
     if category_only:
         name_score = min(name_score, 60)
         type_score = min(type_score, 55)
@@ -1370,8 +1406,10 @@ def score_station_resource(item, expanded_terms, item_kind):
         (item.get("type") or item.get("vehicle_type") or item.get("resource_type"), type_score, type_source),
     ]
     candidates.extend((alias, alias_score, f"{item_kind}.aliases") for alias in item.get("aliases") or [])
+    candidates.extend((tag, alias_score, f"{item_kind}.tags") for tag in station_search_values(item.get("tags")))
     candidates.extend((capability, capability_score, f"{item_kind}.capabilities") for capability in item.get("capabilities") or [])
     candidates.append((item.get("description"), description_score, f"{item_kind}.description"))
+    candidates.extend((raw_value, description_score, f"{item_kind}.raw_data") for raw_value in station_search_values(item.get("raw_data")))
     best = None
     best_source = None
     matched_terms = []
@@ -5337,6 +5375,7 @@ def resource_form_html(action, station, item=None, kind="vehicle", error=None):
 {error_html}
 <form method="post" action="{html.escape(action)}" class="card">
 <h2>{html.escape(title)} for {html.escape(station.name)}</h2>
+<p>For at kunne findes i ressourcesøgning, bør relevante søgeord skrives i aliases eller capabilities, fx drone, UAS, RPAS, termisk kamera.</p>
 <div class="form-grid">
 <label>Navn/callsign<input name="name" required value="{html.escape(values['name'])}"></label>
 <label>Type<input name="type" value="{html.escape(values['type'])}"></label>

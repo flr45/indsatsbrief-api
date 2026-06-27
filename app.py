@@ -318,6 +318,7 @@ API_ERROR_PREFIXES = (
     "/hazmat-analyze",
     "/assistance-stations",
     "/nearest-resource",
+    "/api/stations",
     "/address-autocomplete",
     "/knowledge/ask",
     "/test-bbr",
@@ -411,12 +412,88 @@ if db:
         page_end = db.Column(db.Integer, nullable=True)
         text = db.Column(db.Text, nullable=False)
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+    class Station(db.Model):
+        __tablename__ = "stations"
+
+        id = db.Column(db.Integer, primary_key=True)
+        source_ref_id = db.Column(db.String(120), nullable=True, unique=True, index=True)
+        name = db.Column(db.String(255), nullable=False)
+        aliases = db.Column(db.JSON, nullable=False, default=list)
+        type = db.Column(db.String(120), nullable=True)
+        organization = db.Column("organisation", db.String(255), nullable=True)
+        authority = db.Column(db.String(255), nullable=True)
+        operator = db.Column(db.String(255), nullable=True)
+        area = db.Column(db.String(160), nullable=True)
+        address = db.Column(db.String(255), nullable=True)
+        postal_code = db.Column(db.String(20), nullable=True)
+        city = db.Column(db.String(120), nullable=True)
+        lat = db.Column(db.Float, nullable=True)
+        lon = db.Column(db.Float, nullable=True)
+        source = db.Column(db.String(80), nullable=True)
+        is_active = db.Column(db.Boolean, nullable=False, default=True)
+        operational_response_station = db.Column(db.Boolean, nullable=False, default=True)
+        notes = db.Column(db.Text, nullable=True)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+        updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+        vehicles = db.relationship("StationVehicle", backref="station", cascade="all, delete-orphan", lazy=True)
+        resources = db.relationship("StationResource", backref="station", cascade="all, delete-orphan", lazy=True)
+        contacts = db.relationship("StationContact", backref="station", cascade="all, delete-orphan", lazy=True)
+
+
+    class StationVehicle(db.Model):
+        __tablename__ = "station_vehicles"
+
+        id = db.Column(db.Integer, primary_key=True)
+        station_id = db.Column(db.Integer, db.ForeignKey("stations.id"), nullable=False, index=True)
+        name = db.Column(db.String(120), nullable=False)
+        vehicle_type = db.Column(db.String(160), nullable=True)
+        callsign = db.Column(db.String(120), nullable=True)
+        description = db.Column(db.Text, nullable=True)
+        aliases = db.Column(db.JSON, nullable=False, default=list)
+        capabilities = db.Column(db.JSON, nullable=False, default=list)
+        is_active = db.Column(db.Boolean, nullable=False, default=True)
+        sort_order = db.Column(db.Integer, nullable=False, default=0)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+        updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+    class StationResource(db.Model):
+        __tablename__ = "station_resources"
+
+        id = db.Column(db.Integer, primary_key=True)
+        station_id = db.Column(db.Integer, db.ForeignKey("stations.id"), nullable=False, index=True)
+        name = db.Column(db.String(160), nullable=False)
+        resource_type = db.Column(db.String(160), nullable=True)
+        description = db.Column(db.Text, nullable=True)
+        aliases = db.Column(db.JSON, nullable=False, default=list)
+        capabilities = db.Column(db.JSON, nullable=False, default=list)
+        is_active = db.Column(db.Boolean, nullable=False, default=True)
+        sort_order = db.Column(db.Integer, nullable=False, default=0)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+        updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+    class StationContact(db.Model):
+        __tablename__ = "station_contacts"
+
+        id = db.Column(db.Integer, primary_key=True)
+        station_id = db.Column(db.Integer, db.ForeignKey("stations.id"), nullable=False, index=True)
+        phone = db.Column(db.String(80), nullable=True)
+        email = db.Column(db.String(255), nullable=True)
+        note = db.Column(db.Text, nullable=True)
 else:
     User = None
     PasswordResetToken = None
     EmailVerificationToken = None
     KnowledgeDocument = None
     KnowledgeChunk = None
+    Station = None
+    StationVehicle = None
+    StationResource = None
+    StationContact = None
 
 
 def ensure_user_schema():
@@ -454,9 +531,6 @@ def init_database():
             ensure_user_schema()
     except Exception as error:
         app.logger.exception("Database kunne ikke initialiseres: %s", error)
-
-
-init_database()
 
 
 def is_api_request_path():
@@ -724,8 +798,8 @@ def load_json_file(path, fallback):
         return fallback
 
 
-def load_fire_rescue_stations():
-    """Load manual station/resource data without making app startup fragile."""
+def load_fire_rescue_stations_from_json():
+    """Load manual station/resource JSON data without making app startup fragile."""
     global STATION_DATA_CACHE
     if STATION_DATA_CACHE is None:
         station_data = load_json_file(FIRE_RESCUE_STATIONS_FILE, [])
@@ -755,6 +829,198 @@ def load_fire_rescue_stations():
     return STATION_DATA_CACHE
 
 
+def station_list_value(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [line.strip() for line in re.split(r"[\n,]+", value) if line.strip()]
+    return []
+
+
+def station_float_value(value):
+    if value in [None, ""]:
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except Exception:
+        return None
+
+
+def split_station_postal_city(address):
+    match = re.search(r"\b(\d{4})\s+([^,]+)$", str(address or "").strip())
+    if not match:
+        return None, None
+    return match.group(1), match.group(2).strip()
+
+
+def station_db_to_dict(station, include_inactive=False):
+    vehicles = []
+    for vehicle in sorted(station.vehicles or [], key=lambda item: (item.sort_order or 0, item.name or "")):
+        if not include_inactive and not vehicle.is_active:
+            continue
+        vehicles.append({
+            "id": vehicle.id,
+            "name": vehicle.name,
+            "type": vehicle.vehicle_type,
+            "vehicle_type": vehicle.vehicle_type,
+            "callsign": vehicle.callsign,
+            "description": vehicle.description,
+            "aliases": station_list_value(vehicle.aliases),
+            "capabilities": station_list_value(vehicle.capabilities),
+            "is_active": bool(vehicle.is_active),
+            "sort_order": vehicle.sort_order or 0,
+        })
+
+    resources = []
+    for resource in sorted(station.resources or [], key=lambda item: (item.sort_order or 0, item.name or "")):
+        if not include_inactive and not resource.is_active:
+            continue
+        resources.append({
+            "id": resource.id,
+            "name": resource.name,
+            "type": resource.resource_type,
+            "resource_type": resource.resource_type,
+            "description": resource.description,
+            "aliases": station_list_value(resource.aliases),
+            "capabilities": station_list_value(resource.capabilities),
+            "is_active": bool(resource.is_active),
+            "sort_order": resource.sort_order or 0,
+        })
+
+    return {
+        "id": station.id,
+        "source_ref_id": station.source_ref_id,
+        "name": station.name,
+        "aliases": station_list_value(station.aliases),
+        "type": station.type or "Brand/redning",
+        "organization": station.organization,
+        "organisation": station.organization,
+        "authority": station.authority,
+        "operator": station.operator,
+        "area": station.area,
+        "address": station.address,
+        "postal_code": station.postal_code,
+        "city": station.city,
+        "lat": station.lat,
+        "lon": station.lon,
+        "source": station.source or "database",
+        "is_active": bool(station.is_active),
+        "operational_response_station": bool(station.operational_response_station),
+        "vehicles": vehicles,
+        "trailers": [],
+        "containers": [],
+        "resources": resources,
+        "special_resources": [resource["name"] for resource in resources],
+        "resource_aliases": sorted({
+            term
+            for item in [*vehicles, *resources]
+            for term in [item.get("name"), item.get("type"), *(item.get("aliases") or []), *(item.get("capabilities") or [])]
+            if term
+        }),
+        "notes": station.notes,
+    }
+
+
+def station_json_to_db(station_data):
+    postal_code, city = split_station_postal_city(station_data.get("address"))
+    station = Station(
+        source_ref_id=station_data.get("id"),
+        name=station_data.get("name") or "Brand/redningsstation",
+        aliases=station_list_value(station_data.get("aliases")),
+        type=station_data.get("type") or "Brand/redning",
+        organization=station_data.get("organization") or station_data.get("organisation"),
+        authority=station_data.get("authority"),
+        operator=station_data.get("operator"),
+        area=station_data.get("area"),
+        address=station_data.get("address"),
+        postal_code=station_data.get("postal_code") or postal_code,
+        city=station_data.get("city") or city,
+        lat=station_float_value(station_data.get("lat")),
+        lon=station_float_value(station_data.get("lon")),
+        source=station_data.get("source") or "manual",
+        is_active=station_data.get("is_active", True) is not False,
+        operational_response_station=station_data.get("operational_response_station", True) is not False,
+        notes=station_data.get("notes"),
+    )
+
+    sort_order = 0
+    for vehicle_data in station_data.get("vehicles") or []:
+        sort_order += 10
+        station.vehicles.append(StationVehicle(
+            name=vehicle_data.get("name") or vehicle_data.get("callsign") or "Køretøj",
+            vehicle_type=vehicle_data.get("type") or vehicle_data.get("vehicle_type"),
+            callsign=vehicle_data.get("callsign"),
+            description=vehicle_data.get("description"),
+            aliases=station_list_value(vehicle_data.get("aliases")),
+            capabilities=station_list_value(vehicle_data.get("capabilities")),
+            is_active=vehicle_data.get("is_active", True) is not False,
+            sort_order=vehicle_data.get("sort_order") or sort_order,
+        ))
+
+    for collection_name, resource_type in [("trailers", "trailer"), ("containers", "container")]:
+        for resource_data in station_data.get(collection_name) or []:
+            sort_order += 10
+            station.resources.append(StationResource(
+                name=resource_data.get("name") or resource_data.get("type") or resource_type,
+                resource_type=resource_data.get("type") or resource_type,
+                description=resource_data.get("description"),
+                aliases=station_list_value(resource_data.get("aliases")),
+                capabilities=station_list_value(resource_data.get("capabilities")),
+                is_active=resource_data.get("is_active", True) is not False,
+                sort_order=resource_data.get("sort_order") or sort_order,
+            ))
+
+    for resource_name in station_data.get("special_resources") or []:
+        sort_order += 10
+        station.resources.append(StationResource(
+            name=str(resource_name),
+            resource_type=str(resource_name),
+            aliases=[],
+            capabilities=[str(resource_name)],
+            is_active=True,
+            sort_order=sort_order,
+        ))
+
+    return station
+
+
+def seed_fire_rescue_stations_if_empty():
+    if not db or not Station:
+        return
+    try:
+        if Station.query.first():
+            return
+        for station_data in load_fire_rescue_stations_from_json():
+            db.session.add(station_json_to_db(station_data))
+        db.session.commit()
+        app.logger.info("Importerede stationer fra JSON til databasen.")
+    except Exception as error:
+        db.session.rollback()
+        app.logger.exception("Stationsdata kunne ikke importeres fra JSON: %s", error)
+
+
+def load_fire_rescue_stations_from_db(include_inactive=False):
+    if not db or not Station:
+        return []
+    try:
+        query = Station.query
+        if not include_inactive:
+            query = query.filter(Station.is_active.is_(True))
+        stations = query.order_by(Station.name.asc()).all()
+        return [station_db_to_dict(station, include_inactive=include_inactive) for station in stations]
+    except Exception as error:
+        app.logger.warning("Kunne ikke hente stationer fra database: %s", error)
+        return []
+
+
+def load_fire_rescue_stations():
+    """Load station/resource data from DB, with JSON fallback."""
+    db_stations = load_fire_rescue_stations_from_db(include_inactive=False)
+    return db_stations or load_fire_rescue_stations_from_json()
+
+
 def load_resource_aliases():
     """Load centralized resource aliases for natural-language resource search."""
     global RESOURCE_ALIAS_CACHE
@@ -762,7 +1028,6 @@ def load_resource_aliases():
         data = load_json_file(RESOURCE_ALIASES_FILE, {})
         RESOURCE_ALIAS_CACHE = {**RESOURCE_ALIAS_MAP, **data} if isinstance(data, dict) else dict(RESOURCE_ALIAS_MAP)
     return RESOURCE_ALIAS_CACHE
-
 
 def normalize_text(value):
     if value is None:
@@ -784,6 +1049,12 @@ def normalize_station_identity_text(value):
     text = re.sub(r"\b(station|brandstation|beredskabsstation)\b", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+init_database()
+if db:
+    with app.app_context():
+        seed_fire_rescue_stations_if_empty()
 
 
 def canonical_station_key(station):
@@ -1093,6 +1364,7 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
             ("vehicles", "vehicle"),
             ("trailers", "trailer"),
             ("containers", "container"),
+            ("resources", "station_resource"),
         ]:
             for item in station.get(collection_name) or []:
                 scored = score_station_resource(item, expanded_terms, match_type)
@@ -4870,6 +5142,174 @@ def format_datetime(value):
     return value.strftime("%Y-%m-%d %H:%M") if value else "-"
 
 
+def admin_layout(title, body):
+    return f"""
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html.escape(title)} - IndsatsBrief Brand</title>
+<style>
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1180px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,h3,p{{margin-top:0}}p,small{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.admin-message.warning{{border-color:rgba(250,204,21,.4);background:rgba(250,204,21,.13);color:#fde68a}}.card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}}.actions{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}}button,.button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white!important;font-weight:800;padding:9px 13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}}button.secondary,.button.secondary{{background:#334155}}button.warning{{background:#b45309}}input,textarea,select{{width:100%;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#020617;color:#f8fafc;padding:9px 11px}}textarea{{min-height:110px}}label{{display:grid;gap:6px;color:#cbd5e1;font-weight:800}}.form-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}}.full{{grid-column:1/-1}}.badge{{display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;color:#cbd5e1;font-weight:800}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}.actions form,.actions a,.actions button{{width:100%}}button,.button{{width:100%}}}}
+</style>
+</head>
+<body>
+<div class="admin-shell">
+<header><div><h1>{html.escape(title)}</h1><p>Vejledende stations- og ressourceadministration</p></div><nav class="actions"><a class="button secondary" href="/admin/users">Brugere</a><a class="button secondary" href="/brief">Til brief</a><a class="button secondary" href="/logout">Log ud</a></nav></header>
+<main>{body}</main>
+</div>
+</body>
+</html>
+"""
+
+
+def lines_from_form(name):
+    return station_list_value(request.form.get(name))
+
+
+def checkbox_value(name):
+    return request.form.get(name) == "on"
+
+
+def station_form_values(station=None):
+    station = station or {}
+    return {
+        "name": (request.form.get("name") or station.get("name") or "").strip(),
+        "aliases": lines_from_form("aliases") if request.method == "POST" else station_list_value(station.get("aliases")),
+        "type": (request.form.get("type") or station.get("type") or "Brand/redning").strip(),
+        "organization": (request.form.get("organization") or station.get("organization") or "").strip(),
+        "operator": (request.form.get("operator") or station.get("operator") or "").strip(),
+        "area": (request.form.get("area") or station.get("area") or "").strip(),
+        "address": (request.form.get("address") or station.get("address") or "").strip(),
+        "postal_code": (request.form.get("postal_code") or station.get("postal_code") or "").strip(),
+        "city": (request.form.get("city") or station.get("city") or "").strip(),
+        "lat": request.form.get("lat") if request.method == "POST" else station.get("lat"),
+        "lon": request.form.get("lon") if request.method == "POST" else station.get("lon"),
+        "source": (request.form.get("source") or station.get("source") or "manual").strip(),
+        "is_active": checkbox_value("is_active") if request.method == "POST" else station.get("is_active", True),
+        "operational_response_station": checkbox_value("operational_response_station") if request.method == "POST" else station.get("operational_response_station", True),
+        "notes": (request.form.get("notes") or station.get("notes") or "").strip(),
+    }
+
+
+def apply_station_values(station, values):
+    station.name = values["name"]
+    station.aliases = values["aliases"]
+    station.type = values["type"]
+    station.organization = values["organization"]
+    station.operator = values["operator"]
+    station.area = values["area"]
+    station.address = values["address"]
+    station.postal_code = values["postal_code"]
+    station.city = values["city"]
+    station.lat = station_float_value(values["lat"])
+    station.lon = station_float_value(values["lon"])
+    station.source = values["source"]
+    station.is_active = bool(values["is_active"])
+    station.operational_response_station = bool(values["operational_response_station"])
+    station.notes = values["notes"]
+    if (station.lat is None or station.lon is None) and station.address:
+        coordinates = get_station_coordinates({"address": station.address, "name": station.name})
+        if coordinates:
+            station.lat, station.lon = coordinates
+
+
+def station_form_html(action, station=None, error=None):
+    values = station_form_values(station_db_to_dict(station, include_inactive=True) if station else {})
+    aliases_text = "\n".join(values["aliases"])
+    active_checked = "checked" if values["is_active"] else ""
+    operational_checked = "checked" if values["operational_response_station"] else ""
+    error_html = f'<section class="admin-message warning">{html.escape(error)}</section>' if error else ""
+    return f"""
+{error_html}
+<form method="post" action="{html.escape(action)}" class="card">
+<div class="form-grid">
+<label>Navn<input name="name" required value="{html.escape(values['name'])}"></label>
+<label>Type<input name="type" value="{html.escape(values['type'])}"></label>
+<label>Organisation<input name="organization" value="{html.escape(values['organization'])}"></label>
+<label>Operatør<input name="operator" value="{html.escape(values['operator'])}"></label>
+<label>Område<input name="area" value="{html.escape(values['area'])}"></label>
+<label>Adresse<input name="address" value="{html.escape(values['address'])}"></label>
+<label>Postnummer<input name="postal_code" value="{html.escape(values['postal_code'])}"></label>
+<label>By<input name="city" value="{html.escape(values['city'])}"></label>
+<label>Latitude<input name="lat" value="{'' if values['lat'] is None else html.escape(str(values['lat']))}"></label>
+<label>Longitude<input name="lon" value="{'' if values['lon'] is None else html.escape(str(values['lon']))}"></label>
+<label>Kilde<input name="source" value="{html.escape(values['source'])}"></label>
+<label class="full">Aliases, én pr. linje<textarea name="aliases">{html.escape(aliases_text)}</textarea></label>
+<label class="full">Noter<textarea name="notes">{html.escape(values['notes'])}</textarea></label>
+<label><input type="checkbox" name="is_active" {active_checked}> Aktiv</label>
+<label><input type="checkbox" name="operational_response_station" {operational_checked}> Operativ responsstation</label>
+</div>
+<p class="actions"><button type="submit">Gem station</button><a class="button secondary" href="/admin/stations">Tilbage</a></p>
+</form>
+"""
+
+
+def resource_form_values(item=None, kind="vehicle"):
+    item = item or {}
+    name_attr = "vehicle_type" if kind == "vehicle" else "resource_type"
+    return {
+        "name": (request.form.get("name") or item.get("name") or "").strip(),
+        "type": (request.form.get("type") or item.get(name_attr) or "").strip(),
+        "description": (request.form.get("description") or item.get("description") or "").strip(),
+        "aliases": lines_from_form("aliases") if request.method == "POST" else station_list_value(item.get("aliases")),
+        "capabilities": lines_from_form("capabilities") if request.method == "POST" else station_list_value(item.get("capabilities")),
+        "is_active": checkbox_value("is_active") if request.method == "POST" else item.get("is_active", True),
+        "sort_order": request.form.get("sort_order") if request.method == "POST" else item.get("sort_order", 0),
+    }
+
+
+def resource_form_html(action, station, item=None, kind="vehicle", error=None):
+    values = resource_form_values(item, kind)
+    title = "Køretøj" if kind == "vehicle" else "Ressource"
+    active_checked = "checked" if values["is_active"] else ""
+    error_html = f'<section class="admin-message warning">{html.escape(error)}</section>' if error else ""
+    return f"""
+{error_html}
+<form method="post" action="{html.escape(action)}" class="card">
+<h2>{html.escape(title)} for {html.escape(station.name)}</h2>
+<div class="form-grid">
+<label>Navn/callsign<input name="name" required value="{html.escape(values['name'])}"></label>
+<label>Type<input name="type" value="{html.escape(values['type'])}"></label>
+<label>Sortering<input name="sort_order" type="number" value="{html.escape(str(values['sort_order'] or 0))}"></label>
+<label class="full">Beskrivelse<textarea name="description">{html.escape(values['description'])}</textarea></label>
+<label class="full">Aliases, én pr. linje<textarea name="aliases">{html.escape(chr(10).join(values['aliases']))}</textarea></label>
+<label class="full">Capabilities, én pr. linje<textarea name="capabilities">{html.escape(chr(10).join(values['capabilities']))}</textarea></label>
+<label><input type="checkbox" name="is_active" {active_checked}> Aktiv</label>
+</div>
+<p class="actions"><button type="submit">Gem {html.escape(title.lower())}</button><a class="button secondary" href="/admin/stations/{station.id}/{kind}s">Tilbage</a></p>
+</form>
+"""
+
+
+def apply_vehicle_values(vehicle, values):
+    vehicle.name = values["name"]
+    vehicle.vehicle_type = values["type"]
+    vehicle.callsign = values["name"]
+    vehicle.description = values["description"]
+    vehicle.aliases = values["aliases"]
+    vehicle.capabilities = values["capabilities"]
+    vehicle.is_active = bool(values["is_active"])
+    try:
+        vehicle.sort_order = int(values["sort_order"] or 0)
+    except Exception:
+        vehicle.sort_order = 0
+
+
+def apply_resource_values(resource, values):
+    resource.name = values["name"]
+    resource.resource_type = values["type"]
+    resource.description = values["description"]
+    resource.aliases = values["aliases"]
+    resource.capabilities = values["capabilities"]
+    resource.is_active = bool(values["is_active"])
+    try:
+        resource.sort_order = int(values["sort_order"] or 0)
+    except Exception:
+        resource.sort_order = 0
+
+
 def user_action_button(user, action, label):
     return f'<form method="post" action="/admin/users/{user.id}/{action}"><button type="submit">{label}</button></form>'
 
@@ -5030,6 +5470,246 @@ def admin_resend_user_verification(user_id):
         except Exception as error:
             app.logger.exception("Admin kunne ikke gensende bekræftelsesmail: %s", error)
     return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/stations", methods=["GET"])
+@admin_required
+def admin_stations():
+    if not db or not Station:
+        return Response(admin_layout("Stationer", '<section class="admin-message warning">Stationsdatabase er ikke konfigureret.</section>'), status=503, mimetype="text/html")
+
+    message = session.pop("station_admin_message", None)
+    message_kind = session.pop("station_admin_kind", "success")
+    status_html = f'<section class="admin-message {html.escape(message_kind)}">{html.escape(message)}</section>' if message else ""
+    cards = []
+    for station in Station.query.order_by(Station.name.asc()).all():
+        vehicle_count = StationVehicle.query.filter_by(station_id=station.id, is_active=True).count()
+        resource_count = StationResource.query.filter_by(station_id=station.id, is_active=True).count()
+        cards.append(f"""
+<article class="card">
+<h2>{html.escape(station.name)}</h2>
+<p>{html.escape(station.organization or station.authority or station.operator or "Organisation ikke angivet")}</p>
+<p>{html.escape(station.area or "")} {html.escape(station.address or "")}</p>
+<p><span class="badge">{'Aktiv' if station.is_active else 'Deaktiveret'}</span><span class="badge">{'Primær/operativ' if station.operational_response_station else 'Støtte/ikke primær'}</span><span class="badge">{vehicle_count} køretøjer</span><span class="badge">{resource_count} ressourcer</span></p>
+<div class="actions">
+<a class="button" href="/admin/stations/{station.id}/edit">Rediger</a>
+<a class="button secondary" href="/admin/stations/{station.id}/vehicles">Køretøjer</a>
+<a class="button secondary" href="/admin/stations/{station.id}/resources">Ressourcer</a>
+<form method="post" action="/admin/stations/{station.id}/toggle"><button class="warning" type="submit">{'Deaktiver' if station.is_active else 'Aktivér'}</button></form>
+</div>
+</article>
+""")
+    body = f"""
+{status_html}
+<section class="card">
+<div class="actions"><a class="button" href="/admin/stations/new">Opret station</a><form method="post" action="/admin/stations/import-json"><button class="secondary" type="submit">Importer fra JSON hvis tom</button></form></div>
+<p>Ressourcerne er vejledende og ikke live disponering.</p>
+</section>
+<section class="grid">{''.join(cards) or '<article class="card"><p>Ingen stationer oprettet endnu.</p></article>'}</section>
+"""
+    return Response(admin_layout("Stationer", body), mimetype="text/html")
+
+
+@app.route("/admin/stations/import-json", methods=["POST"])
+@admin_required
+def admin_import_stations_json():
+    if not db or not Station:
+        return redirect(url_for("admin_stations"))
+    before = Station.query.count()
+    seed_fire_rescue_stations_if_empty()
+    after = Station.query.count()
+    if after > before:
+        session["station_admin_message"] = f"Importerede {after - before} stationer fra JSON."
+    else:
+        session["station_admin_message"] = "Databasen har allerede stationer. Importen overskrev ikke admin-data."
+        session["station_admin_kind"] = "warning"
+    return redirect(url_for("admin_stations"))
+
+
+@app.route("/admin/stations/new", methods=["GET", "POST"])
+@admin_required
+def admin_station_new():
+    if not db or not Station:
+        return Response(admin_layout("Opret station", '<section class="admin-message warning">Stationsdatabase er ikke konfigureret.</section>'), status=503, mimetype="text/html")
+    error = None
+    if request.method == "POST":
+        values = station_form_values()
+        if not values["name"]:
+            error = "Navn er påkrævet."
+        else:
+            station = Station()
+            apply_station_values(station, values)
+            db.session.add(station)
+            db.session.commit()
+            session["station_admin_message"] = "Stationen er oprettet."
+            return redirect(url_for("admin_stations"))
+    return Response(admin_layout("Opret station", station_form_html("/admin/stations/new", None, error)), status=400 if error else 200, mimetype="text/html")
+
+
+@app.route("/admin/stations/<int:station_id>/edit", methods=["GET", "POST"])
+@admin_required
+def admin_station_edit(station_id):
+    station = db.session.get(Station, station_id) if db and Station else None
+    if not station:
+        return Response(admin_layout("Rediger station", '<section class="admin-message warning">Stationen blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    error = None
+    if request.method == "POST":
+        values = station_form_values(station_db_to_dict(station, include_inactive=True))
+        if not values["name"]:
+            error = "Navn er påkrævet."
+        else:
+            apply_station_values(station, values)
+            db.session.commit()
+            session["station_admin_message"] = "Stationen er gemt."
+            return redirect(url_for("admin_stations"))
+    return Response(admin_layout("Rediger station", station_form_html(f"/admin/stations/{station.id}/edit", station, error)), status=400 if error else 200, mimetype="text/html")
+
+
+@app.route("/admin/stations/<int:station_id>/toggle", methods=["POST"])
+@admin_required
+def admin_station_toggle(station_id):
+    station = db.session.get(Station, station_id) if db and Station else None
+    if station:
+        station.is_active = not station.is_active
+        db.session.commit()
+        session["station_admin_message"] = "Stationens status er opdateret."
+    return redirect(url_for("admin_stations"))
+
+
+def admin_station_items(station_id, kind):
+    station = db.session.get(Station, station_id) if db and Station else None
+    if not station:
+        return Response(admin_layout("Station", '<section class="admin-message warning">Stationen blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    is_vehicle = kind == "vehicles"
+    items = station.vehicles if is_vehicle else station.resources
+    title = "Køretøjer" if is_vehicle else "Ressourcer"
+    new_url = f"/admin/stations/{station.id}/{kind}/new"
+    cards = []
+    for item in sorted(items, key=lambda entry: (entry.sort_order or 0, entry.name or "")):
+        type_text = item.vehicle_type if is_vehicle else item.resource_type
+        edit_url = f"/admin/{'vehicles' if is_vehicle else 'resources'}/{item.id}/edit"
+        toggle_url = f"/admin/{'vehicles' if is_vehicle else 'resources'}/{item.id}/delete"
+        capability_badges = "".join(f'<span class="badge">{html.escape(term)}</span>' for term in station_list_value(item.capabilities))
+        cards.append(f"""
+<article class="card">
+<h2>{html.escape(item.name)}</h2>
+<p>{html.escape(type_text or "")}</p>
+<p>{capability_badges}</p>
+<p><span class="badge">{'Aktiv' if item.is_active else 'Deaktiveret'}</span></p>
+<div class="actions"><a class="button" href="{edit_url}">Rediger</a><form method="post" action="{toggle_url}"><button class="warning" type="submit">{'Deaktiver' if item.is_active else 'Aktivér'}</button></form></div>
+</article>
+""")
+    body = f"""
+<section class="card"><h2>{html.escape(station.name)}</h2><p class="actions"><a class="button" href="{new_url}">Opret {'køretøj' if is_vehicle else 'ressource'}</a><a class="button secondary" href="/admin/stations">Til stationer</a></p></section>
+<section class="grid">{''.join(cards) or '<article class="card"><p>Ingen poster endnu.</p></article>'}</section>
+"""
+    return Response(admin_layout(f"{title} - {station.name}", body), mimetype="text/html")
+
+
+@app.route("/admin/stations/<int:station_id>/vehicles", methods=["GET"])
+@admin_required
+def admin_station_vehicles(station_id):
+    return admin_station_items(station_id, "vehicles")
+
+
+@app.route("/admin/stations/<int:station_id>/resources", methods=["GET"])
+@admin_required
+def admin_station_resources(station_id):
+    return admin_station_items(station_id, "resources")
+
+
+@app.route("/admin/stations/<int:station_id>/vehicles/new", methods=["GET", "POST"])
+@admin_required
+def admin_vehicle_new(station_id):
+    station = db.session.get(Station, station_id) if db and Station else None
+    if not station:
+        return Response(admin_layout("Køretøj", '<section class="admin-message warning">Stationen blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    error = None
+    if request.method == "POST":
+        values = resource_form_values(kind="vehicle")
+        if not values["name"]:
+            error = "Navn er påkrævet."
+        else:
+            vehicle = StationVehicle(station_id=station.id)
+            apply_vehicle_values(vehicle, values)
+            db.session.add(vehicle)
+            db.session.commit()
+            return redirect(url_for("admin_station_vehicles", station_id=station.id))
+    return Response(admin_layout("Opret køretøj", resource_form_html(f"/admin/stations/{station.id}/vehicles/new", station, kind="vehicle", error=error)), status=400 if error else 200, mimetype="text/html")
+
+
+@app.route("/admin/stations/<int:station_id>/resources/new", methods=["GET", "POST"])
+@admin_required
+def admin_resource_new(station_id):
+    station = db.session.get(Station, station_id) if db and Station else None
+    if not station:
+        return Response(admin_layout("Ressource", '<section class="admin-message warning">Stationen blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    error = None
+    if request.method == "POST":
+        values = resource_form_values(kind="resource")
+        if not values["name"]:
+            error = "Navn er påkrævet."
+        else:
+            resource = StationResource(station_id=station.id)
+            apply_resource_values(resource, values)
+            db.session.add(resource)
+            db.session.commit()
+            return redirect(url_for("admin_station_resources", station_id=station.id))
+    return Response(admin_layout("Opret ressource", resource_form_html(f"/admin/stations/{station.id}/resources/new", station, kind="resource", error=error)), status=400 if error else 200, mimetype="text/html")
+
+
+@app.route("/admin/vehicles/<int:vehicle_id>/edit", methods=["GET", "POST"])
+@admin_required
+def admin_vehicle_edit(vehicle_id):
+    vehicle = db.session.get(StationVehicle, vehicle_id) if db and StationVehicle else None
+    if not vehicle:
+        return Response(admin_layout("Køretøj", '<section class="admin-message warning">Køretøjet blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    item = {"name": vehicle.name, "vehicle_type": vehicle.vehicle_type, "description": vehicle.description, "aliases": vehicle.aliases, "capabilities": vehicle.capabilities, "is_active": vehicle.is_active, "sort_order": vehicle.sort_order}
+    if request.method == "POST":
+        values = resource_form_values(item, kind="vehicle")
+        if values["name"]:
+            apply_vehicle_values(vehicle, values)
+            db.session.commit()
+            return redirect(url_for("admin_station_vehicles", station_id=vehicle.station_id))
+    return Response(admin_layout("Rediger køretøj", resource_form_html(f"/admin/vehicles/{vehicle.id}/edit", vehicle.station, item, "vehicle")), mimetype="text/html")
+
+
+@app.route("/admin/resources/<int:resource_id>/edit", methods=["GET", "POST"])
+@admin_required
+def admin_resource_edit(resource_id):
+    resource = db.session.get(StationResource, resource_id) if db and StationResource else None
+    if not resource:
+        return Response(admin_layout("Ressource", '<section class="admin-message warning">Ressourcen blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    item = {"name": resource.name, "resource_type": resource.resource_type, "description": resource.description, "aliases": resource.aliases, "capabilities": resource.capabilities, "is_active": resource.is_active, "sort_order": resource.sort_order}
+    if request.method == "POST":
+        values = resource_form_values(item, kind="resource")
+        if values["name"]:
+            apply_resource_values(resource, values)
+            db.session.commit()
+            return redirect(url_for("admin_station_resources", station_id=resource.station_id))
+    return Response(admin_layout("Rediger ressource", resource_form_html(f"/admin/resources/{resource.id}/edit", resource.station, item, "resource")), mimetype="text/html")
+
+
+@app.route("/admin/vehicles/<int:vehicle_id>/delete", methods=["POST"])
+@admin_required
+def admin_vehicle_toggle(vehicle_id):
+    vehicle = db.session.get(StationVehicle, vehicle_id) if db and StationVehicle else None
+    if vehicle:
+        vehicle.is_active = not vehicle.is_active
+        db.session.commit()
+        return redirect(url_for("admin_station_vehicles", station_id=vehicle.station_id))
+    return redirect(url_for("admin_stations"))
+
+
+@app.route("/admin/resources/<int:resource_id>/delete", methods=["POST"])
+@admin_required
+def admin_resource_toggle(resource_id):
+    resource = db.session.get(StationResource, resource_id) if db and StationResource else None
+    if resource:
+        resource.is_active = not resource.is_active
+        db.session.commit()
+        return redirect(url_for("admin_station_resources", station_id=resource.station_id))
+    return redirect(url_for("admin_stations"))
 
 
 def knowledge_document_card(document):
@@ -5402,6 +6082,9 @@ def brief_page():
         .station-card { width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--card-soft); overflow-wrap: anywhere; word-break: break-word; }
         .station-card h3 { margin: 0 0 8px; font-size: 17px; }
         .station-card p { margin: 5px 0; color: var(--muted); }
+        .station-details { margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(15,23,42,.8); }
+        .station-details h4 { margin: 12px 0 6px; }
+        .station-detail-item { padding: 8px 0; border-top: 1px solid var(--border); }
         .badge { display: inline-flex; align-items: center; min-height: 26px; border-radius: 999px; padding: 3px 9px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; font-weight: 850; }
         .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; max-width: 100%; }
         @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } #map-frame { height: 320px; } }
@@ -5776,6 +6459,95 @@ def brief_page():
             return item.matched_resource || null;
         }
 
+        function appendBadgeList(container, values) {
+            (values || []).filter(Boolean).forEach(value => {
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.textContent = value;
+                container.appendChild(badge);
+            });
+        }
+
+        function renderStationDetails(container, data) {
+            container.replaceChildren();
+            const title = document.createElement('h3');
+            title.textContent = data.name || 'Stationsdetaljer';
+            container.appendChild(title);
+            [
+                data.type && `Type: ${data.type}`,
+                (data.organization || data.organisation) && `Organisation: ${data.organization || data.organisation}`,
+                data.operator && `Operatør: ${data.operator}`,
+                data.area && `Område: ${data.area}`,
+                data.address && `Adresse: ${data.address}`,
+                data.source && `Kilde: ${data.source}`
+            ].filter(Boolean).forEach(text => { const p = document.createElement('p'); p.textContent = text; container.appendChild(p); });
+
+            const vehicles = data.vehicles || [];
+            const resources = data.resources || [];
+            if (vehicles.length) {
+                const heading = document.createElement('h4');
+                heading.textContent = 'Køretøjer';
+                container.appendChild(heading);
+                vehicles.forEach(vehicle => {
+                    const item = document.createElement('div');
+                    item.className = 'station-detail-item';
+                    const label = vehicle.vehicle_type ? `${vehicle.name} – ${vehicle.vehicle_type}` : vehicle.name;
+                    const p = document.createElement('p');
+                    p.textContent = label;
+                    item.appendChild(p);
+                    appendBadgeList(item, vehicle.capabilities || vehicle.aliases);
+                    container.appendChild(item);
+                });
+            }
+            if (resources.length) {
+                const heading = document.createElement('h4');
+                heading.textContent = 'Særlige ressourcer';
+                container.appendChild(heading);
+                resources.forEach(resource => {
+                    const item = document.createElement('div');
+                    item.className = 'station-detail-item';
+                    const p = document.createElement('p');
+                    p.textContent = resource.resource_type && resource.resource_type !== resource.name ? `${resource.name} – ${resource.resource_type}` : resource.name;
+                    item.appendChild(p);
+                    appendBadgeList(item, resource.capabilities || resource.aliases);
+                    container.appendChild(item);
+                });
+            }
+            if (!vehicles.length && !resources.length) {
+                const empty = document.createElement('p');
+                empty.textContent = 'Der er ikke registreret detaljerede ressourcer for denne station endnu.';
+                container.appendChild(empty);
+            }
+            const disclaimer = document.createElement('p');
+            disclaimer.textContent = data.disclaimer || 'Ressourcerne er vejledende og ikke live disponering.';
+            container.appendChild(disclaimer);
+        }
+
+        function addStationDetailsControl(card, station) {
+            if (!station.station_id || station.source === 'OSM') return;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'secondary';
+            button.textContent = 'Se ressourcer';
+            const details = document.createElement('div');
+            details.className = 'station-details';
+            details.hidden = true;
+            button.addEventListener('click', async event => {
+                event.stopPropagation();
+                if (!details.hidden) { details.hidden = true; return; }
+                details.hidden = false;
+                details.textContent = 'Henter ressourcer…';
+                try {
+                    const data = await fetchJson(`/api/stations/${encodeURIComponent(station.station_id)}`);
+                    renderStationDetails(details, data);
+                } catch (error) {
+                    details.textContent = error.message || 'Kunne ikke hente stationsdetaljer.';
+                }
+            });
+            card.appendChild(button);
+            card.appendChild(details);
+        }
+
         function translateReportLine(line) {
             return String(line)
                 .replace(/^Attic used area\s*:/i, 'Udnyttet tagetage:')
@@ -6073,6 +6845,7 @@ def brief_page():
                     }
                     parts.push(`Kilde: ${station.source || 'ikke angivet'}`);
                     parts.forEach(part => { const line = document.createElement('p'); line.textContent = part; card.appendChild(line); });
+                    addStationDetailsControl(card, station);
                     list.appendChild(card);
                 });
                 assistanceResult.appendChild(list);
@@ -6123,6 +6896,7 @@ def brief_page():
                         result.road_distance_km !== null && result.road_time_min !== null && `Vej: ${String(result.road_distance_km).replace('.', ',')} km · ca. ${result.road_time_min} min.`,
                         result.source && `Kilde: ${result.source}`
                     ].filter(Boolean).forEach(text => { const p = document.createElement('p'); p.textContent = text; card.appendChild(p); });
+                    addStationDetailsControl(card, result);
                     list.appendChild(card);
                 });
                 resourceResult.appendChild(list);
@@ -7638,6 +8412,116 @@ def find_nearest_resource(address, resource_query, radius_km=100, limit=5):
         limit=limit,
     )
     return payload
+
+
+def station_detail_from_json(identifier):
+    identifier_text = str(identifier or "")
+    for station in load_fire_rescue_stations_from_json():
+        if str(station.get("id")) == identifier_text or canonical_station_key(station) == identifier_text:
+            return {
+                "id": station.get("id"),
+                "name": station.get("name"),
+                "aliases": station_list_value(station.get("aliases")),
+                "type": station.get("type"),
+                "organization": station.get("organization") or station.get("organisation"),
+                "organisation": station.get("organization") or station.get("organisation"),
+                "authority": station.get("authority"),
+                "operator": station.get("operator"),
+                "area": station.get("area"),
+                "address": station.get("address"),
+                "postal_code": station.get("postal_code"),
+                "city": station.get("city"),
+                "lat": station.get("lat"),
+                "lon": station.get("lon"),
+                "source": station.get("source") or "manual",
+                "vehicles": [
+                    {
+                        "id": vehicle.get("id"),
+                        "name": vehicle.get("name"),
+                        "vehicle_type": vehicle.get("type") or vehicle.get("vehicle_type"),
+                        "description": vehicle.get("description"),
+                        "aliases": station_list_value(vehicle.get("aliases")),
+                        "capabilities": station_list_value(vehicle.get("capabilities")),
+                    }
+                    for vehicle in station.get("vehicles") or []
+                ],
+                "resources": [
+                    {
+                        "id": resource.get("id"),
+                        "name": resource.get("name") or resource.get("type"),
+                        "resource_type": resource.get("type") or "ressource",
+                        "description": resource.get("description"),
+                        "aliases": station_list_value(resource.get("aliases")),
+                        "capabilities": station_list_value(resource.get("capabilities")),
+                    }
+                    for collection in ["trailers", "containers"]
+                    for resource in station.get(collection) or []
+                ] + [
+                    {
+                        "id": None,
+                        "name": name,
+                        "resource_type": name,
+                        "description": "",
+                        "aliases": [],
+                        "capabilities": [name],
+                    }
+                    for name in station.get("special_resources") or []
+                ],
+                "notes": station.get("notes"),
+                "disclaimer": "Ressourcerne er vejledende og ikke live disponering.",
+            }
+    return None
+
+
+def station_detail_payload(identifier):
+    if db and Station:
+        try:
+            station = None
+            if str(identifier).isdigit():
+                station = db.session.get(Station, int(identifier))
+            if not station:
+                station = Station.query.filter_by(source_ref_id=str(identifier)).first()
+            if station and (station.is_active or is_admin_user()):
+                payload = station_db_to_dict(station, include_inactive=is_admin_user())
+                payload["vehicles"] = [
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "vehicle_type": item["vehicle_type"],
+                        "description": item["description"],
+                        "aliases": item["aliases"],
+                        "capabilities": item["capabilities"],
+                    }
+                    for item in payload.get("vehicles", [])
+                ]
+                payload["resources"] = [
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "resource_type": item["resource_type"],
+                        "description": item["description"],
+                        "aliases": item["aliases"],
+                        "capabilities": item["capabilities"],
+                    }
+                    for item in payload.get("resources", [])
+                ]
+                payload["disclaimer"] = "Ressourcerne er vejledende og ikke live disponering."
+                return payload
+        except Exception as error:
+            app.logger.warning("Stationsdetaljer kunne ikke hentes fra database: %s", error)
+    return station_detail_from_json(identifier)
+
+
+@app.route("/api/stations/<station_id>", methods=["GET"])
+def api_station_details(station_id):
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+
+    payload = station_detail_payload(station_id)
+    if not payload:
+        return jsonify({"error": "Stationen blev ikke fundet"}), 404
+    return jsonify(payload)
 
 
 def answer_resource_followup(question, incident_data):

@@ -179,8 +179,10 @@
   "kran": [
     "kran",
     "redningskran",
-    "bjærgning",
-    "tung redning"
+    "køretøjskran",
+    "koeretoejskran",
+    "lastbil med kran",
+    "kranvogn"
   ],
   "frivillige": [
     "frivillige",

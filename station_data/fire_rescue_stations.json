@@ -357,12 +357,33 @@
           "tagarbejde"
         ],
         "source": "manual"
+      },
+      {
+        "name": "R4",
+        "type": "redningsvogn med kran",
+        "aliases": [
+          "R4",
+          "redningsvogn",
+          "kran",
+          "redningskran",
+          "køretøjskran",
+          "koeretoejskran"
+        ],
+        "capabilities": [
+          "redning",
+          "frigørelse",
+          "kran",
+          "redningskran"
+        ],
+        "source": "manual"
       }
     ],
     "trailers": [],
     "containers": [],
     "special_resources": [
-      "højderedning"
+      "højderedning",
+      "kran",
+      "redningskran"
     ],
     "resource_aliases": [
       "sprøjte",
@@ -375,6 +396,8 @@
       "hoejderedning",
       "redning fra højde",
       "tagarbejde",
+      "kran",
+      "redningskran",
       "S2"
     ],
     "notes": "Organisation ikke sat manuelt for at undgå forkert kobling.",

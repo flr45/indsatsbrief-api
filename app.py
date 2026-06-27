@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, Response, redirect, session, url_for
 from datetime import datetime, timezone
+from functools import wraps
 from urllib.parse import quote
 import requests
 import os
@@ -9,17 +10,36 @@ import base64
 import re
 import hmac
 import time
+import html
 from openai import OpenAI
 from werkzeug.exceptions import HTTPException
+from werkzeug.security import generate_password_hash, check_password_hash
+
+try:
+    from flask_sqlalchemy import SQLAlchemy
+except Exception:  # pragma: no cover - dependency is installed in production via requirements.txt
+    SQLAlchemy = None
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 BRIEF_ACCESS_CODE = os.getenv("BRIEF_ACCESS_CODE")
+DATABASE_URL = os.getenv("DATABASE_URL")
+ADMIN_APPROVAL_REQUIRED = os.getenv("ADMIN_APPROVAL_REQUIRED", "true").lower() == "true"
+ADMIN_EMAIL = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
 
-if FLASK_SECRET_KEY:
-    app.secret_key = FLASK_SECRET_KEY
+app.secret_key = FLASK_SECRET_KEY or os.getenv("SECRET_KEY", "dev-only-change-me")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = bool(os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_HOSTNAME"))
+
+database_uri = DATABASE_URL or f"sqlite:///{os.path.join(os.path.dirname(__file__), 'indsatsbrief.sqlite3')}"
+if database_uri.startswith("postgres://"):
+    database_uri = database_uri.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app) if SQLAlchemy else None
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
@@ -90,6 +110,7 @@ Læg sekundære bygninger i secondary_buildings.
 Læg kælder i basement_lines, kun hvis kælder faktisk er registreret.
 Gentag ikke samme oplysninger i flere sektioner.
 Findings/FUND må kun være særlige fund og korte bemærkninger, fx adresseafvigelse, kælder registreret, sekundære bygninger registreret, nærmeste større vej, OSM/adgangs-/risikofund eller brandhanefund.
+Du må ikke udelade bygningsdata, sekundære bygninger, kælderdata, varme eller vejroplysninger, hvis de findes i input. Du må kun udelade sektioner uden data.
 
 Skriv kort, skarpt og i punktopstilling.
 Returnér kun JSON efter det angivne schema.
@@ -250,8 +271,20 @@ RESOURCE_ALIAS_MAP = {
     "elbil": ["elbil", "elbilslukning", "batteribrand", "battericontainer", "elbilslukningscontainer"],
     "jernbane": ["jernbane", "banevej", "banevejkøretøj", "BVK", "mobilovergang", "togulykke", "jordingsvogn", "jordingsudstyr", "kørestrøm", "Storebælt", "broberedskab"],
     "lys": ["lys", "belysning", "arbejdslys", "lysgiraf"],
-    "kran": ["kran", "redningskran", "bjærgning", "tung redning"],
+    "kran": ["kran", "redningskran", "køretøjskran", "koeretoejskran", "lastbil med kran", "kranvogn"],
     "frivillige": ["frivillige", "frivilligenhed", "supplerende beredskab", "forplejning", "logistik", "støtteberedskab"],
+}
+STRICT_RESOURCE_QUERIES = {
+    "kran",
+    "redningskran",
+    "robot",
+    "taf 60",
+    "mirg",
+    "dykker",
+    "redningsbaad",
+    "redningsbåd",
+    "cbrn",
+    "kemi",
 }
 
 ROUTE_CACHE = {}
@@ -272,6 +305,44 @@ API_ERROR_PREFIXES = (
     "/aerial-image",
     "/hazmat",
 )
+
+
+if db:
+    class User(db.Model):
+        __tablename__ = "users"
+
+        id = db.Column(db.Integer, primary_key=True)
+        email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+        password_hash = db.Column(db.String(255), nullable=False)
+        name = db.Column(db.String(255), nullable=False)
+        organization = db.Column(db.String(255), nullable=False)
+        role = db.Column(db.String(50), nullable=False, default="user")
+        is_active = db.Column(db.Boolean, nullable=False, default=True)
+        is_approved = db.Column(db.Boolean, nullable=False, default=False)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+        last_login_at = db.Column(db.DateTime, nullable=True)
+
+        def set_password(self, password):
+            self.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
+
+        def check_password(self, password):
+            return check_password_hash(self.password_hash, password or "")
+else:
+    User = None
+
+
+def init_database():
+    if not db:
+        app.logger.warning("Flask-SQLAlchemy er ikke installeret. Brugerlogin er ikke aktivt.")
+        return
+    try:
+        with app.app_context():
+            db.create_all()
+    except Exception as error:
+        app.logger.exception("Database kunne ikke initialiseres: %s", error)
+
+
+init_database()
 
 
 def is_api_request_path():
@@ -543,13 +614,30 @@ def load_fire_rescue_stations():
     """Load manual station/resource data without making app startup fragile."""
     global STATION_DATA_CACHE
     if STATION_DATA_CACHE is None:
-        station_file = (
-            ROOT_FIRE_RESCUE_STATIONS_FILE
-            if os.path.exists(ROOT_FIRE_RESCUE_STATIONS_FILE)
-            else FIRE_RESCUE_STATIONS_FILE
-        )
-        data = load_json_file(station_file, [])
-        STATION_DATA_CACHE = data if isinstance(data, list) else []
+        station_data = load_json_file(FIRE_RESCUE_STATIONS_FILE, [])
+        root_data = load_json_file(ROOT_FIRE_RESCUE_STATIONS_FILE, []) if os.path.exists(ROOT_FIRE_RESCUE_STATIONS_FILE) else []
+        combined = []
+        seen = set()
+        seen_names = set()
+        for station in (station_data if isinstance(station_data, list) else []):
+            key = station.get("id") or normalize_text(station.get("name"))
+            name_key = normalize_text(station.get("name"))
+            if key:
+                seen.add(key)
+            if name_key:
+                seen_names.add(name_key)
+            combined.append(station)
+        for station in (root_data if isinstance(root_data, list) else []):
+            key = station.get("id") or normalize_text(station.get("name"))
+            name_key = normalize_text(station.get("name"))
+            if (key and key in seen) or (name_key and name_key in seen_names):
+                continue
+            if key:
+                seen.add(key)
+            if name_key:
+                seen_names.add(name_key)
+            combined.append(station)
+        STATION_DATA_CACHE = combined
     return STATION_DATA_CACHE
 
 
@@ -613,7 +701,18 @@ def station_text_fields(station):
     ]
 
 
-def score_resource_text(value, expanded_terms, base_score):
+def is_strict_resource_query(expanded_terms):
+    query_term = normalize_text(expanded_terms[0]) if expanded_terms else ""
+    return query_term in {normalize_text(term) for term in STRICT_RESOURCE_QUERIES}
+
+
+def strict_text_match(normalized_value, normalized_term):
+    if normalized_value == normalized_term:
+        return True
+    return bool(re.search(rf"(^|\s){re.escape(normalized_term)}(\s|$)", normalized_value))
+
+
+def score_resource_text(value, expanded_terms, base_score, strict=False):
     normalized_value = normalize_text(value)
     if not normalized_value:
         return None
@@ -626,6 +725,10 @@ def score_resource_text(value, expanded_terms, base_score):
             continue
         if normalized_value == normalized_term:
             score = base_score
+        elif strict and strict_text_match(normalized_value, normalized_term):
+            score = max(base_score - 8, 1)
+        elif strict:
+            continue
         elif normalized_term in normalized_value or normalized_value in normalized_term:
             score = max(base_score - 20, 1)
         else:
@@ -679,6 +782,7 @@ def height_resource_priority_bonus(item, expanded_terms):
 
 
 def score_station_resource(item, expanded_terms, item_kind):
+    strict = is_strict_resource_query(expanded_terms)
     candidates = [
         (item.get("name"), 100),
         (item.get("type"), 85),
@@ -689,7 +793,7 @@ def score_station_resource(item, expanded_terms, item_kind):
     matched_terms = []
 
     for value, base_score in candidates:
-        scored = score_resource_text(value, expanded_terms, base_score)
+        scored = score_resource_text(value, expanded_terms, base_score, strict=strict)
         if not scored:
             continue
         score, terms = scored
@@ -718,6 +822,7 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
     expanded_terms = expand_resource_query(resource_query)
     if not expanded_terms:
         return []
+    strict = is_strict_resource_query(expanded_terms)
 
     matches = []
     for station in load_fire_rescue_stations():
@@ -736,7 +841,7 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                     station_matches.append(scored)
 
         for value in station.get("special_resources") or []:
-            scored = score_resource_text(value, expanded_terms, 70)
+            scored = score_resource_text(value, expanded_terms, 70, strict=strict)
             if scored:
                 score, terms = scored
                 station_matches.append({
@@ -751,7 +856,7 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                 })
 
         for value in station_text_fields(station):
-            scored = score_resource_text(value, expanded_terms, 55)
+            scored = score_resource_text(value, expanded_terms, 55, strict=strict)
             if scored:
                 score, terms = scored
                 station_matches.append({
@@ -3620,79 +3725,350 @@ def home():
 
 
 def brief_configuration_message():
-    if not BRIEF_ACCESS_CODE:
-        return "BRIEF_ACCESS_CODE mangler i Render Environment."
-    if not FLASK_SECRET_KEY:
-        return "FLASK_SECRET_KEY mangler i Render Environment."
+    if not db and not BRIEF_ACCESS_CODE:
+        return "Brugerlogin kræver Flask-SQLAlchemy eller BRIEF_ACCESS_CODE."
     return None
+
+
+def current_user():
+    user_id = session.get("user_id")
+    if not user_id or not db or not User:
+        return None
+    try:
+        return db.session.get(User, int(user_id))
+    except Exception:
+        return None
+
+
+def is_logged_in():
+    user = current_user()
+    return bool(
+        user
+        and user.is_active
+        and user.is_approved
+        and session.get("user_id") == user.id
+    ) or bool(session.get("access_granted") or session.get("brief_authenticated"))
+
+
+def is_admin_user(user=None):
+    user = user or current_user()
+    return bool(user and user.is_active and user.is_approved and user.role == "admin")
+
+
+def login_required(api=False):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if is_logged_in():
+                return func(*args, **kwargs)
+            if api:
+                return jsonify({"ok": False, "error": "Login kræves."}), 401
+            return redirect(url_for("login", next=request.path))
+        return wrapper
+    return decorator
+
+
+def admin_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not is_admin_user():
+            return redirect(url_for("login", next=request.path))
+        return func(*args, **kwargs)
+    return wrapper
 
 
 def brief_api_access_error():
     configuration_message = brief_configuration_message()
     if configuration_message:
-        return jsonify({"error": configuration_message}), 503
-    if not session.get("brief_authenticated"):
-        return jsonify({"error": "Login kræves for denne brief-funktion."}), 401
+        return jsonify({"ok": False, "error": configuration_message}), 503
+    if not is_logged_in():
+        return jsonify({"ok": False, "error": "Login kræves."}), 401
     return None
 
 
-def brief_login_html(error_message=None):
-    error_html = f'<p class="error">{error_message}</p>' if error_message else ""
+def auth_page_html(title, body_html, error_message=None, info_message=None):
+    error_html = f'<p class="message error">{error_message}</p>' if error_message else ""
+    info_html = f'<p class="message info">{info_message}</p>' if info_message else ""
     return f"""
 <!DOCTYPE html>
 <html lang="da">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>IndsatsBrief Brand</title>
+    <title>{title} - IndsatsBrief Brand</title>
     <style>
+        :root {{ --bg:#0f172a; --card:#111827; --border:rgba(255,255,255,.08); --primary:#2563eb; --text:#f8fafc; --muted:#cbd5e1; --error:#ef4444; --success:#22c55e; }}
+        html, body {{ width:100%; max-width:100%; overflow-x:hidden; }}
         * {{ box-sizing: border-box; }}
-        body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef2f3; color: #162126; font-family: Arial, sans-serif; padding: 20px; }}
-        main {{ width: min(100%, 420px); background: #fff; border: 1px solid #d2dbde; border-radius: 6px; padding: 28px; }}
-        h1 {{ margin: 0 0 24px; font-size: 26px; }}
-        label {{ display: grid; gap: 8px; font-weight: 700; }}
-        input, button {{ width: 100%; min-height: 48px; border-radius: 4px; font: inherit; }}
-        input {{ border: 1px solid #aebbc0; padding: 10px 12px; }}
-        button {{ margin-top: 18px; border: 0; background: #b91f2b; color: #fff; font-weight: 700; cursor: pointer; }}
-        .error {{ color: #a31824; margin: 0 0 16px; }}
-        @media (max-width: 520px) {{ main {{ padding: 22px; }} h1 {{ font-size: 23px; }} }}
+        body {{ margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at top left, rgba(37,99,235,.22), transparent 32rem), var(--bg); color:var(--text); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:20px; }}
+        main {{ width:min(100%, 520px); border:1px solid var(--border); border-radius:20px; background:var(--card); box-shadow:0 24px 70px rgba(0,0,0,.35); padding:28px; }}
+        h1 {{ margin:0 0 6px; font-size:28px; letter-spacing:0; }}
+        .subtitle {{ margin:0 0 22px; color:var(--muted); }}
+        form {{ display:grid; gap:14px; }}
+        label {{ display:grid; gap:7px; color:var(--muted); font-size:14px; font-weight:800; }}
+        input, button {{ width:100%; max-width:100%; min-height:48px; border-radius:14px; font:inherit; }}
+        input {{ border:1px solid var(--border); background:#020617; color:var(--text); padding:11px 13px; }}
+        button {{ border:0; background:var(--primary); color:#fff; font-weight:850; cursor:pointer; }}
+        a {{ color:#93c5fd; overflow-wrap:anywhere; }}
+        .links {{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:18px; }}
+        .message {{ margin:0 0 16px; padding:12px 14px; border-radius:12px; }}
+        .error {{ background:rgba(239,68,68,.14); color:#fecaca; }}
+        .info {{ background:rgba(34,197,94,.12); color:#bbf7d0; }}
+        @media (max-width:520px) {{ body {{ padding:12px; }} main {{ padding:22px; }} h1 {{ font-size:24px; }} }}
     </style>
 </head>
 <body><main>
     <h1>IndsatsBrief Brand</h1>
+    <p class="subtitle">{title}</p>
     {error_html}
-    <form method="post" action="/brief-login">
-        <label>Adgangskode<input type="password" name="access_code" required autofocus autocomplete="current-password"></label>
-        <button type="submit">Åbn</button>
-    </form>
+    {info_html}
+    {body_html}
 </main></body>
 </html>
     """
 
 
+def normalize_email(email):
+    return (email or "").strip().lower()
+
+
+def email_looks_valid(email):
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email or ""))
+
+
+def safe_next_url(value):
+    if not value or not str(value).startswith("/") or str(value).startswith("//"):
+        return url_for("brief_page")
+    return str(value)
+
+
+def admin_count():
+    if not db or not User:
+        return 0
+    return User.query.filter_by(role="admin", is_active=True, is_approved=True).count()
+
+
+def should_make_admin(email):
+    if ADMIN_EMAIL and email == ADMIN_EMAIL:
+        return True
+    return db and User and User.query.count() == 0
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if not db or not User:
+        return Response(auth_page_html("Opret bruger", "", error_message="Database/login er ikke konfigureret."), status=503, mimetype="text/html")
+
+    error = None
+    info = None
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        email = normalize_email(request.form.get("email"))
+        organization = (request.form.get("organization") or "").strip()
+        password = request.form.get("password") or ""
+        password_repeat = request.form.get("password_repeat") or ""
+
+        if not name or not organization or not email or not password:
+            error = "Udfyld alle felter."
+        elif not email_looks_valid(email):
+            error = "E-mail skal være gyldig."
+        elif len(password) < 8:
+            error = "Password skal være mindst 8 tegn."
+        elif password != password_repeat:
+            error = "Password og gentag password skal matche."
+        elif User.query.filter_by(email=email).first():
+            error = "E-mail er allerede oprettet."
+        else:
+            make_admin = should_make_admin(email)
+            user = User(
+                email=email,
+                name=name,
+                organization=organization,
+                role="admin" if make_admin else "user",
+                is_active=True,
+                is_approved=(not ADMIN_APPROVAL_REQUIRED) or make_admin,
+            )
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            if user.is_approved:
+                session.clear()
+                session["user_id"] = user.id
+                return redirect(url_for("brief_page"))
+            info = "Din bruger er oprettet og afventer godkendelse."
+
+    body = """
+    <form method="post" action="/register">
+        <label>Navn<input name="name" required autocomplete="name"></label>
+        <label>E-mail<input type="email" name="email" required autocomplete="email"></label>
+        <label>Organisation/arbejdssted<input name="organization" required autocomplete="organization"></label>
+        <label>Password<input type="password" name="password" required autocomplete="new-password"></label>
+        <label>Gentag password<input type="password" name="password_repeat" required autocomplete="new-password"></label>
+        <button type="submit">Opret bruger</button>
+    </form>
+    <div class="links"><a href="/login">Log ind</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Opret bruger", body, error, info), status=400 if error else 200, mimetype="text/html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
+    if request.method == "POST":
+        access_code = request.form.get("access_code") or ""
+        if BRIEF_ACCESS_CODE and access_code and hmac.compare_digest(access_code, BRIEF_ACCESS_CODE):
+            session.clear()
+            session["access_granted"] = True
+            session["brief_authenticated"] = True
+            return redirect(next_url)
+
+        email = normalize_email(request.form.get("email"))
+        password = request.form.get("password") or ""
+        user = User.query.filter_by(email=email).first() if db and User and email else None
+        if not user or not user.check_password(password):
+            error = "Forkert e-mail eller password."
+        elif not user.is_active:
+            error = "Brugeren er deaktiveret."
+        elif not user.is_approved:
+            error = "Brugeren afventer godkendelse."
+        else:
+            user.last_login_at = datetime.utcnow()
+            db.session.commit()
+            session.clear()
+            session["user_id"] = user.id
+            return redirect(next_url)
+
+    body = f"""
+    <form method="post" action="/login">
+        <input type="hidden" name="next" value="{html.escape(next_url)}">
+        <label>E-mail<input type="email" name="email" autocomplete="email"></label>
+        <label>Password<input type="password" name="password" autocomplete="current-password"></label>
+        <label>Adgangskode (fallback)<input type="password" name="access_code" autocomplete="off"></label>
+        <button type="submit">Log ind</button>
+    </form>
+    <div class="links"><a href="/register">Opret bruger</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Log ind", body, error), status=401 if error else 200, mimetype="text/html")
+
+
+@app.route("/logout", methods=["GET"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
 @app.route("/brief-login", methods=["GET", "POST"])
 def brief_login():
-    configuration_message = brief_configuration_message()
-    if configuration_message:
-        return Response(configuration_message, status=503, mimetype="text/plain")
-
-    if request.method == "POST":
-        submitted_code = request.form.get("access_code", "")
-        if hmac.compare_digest(submitted_code, BRIEF_ACCESS_CODE):
-            session["brief_authenticated"] = True
-            return redirect(url_for("brief_page"))
-        return Response(brief_login_html("Forkert adgangskode."), status=401, mimetype="text/html")
-
-    return Response(brief_login_html(), mimetype="text/html")
+    return redirect(url_for("login"))
 
 
 @app.route("/brief-logout", methods=["GET"])
 def brief_logout():
-    configuration_message = brief_configuration_message()
-    if configuration_message:
-        return Response(configuration_message, status=503, mimetype="text/plain")
-    session.pop("brief_authenticated", None)
-    return redirect(url_for("brief_login"))
+    return redirect(url_for("logout"))
+
+
+def format_datetime(value):
+    return value.strftime("%Y-%m-%d %H:%M") if value else "-"
+
+
+def user_action_button(user, action, label):
+    return f'<form method="post" action="/admin/users/{user.id}/{action}"><button type="submit">{label}</button></form>'
+
+
+@app.route("/admin/users", methods=["GET"])
+@admin_required
+def admin_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    current = current_user()
+    rows = []
+    for user in users:
+        actions = []
+        if not user.is_approved:
+            actions.append(user_action_button(user, "approve", "Godkend"))
+        actions.append(user_action_button(user, "enable" if not user.is_active else "disable", "Aktivér" if not user.is_active else "Deaktiver"))
+        actions.append(user_action_button(user, "remove-admin" if user.role == "admin" else "make-admin", "Fjern admin" if user.role == "admin" else "Gør til admin"))
+        self_note = " <span class='badge'>dig</span>" if current and user.id == current.id else ""
+        rows.append(f"""
+        <article class="user-card">
+            <h2>{html.escape(user.name or '')}{self_note}</h2>
+            <p>{html.escape(user.email or '')}</p>
+            <p>Organisation: {html.escape(user.organization or '')}</p>
+            <p>Rolle: {html.escape(user.role or '')} · Godkendt: {'ja' if user.is_approved else 'nej'} · Aktiv: {'ja' if user.is_active else 'nej'}</p>
+            <p>Oprettet: {format_datetime(user.created_at)} · Seneste login: {format_datetime(user.last_login_at)}</p>
+            <div class="actions">{''.join(actions)}</div>
+        </article>
+        """)
+    body = f"""
+    <div class="admin-shell">
+        <header><div><h1>Brugere</h1><p>Admin-godkendelse til IndsatsBrief Brand</p></div><a href="/brief">Til brief</a></header>
+        <main>{''.join(rows) if rows else '<p>Ingen brugere.</p>'}</main>
+    </div>
+    """
+    admin_html = f"""
+<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin - IndsatsBrief</title>
+<style>
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd}}main{{display:grid;gap:14px}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
+</style></head><body>{body}</body></html>
+    """
+    return Response(admin_html, mimetype="text/html")
+
+
+def update_user_admin_action(user_id, action):
+    user = db.session.get(User, int(user_id))
+    if not user:
+        return redirect(url_for("admin_users"))
+    current = current_user()
+    if action == "approve":
+        user.is_approved = True
+    elif action == "disable":
+        if current and user.id == current.id:
+            return redirect(url_for("admin_users"))
+        if user.role == "admin" and admin_count() <= 1:
+            return redirect(url_for("admin_users"))
+        user.is_active = False
+    elif action == "enable":
+        user.is_active = True
+    elif action == "make-admin":
+        user.role = "admin"
+        user.is_approved = True
+        user.is_active = True
+    elif action == "remove-admin":
+        if user.role == "admin" and admin_count() <= 1:
+            return redirect(url_for("admin_users"))
+        user.role = "user"
+    db.session.commit()
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/approve", methods=["POST"])
+@admin_required
+def admin_approve_user(user_id):
+    return update_user_admin_action(user_id, "approve")
+
+
+@app.route("/admin/users/<int:user_id>/disable", methods=["POST"])
+@admin_required
+def admin_disable_user(user_id):
+    return update_user_admin_action(user_id, "disable")
+
+
+@app.route("/admin/users/<int:user_id>/enable", methods=["POST"])
+@admin_required
+def admin_enable_user(user_id):
+    return update_user_admin_action(user_id, "enable")
+
+
+@app.route("/admin/users/<int:user_id>/make-admin", methods=["POST"])
+@admin_required
+def admin_make_admin(user_id):
+    return update_user_admin_action(user_id, "make-admin")
+
+
+@app.route("/admin/users/<int:user_id>/remove-admin", methods=["POST"])
+@admin_required
+def admin_remove_admin(user_id):
+    return update_user_admin_action(user_id, "remove-admin")
 
 
 @app.route("/brief", methods=["GET"])
@@ -3701,8 +4077,13 @@ def brief_page():
     configuration_message = brief_configuration_message()
     if configuration_message:
         return Response(configuration_message, status=503, mimetype="text/plain")
-    if not session.get("brief_authenticated"):
-        return redirect(url_for("brief_login"))
+    if not is_logged_in():
+        return redirect(url_for("login", next="/brief"))
+    user = current_user()
+    user_status = (
+        f"Logget ind som: {user.name or user.email}"
+        if user else "Adgang via kode"
+    )
 
     html = r"""
 <!DOCTYPE html>
@@ -3735,6 +4116,7 @@ def brief_page():
         h1, h2, h3 { letter-spacing: 0; }
         h1 { margin: 0 0 4px; font-size: 30px; }
         .intro { margin: 0; color: var(--muted); }
+        .user-status { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
         .topline { display: flex; justify-content: space-between; gap: 16px; align-items: center; max-width: 100%; min-width: 0; margin-bottom: 22px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(17,24,39,.95)); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
         .logout { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.06); }
         .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { width: 100%; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; box-shadow: 0 16px 45px rgba(0,0,0,.24); }
@@ -3803,7 +4185,7 @@ def brief_page():
 </head>
 <body>
     <main>
-        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p></div><a class="logout" href="/brief-logout">Log ud</a></div>
+        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p><p class="user-status">__USER_STATUS__</p></div><a class="logout" href="/logout">Log ud</a></div>
         <section class="card search-card" aria-label="Adresse og handlinger">
             <form id="brief-form" class="search">
                 <div class="address-field"><label>Adresse<input id="address" name="address" required autocomplete="off" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label><div id="autocomplete-list" class="autocomplete-list" role="listbox"></div></div>
@@ -3830,7 +4212,7 @@ def brief_page():
                     </div>
                 </section>
                 <section id="assistance-section"><h2>Assistance</h2><div class="assistance-controls"><button id="assistance-button" type="button" class="assistance-primary" disabled>Assistance</button><label>Radius<select id="assistance-radius"><option value="20">20 km</option><option value="40" selected>40 km</option><option value="60">60 km</option><option value="100">100 km</option></select></label><label>Vis stationer<select id="assistance-limit"><option value="5" selected>5</option><option value="10">10</option></select></label></div><div id="assistance-result"><p class="empty-hint">Lav først et adresseopslag for at se nærmeste assistance.</p></div></section>
-                <section id="resource-section"><h2>Ressourcesøgning</h2><div class="resource-form"><label>Ressource<input id="resource-search-input" placeholder="Søg fx stige, tankvogn, kemi, redningsbåd, TAF 60…"></label><button id="resource-search-button" type="button">Søg ressource</button></div><div id="resource-result" class="tool-result"></div></section>
+                <section id="resource-section"><h2>Ressourcesøgning</h2><div class="resource-form"><label>Ressource<input id="resource-search-input" placeholder="Søg fx stige, tankvogn, kemi, redningsbåd, TAF 60, kran…"></label><button id="resource-search-button" type="button">Søg ressource</button></div><div id="resource-result" class="tool-result"></div></section>
                 <section class="tool-panel"><h2>Spørg til rapporten</h2><textarea id="side-followup-question" placeholder="Spørg fx: Er der kælder? Hvad er tagmaterialet? Hvad viser OSM?"></textarea><button id="side-ask-followup" type="button">Spørg</button><div id="side-followup-result" class="tool-result"></div></section>
             </div>
         </div>
@@ -4520,6 +4902,7 @@ def brief_page():
 </body>
 </html>
     """
+    html = html.replace("__USER_STATUS__", user_status)
     return Response(html, mimetype="text/html")
 
 
@@ -4530,91 +4913,47 @@ def privacy_policy():
     <html lang="da">
     <head>
         <meta charset="UTF-8">
-        <title>Privacy Policy - IndsatsBrief Brand</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Privatliv - IndsatsBrief Brand</title>
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                max-width: 850px;
-                margin: 40px auto;
-                padding: 0 20px;
-                line-height: 1.6;
-                color: #222;
-            }
-            h1, h2 {
-                color: #111;
-            }
-            .note {
-                background: #f4f4f4;
-                padding: 12px;
-                border-left: 4px solid #555;
-            }
+            html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+            * { box-sizing: border-box; }
+            body { margin: 0; background: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.65; }
+            main { width: min(100%, 880px); margin: 0 auto; padding: 28px 18px 56px; }
+            h1 { margin: 0 0 8px; }
+            h2 { margin-top: 28px; color: #bfdbfe; }
+            p, li { color: #cbd5e1; overflow-wrap: anywhere; }
+            a { color: #93c5fd; }
+            .card { border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: #111827; padding: 20px; }
+            .note { background: rgba(250,204,21,.12); border-left: 4px solid #facc15; padding: 12px 14px; border-radius: 10px; color: #f8fafc; }
         </style>
     </head>
-    <body>
-        <h1>Privacy Policy for IndsatsBrief Brand</h1>
+    <body><main><div class="card">
+        <h1>Privatliv og cookies</h1>
+        <p><strong>Senest opdateret:</strong> 27. juni 2026</p>
 
-        <p><strong>Last updated:</strong> 23 June 2026</p>
+        <p>IndsatsBrief Brand drives af Frederik Racher som et støtteværktøj til brand-/redningsbriefs. Værktøjet samler oplysninger fra adresseopslag, BBR, OSM, vejrdata, kortlinks og stations-/ressourcedata.</p>
 
-        <p>
-            IndsatsBrief Brand is a custom GPT and API service that helps generate
-            incident briefing information based on address-related public and operationally
-            relevant data.
-        </p>
+        <h2>Brugeroplysninger</h2>
+        <p>Ved brugeroprettelse gemmes navn, e-mail, organisation/arbejdssted, rolle/status, godkendelsesstatus, oprettelsestidspunkt og seneste login. Password gemmes som hash og aldrig i klartekst.</p>
 
-        <h2>What data is sent to the API</h2>
-        <p>
-            When a user asks for an incident brief, the GPT may send the provided address
-            and selected radius to the IndsatsBrief API.
-        </p>
+        <h2>Adresseopslag og eksterne datakilder</h2>
+        <p>Når du laver en brief, kan adressen og radius sendes til relevante datakilder/API’er som DAWA/Dataforsyningen, Datafordeleren/BBR, Open-Meteo, OpenStreetMap/Overpass og kort-/luftfotolinks. Data bruges til at danne briefen og til fejlfinding.</p>
 
-        <p>The API may use the address to retrieve:</p>
-        <ul>
-            <li>Address and coordinate data</li>
-            <li>Map links</li>
-            <li>Weather and wind data</li>
-            <li>BBR/building register data</li>
-            <li>Possible fire hydrant data from open sources, if available</li>
-            <li>OpenStreetMap risk tags near the address, if available</li>
-            <li>External map links and attempted ortofoto image links for manual visual assessment</li>
-        </ul>
+        <h2>Cookies</h2>
+        <p>IndsatsBrief bruger nødvendige cookies til login og sikker session. Der bruges ikke marketing- eller trackingcookies i denne version. Hvis der senere tilføjes analytics eller tracking, skal der laves samtykke-banner.</p>
 
-        <h2>What data is not intentionally collected</h2>
-        <p>
-            The API does not intentionally collect names, phone numbers, CPR numbers,
-            private login information, payment information, or user account credentials.
-        </p>
+        <h2>Logs og drift</h2>
+        <p>Hostingplatformen kan behandle tekniske logs som tidspunkt, endpoint, IP-adresse og fejlbeskeder til drift, sikkerhed og fejlfinding.</p>
 
-        <h2>Logging</h2>
-        <p>
-            The hosting provider may process standard technical logs such as request time,
-            endpoint, IP address, and error logs for operation, security, and troubleshooting.
-        </p>
+        <h2>Sletning af konto</h2>
+        <p>Brugere kan bede om at få deres konto slettet. Kontaktinfo kan udfyldes nærmere senere.</p>
 
-        <h2>Data sharing and third-party services</h2>
-        <p>
-            Data may be processed by third-party services used to provide the response,
-            including Dataforsyningen/DAWA, Datafordeleren/BBR, Open-Meteo,
-            OpenStreetMap/Overpass, Google Maps links, and Render hosting.
-        </p>
+        <h2>Begrænsning</h2>
+        <div class="note">IndsatsBrief er støtteoplysninger. Det erstatter ikke beredskabets egne systemer, lokale procedurer, objektplaner, officielle databaser eller faglig vurdering.</div>
 
-        <h2>Purpose</h2>
-        <p>
-            The data is used only to generate incident briefing information, operate the
-            service, and troubleshoot the API.
-        </p>
-
-        <h2>Important limitation</h2>
-        <div class="note">
-            This service is decision support only. It does not replace verified emergency
-            services systems, local procedures, incident commander assessment, GIS,
-            object plans, official databases, or local operational knowledge.
-        </div>
-
-        <h2>Contact</h2>
-        <p>
-            For questions about this API or privacy policy, contact:<br>
-            <strong>Frederik Racher</strong>
-        </p>
+        <p><a href="/brief">Tilbage til IndsatsBrief</a></p>
+    </div></main>
     </body>
     </html>
     """
@@ -5714,6 +6053,11 @@ def build_deterministic_report_structured(raw_incident_data, report_mode="short"
     return clean_report_sections(report)
 
 
+def build_short_report_sections(incident_data):
+    """Stable short-report sections: same incident data gives same report sections."""
+    return build_deterministic_report_structured(incident_data, "short")
+
+
 def build_analyze_debug(raw_incident_data, payload=None):
     building = raw_incident_data.get("building") or {}
     weather = raw_incident_data.get("weather") or {}
@@ -5790,6 +6134,10 @@ def build_report_text(report_structured):
 
 @app.route("/incident-brief", methods=["GET"])
 def incident_brief():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+
     address = request.args.get("address", "").strip()
     radius_m = parse_radius(request.args.get("radius_m", 250), 250)
 
@@ -5822,10 +6170,6 @@ def analyze_brief_response(address, radius_m, report_mode="short"):
         if report_mode not in ["short", "full"]:
             report_mode = "short"
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return jsonify({"error": "OPENAI_API_KEY is not configured"}), 503
-
         raw_incident_data = build_incident_brief_data(address, radius_m)
         if not raw_incident_data.get("address_details") or raw_incident_data.get("address_details", {}).get("error"):
             return jsonify({
@@ -5837,6 +6181,29 @@ def analyze_brief_response(address, radius_m, report_mode="short"):
 
         payload = build_openai_brief_payload(raw_incident_data)
         payload["report_mode"] = report_mode
+
+        if report_mode == "short":
+            report_structured = build_short_report_sections(raw_incident_data)
+            return jsonify({
+                "report_text": build_report_text(report_structured),
+                "report_structured": report_structured,
+                "raw_incident_data": raw_incident_data,
+                "report_mode": report_mode,
+                **build_analyze_debug(raw_incident_data, payload),
+            })
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            fallback_report = build_deterministic_report_structured(raw_incident_data, report_mode)
+            return jsonify({
+                "error": "OPENAI_API_KEY is not configured",
+                "report_text": build_report_text(fallback_report),
+                "report_structured": fallback_report,
+                "raw_incident_data": raw_incident_data,
+                "report_mode": report_mode,
+                **build_analyze_debug(raw_incident_data, payload),
+            }), 503
+
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.responses.create(
             model=OPENAI_MODEL,
@@ -6130,11 +6497,9 @@ def nearest_resource():
 
 @app.route("/assistance-stations", methods=["GET"])
 def assistance_stations():
-    configuration_message = brief_configuration_message()
-    if configuration_message:
-        return jsonify({"error": configuration_message}), 503
-    if not session.get("brief_authenticated"):
-        return jsonify({"error": "Ikke logget ind"}), 401
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
 
     address = request.args.get("address", "").strip()
     radius_km = parse_assistance_radius(request.args.get("radius_km", 40), 40)

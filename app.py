@@ -280,8 +280,8 @@ RESOURCE_ALIAS_MAP = {
     "stige": ["stige", "drejestige", "stigevogn", "redningslift", "lift", "højderedning", "hoejderedning", "redning fra højde", "tagarbejde"],
     "redningsvogn": ["redningsvogn", "pionervogn", "frigørelse", "frigoerelse", "tung frigørelse", "tung redning", "trafikuheld", "fastklemt", "redning", "frigørelsesværktøj", "frigoerelsesvaerktoej", "hydraulisk værktøj", "hydraulisk vaerktoej"],
     "kemi": ["kemi", "kemikalie", "CBRN", "cbrn", "kemivogn", "miljøvogn", "miljoevogn", "miljø", "miljoe", "farlige stoffer", "hazmat", "forurening", "rens", "renseplads"],
-    "båd": ["båd", "baad", "redningsbåd", "redningsbaad", "bådtrækker", "baadtraekker", "vandredning", "overfladeredning", "søredning", "soeredning", "SAR", "hovercraft", "dykker", "vanddykker", "dykkervogn"],
-    "robot": ["robot", "luf", "luf-60", "crawler", "R6", "TAF", "TAF 60", "TAF60", "fjernstyret", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "fjernstyret indsats", "slukningsrobot", "indsatsrobot", "robot/TAF 60"],
+    "båd": ["båd", "baad", "bådenhed", "baadenhed", "redningsbåd", "redningsbaad", "gummibåd", "gummibaad", "redningsflåde", "redningsflaade", "vandredning", "overfladeredning", "søredning", "soeredning", "havneredning", "isbåd", "isbaad"],
+    "robot": ["robot", "robotter", "luf", "luf-60", "luf60", "crawler", "R6", "TAF", "TAF 60", "TAF60", "fjernstyret", "fjernstyret slukningsenhed", "fjernstyret robotenhed", "slukningsrobot", "indsatsrobot", "robot/TAF 60"],
     "MIRG": ["MIRG", "mirg", "skibsbrand", "skib", "maritim indsats", "slukning til søs", "brandslukning til søs", "Maritime Incident Response Group"],
     "slangetender": ["slangetender", "slange", "slanger", "slangeudlægning", "A-slange", "B-slange", "taktisk vandforsyning"],
     "indsatsleder": ["indsatsleder", "ISL", "isl", "ledervogn", "indsatsledervogn", "holdleder", "ledelse"],
@@ -294,18 +294,54 @@ RESOURCE_ALIAS_MAP = {
     "lys": ["lys", "belysning", "arbejdslys", "lysgiraf"],
     "kran": ["kran", "redningskran", "køretøjskran", "koeretoejskran", "lastbil med kran", "kranvogn"],
     "frivillige": ["frivillige", "frivilligenhed", "supplerende beredskab", "forplejning", "logistik", "støtteberedskab"],
-    "drone": ["drone", "droner", "uas", "rpas", "uav", "luftfoto", "luftrekognoscering", "rekognoscering", "overblik", "termisk", "termisk kamera", "varmesøgende kamera", "kamera", "indsatsdrone", "beredskabsdrone"],
+    "drone": ["drone", "droner", "uas", "rpas", "uav", "indsatsdrone", "beredskabsdrone", "luftrekognoscering", "luftfoto", "termisk kamera"],
 }
-STRICT_RESOURCE_QUERIES = {
-    "kran",
-    "redningskran",
-    "taf 60",
-    "mirg",
-    "dykker",
-    "redningsbaad",
-    "redningsbåd",
-    "cbrn",
-    "kemi",
+STRICT_RESOURCE_CATEGORIES = {
+    "robot": {
+        "queries": ["robot", "robotter", "luf", "luf-60", "luf60", "taf", "taf60", "taf 60", "crawler", "fjernstyret slukningsenhed"],
+        "terms": ["robot", "robotter", "slukningsrobot", "indsatsrobot", "fjernstyret slukningsenhed", "fjernstyret", "luf", "luf-60", "luf60", "taf", "taf60", "taf 60", "crawler"],
+        "broad_terms": ["slukning", "slukningsenhed", "hurtig slukning", "hurtig slukningsenhed", "brandslukning", "redning", "indsats", "containerberedskab", "logistik", "hse", "hse1"],
+    },
+    "drone": {
+        "queries": ["drone", "droner", "uas", "rpas", "uav"],
+        "terms": ["drone", "droner", "uas", "rpas", "uav", "indsatsdrone", "beredskabsdrone", "luftrekognoscering", "luftfoto", "termisk kamera"],
+        "broad_terms": ["kamera", "overblik", "rekognoscering", "termisk"],
+    },
+    "båd": {
+        "queries": ["båd", "baad", "bådenhed", "baadenhed", "redningsbåd", "redningsbaad", "vandredning", "overfladeredning"],
+        "terms": ["båd", "baad", "bådenhed", "baadenhed", "redningsbåd", "redningsbaad", "gummibåd", "gummibaad", "redningsflåde", "redningsflaade", "vandredning", "overfladeredning", "søredning", "soeredning", "havneredning", "isbåd", "isbaad"],
+        "broad_terms": ["vand", "vandforsyning", "tankvogn", "redning", "miljø", "miljoe", "pumpe", "oversvømmelse", "oversvoemmelse"],
+    },
+    "kran": {
+        "queries": ["kran", "redningskran", "kranvogn", "køretøjskran", "koeretoejskran", "lastbil med kran"],
+        "terms": ["kran", "redningskran", "kranvogn", "køretøjskran", "koeretoejskran", "lastbil med kran"],
+        "broad_terms": ["redningsvogn", "pionervogn", "tung redning", "frigørelse", "frigoerelse"],
+    },
+    "dykker": {
+        "queries": ["dykker", "vanddykker", "dykkervogn"],
+        "terms": ["dykker", "vanddykker", "dykkervogn", "dykkerberedskab"],
+        "broad_terms": ["vand", "redning", "båd", "baad"],
+    },
+    "cbrn": {
+        "queries": ["cbrn", "kemi", "kemikalie", "kemivogn", "miljøvogn", "miljoevogn", "farlige stoffer", "hazmat"],
+        "terms": ["cbrn", "kemi", "kemikalie", "kemivogn", "miljøvogn", "miljoevogn", "farlige stoffer", "hazmat", "rens", "renseplads"],
+        "broad_terms": ["miljø", "miljoe", "forurening", "redning"],
+    },
+    "kemi": {
+        "queries": ["kemi", "kemikalie", "kemivogn", "miljøvogn", "miljoevogn", "farlige stoffer", "hazmat"],
+        "terms": ["kemi", "kemikalie", "kemivogn", "miljøvogn", "miljoevogn", "farlige stoffer", "hazmat", "cbrn", "rens", "renseplads"],
+        "broad_terms": ["miljø", "miljoe", "forurening", "redning"],
+    },
+    "mirg": {
+        "queries": ["mirg", "maritime incident response group", "skibsbrand", "maritim indsats"],
+        "terms": ["mirg", "maritime incident response group", "skibsbrand", "maritim indsats", "brandslukning til søs", "brandslukning til soes"],
+        "broad_terms": ["skib", "slukning", "redning"],
+    },
+    "stige": {
+        "queries": ["stige", "drejestige", "stigevogn", "redningslift", "lift", "højderedning", "hoejderedning"],
+        "terms": ["stige", "drejestige", "stigevogn", "redningslift", "lift", "specialstige", "afprodsstige"],
+        "broad_terms": ["højderedning", "hoejderedning", "redning fra højde", "redning fra hoejde", "tagarbejde", "redning"],
+    },
 }
 
 ROUTE_CACHE = {}
@@ -1390,6 +1426,10 @@ def expand_resource_query(query):
     if not query_text:
         return []
 
+    strict_category = strict_query_category([query_text])
+    if strict_category:
+        return allowed_strict_terms(strict_category)
+
     aliases = load_resource_aliases()
     normalized_query = normalize_text(query_text)
     expanded = [query_text]
@@ -1410,6 +1450,46 @@ def expand_resource_query(query):
     return unique_terms
 
 
+def strict_category_config(category):
+    return STRICT_RESOURCE_CATEGORIES.get(category or "") or {}
+
+
+def allowed_strict_terms(category):
+    terms = strict_category_config(category).get("terms") or []
+    unique_terms = []
+    seen = set()
+    for term in terms:
+        key = normalize_text(term)
+        if key and key not in seen:
+            seen.add(key)
+            unique_terms.append(term)
+    return unique_terms
+
+
+def strict_query_category(query_terms):
+    normalized_terms = [normalize_text(term) for term in query_terms or [] if normalize_text(term)]
+    if not normalized_terms:
+        return None
+    for category, config in STRICT_RESOURCE_CATEGORIES.items():
+        category_queries = {normalize_text(term) for term in config.get("queries", [])}
+        category_terms = {normalize_text(term) for term in config.get("terms", [])}
+        if any(term in category_queries or term in category_terms for term in normalized_terms):
+            return category
+    return None
+
+
+def is_strict_query(query_terms):
+    return bool(strict_query_category(query_terms))
+
+
+def normalized_strict_terms(category):
+    return [normalize_text(term) for term in allowed_strict_terms(category)]
+
+
+def normalized_broad_terms(category):
+    return [normalize_text(term) for term in strict_category_config(category).get("broad_terms", [])]
+
+
 def station_text_fields(station):
     return [
         station.get("name"),
@@ -1427,14 +1507,58 @@ def station_text_fields(station):
 
 
 def is_strict_resource_query(expanded_terms):
-    query_term = normalize_text(expanded_terms[0]) if expanded_terms else ""
-    return query_term in {normalize_text(term) for term in STRICT_RESOURCE_QUERIES}
+    return is_strict_query(expanded_terms)
 
 
 def strict_text_match(normalized_value, normalized_term):
     if normalized_value == normalized_term:
         return True
     return bool(re.search(rf"(^|\s){re.escape(normalized_term)}(\s|$)", normalized_value))
+
+
+def strict_match_allowed(query_category, searchable_values):
+    if not query_category:
+        return True, []
+    allowed = normalized_strict_terms(query_category)
+    matched = []
+    for value in station_search_values(searchable_values):
+        normalized_value = normalize_text(value)
+        if not normalized_value:
+            continue
+        for term in allowed:
+            if strict_text_match(normalized_value, term):
+                original_term = next((original for original in allowed_strict_terms(query_category) if normalize_text(original) == term), term)
+                if original_term not in matched:
+                    matched.append(original_term)
+    return bool(matched), matched
+
+
+def strict_rejection_reason(query_category, item, item_kind):
+    values = [
+        item.get("name"),
+        item.get("callsign"),
+        item.get("type") or item.get("vehicle_type") or item.get("resource_type"),
+        item.get("description"),
+        item.get("aliases"),
+        item.get("capabilities"),
+        item.get("tags"),
+        item.get("raw_data"),
+    ]
+    normalized_blob = " ".join(normalize_terms(values))
+    broad_hits = [
+        term for term in normalized_broad_terms(query_category)
+        if term and strict_text_match(normalized_blob, term)
+    ]
+    display_resource = resource_display_name(
+        item.get("name") or item.get("callsign"),
+        item.get("type") or item.get("vehicle_type") or item.get("resource_type"),
+    ) or item_kind
+    if broad_hits:
+        return (
+            f"Strict {query_category} query: {display_resource} matched broad term "
+            f"'{broad_hits[0]}', but no explicit strict term found."
+        )
+    return None
 
 
 def score_resource_text(value, expanded_terms, base_score, strict=False):
@@ -1518,6 +1642,7 @@ def height_resource_priority_bonus(item, expanded_terms):
 
 def score_station_resource(item, expanded_terms, item_kind):
     strict = is_strict_resource_query(expanded_terms)
+    strict_category = strict_query_category(expanded_terms)
     category_only = is_category_only_resource(item, item_kind)
     if item_kind == "vehicle":
         name_score, type_score, alias_score, capability_score, description_score = 100, 90, 75, 65, 45
@@ -1558,6 +1683,11 @@ def score_station_resource(item, expanded_terms, item_kind):
     best = None
     best_source = None
     matched_terms = []
+
+    if strict:
+        allowed, explicit_terms = strict_match_allowed(strict_category, [value for value, _base_score, _source in candidates])
+        if not allowed:
+            return None
 
     for value, base_score, source in candidates:
         scored = score_resource_text(value, expanded_terms, base_score, strict=strict)
@@ -1624,6 +1754,8 @@ def match_resource_query(query_terms, station, vehicle=None, resource=None):
         if not scored:
             continue
         score, terms = scored
+        if strict:
+            continue
         if not best or score > best["match_score"]:
             best = {
                 "matched": True,
@@ -1704,6 +1836,35 @@ def match_station_resource(query_terms, station):
         "matched_object_type": None,
         "matched_object_id": None,
     }
+
+
+def rejected_strict_matches_for_station(query_terms, station):
+    category = strict_query_category(query_terms)
+    if not category:
+        return []
+    rejected = []
+    for collection_name, object_type in [
+        ("vehicles", "vehicle"),
+        ("resources", "resource"),
+        ("trailers", "trailer"),
+        ("containers", "container"),
+    ]:
+        for item in station.get(collection_name) or []:
+            reason = strict_rejection_reason(category, item, object_type)
+            if not reason:
+                continue
+            rejected.append({
+                "station_id": station.get("id"),
+                "station_name": station.get("name"),
+                "matched_object_type": object_type,
+                "matched_object_id": item.get("id"),
+                "display_resource": resource_display_name(
+                    item.get("name") or item.get("callsign"),
+                    item.get("type") or item.get("vehicle_type") or item.get("resource_type"),
+                ) or object_type,
+                "rejected_reason": reason,
+            })
+    return rejected
 
 
 def find_matching_station_resources(resource_query, include_non_operational=False):
@@ -5896,6 +6057,7 @@ def debug_station_item_payload(item, kind, expanded_terms):
         vehicle=item_dict if kind == "vehicle" else None,
         resource=item_dict if kind == "resource" else None,
     )
+    strict_category = strict_query_category(expanded_terms)
     return {
         **item_dict,
         "is_active": bool(item.is_active),
@@ -5908,6 +6070,7 @@ def debug_station_item_payload(item, kind, expanded_terms):
         "match_score": match.get("match_score"),
         "display_resource": match.get("display_resource"),
         "matched_terms": match.get("matched_terms", []),
+        "rejected_reason": None if match.get("matched") else strict_rejection_reason(strict_category, item_dict, kind),
     }
 
 
@@ -5916,6 +6079,7 @@ def debug_station_item_payload(item, kind, expanded_terms):
 def admin_debug_resource_search():
     query = request.args.get("q", "").strip()
     expanded_terms = expand_resource_query(query)
+    strict_category = strict_query_category(expanded_terms)
     data_source = station_resource_data_source()
     searchable_stations, searchable_source = get_searchable_stations(include_non_operational=True)
 
@@ -5929,6 +6093,7 @@ def admin_debug_resource_search():
 
     matched_results = []
     near_matches = []
+    rejected_matches = []
     for station in searchable_stations:
         match = match_station_resource(expanded_terms, station)
         if match.get("matched"):
@@ -5956,6 +6121,7 @@ def admin_debug_resource_search():
                     "station_name": station.get("name"),
                     "reason": "station text contains expanded term but no concrete resource matched",
                 })
+        rejected_matches.extend(rejected_strict_matches_for_station(expanded_terms, station))
 
     stations = Station.query.order_by(Station.name.asc()).all()
     active_stations = [station for station in stations if station.is_active]
@@ -5990,6 +6156,9 @@ def admin_debug_resource_search():
         "query": query,
         "expanded_terms": expanded_terms,
         "expanded_terms_normalized": normalize_terms(expanded_terms),
+        "strict_query": bool(strict_category),
+        "strict_category": strict_category,
+        "allowed_strict_terms": allowed_strict_terms(strict_category) if strict_category else [],
         "data_source": data_source,
         "searchable_data_source": searchable_source,
         "postgres_active_station_count": len(active_stations),
@@ -5997,6 +6166,7 @@ def admin_debug_resource_search():
         "postgres_active_resource_count": StationResource.query.filter_by(is_active=True).count(),
         "matched_results": matched_results,
         "near_matches": near_matches,
+        "rejected_matches": rejected_matches,
         "stations_reviewed": station_summaries,
         "vesterbro": vesterbro_details,
     })

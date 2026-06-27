@@ -15,9 +15,11 @@ import secrets
 import hashlib
 import smtplib
 from email.message import EmailMessage
+from io import BytesIO
 from openai import OpenAI
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 
 try:
     from flask_sqlalchemy import SQLAlchemy
@@ -317,6 +319,7 @@ API_ERROR_PREFIXES = (
     "/assistance-stations",
     "/nearest-resource",
     "/address-autocomplete",
+    "/knowledge/ask",
     "/test-bbr",
     "/test-hydrants",
     "/osm-risk-check",
@@ -374,10 +377,46 @@ if db:
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
         user = db.relationship("User", backref=db.backref("email_verification_tokens", lazy=True))
+
+
+    class KnowledgeDocument(db.Model):
+        __tablename__ = "knowledge_documents"
+
+        id = db.Column(db.Integer, primary_key=True)
+        title = db.Column(db.String(255), nullable=False)
+        category = db.Column(db.String(120), nullable=True)
+        publisher = db.Column(db.String(160), nullable=True)
+        version_date = db.Column(db.String(80), nullable=True)
+        source_url = db.Column(db.String(600), nullable=True)
+        original_filename = db.Column(db.String(255), nullable=True)
+        is_active = db.Column(db.Boolean, nullable=False, default=True)
+        uploaded_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+        updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+        import_status = db.Column(db.String(120), nullable=False, default="pending")
+        import_error = db.Column(db.Text, nullable=True)
+        page_count = db.Column(db.Integer, nullable=True)
+        chunk_count = db.Column(db.Integer, nullable=False, default=0)
+
+        chunks = db.relationship("KnowledgeChunk", backref="document", cascade="all, delete-orphan", lazy=True)
+
+
+    class KnowledgeChunk(db.Model):
+        __tablename__ = "knowledge_chunks"
+
+        id = db.Column(db.Integer, primary_key=True)
+        document_id = db.Column(db.Integer, db.ForeignKey("knowledge_documents.id"), nullable=False, index=True)
+        chunk_index = db.Column(db.Integer, nullable=False)
+        page_start = db.Column(db.Integer, nullable=True)
+        page_end = db.Column(db.Integer, nullable=True)
+        text = db.Column(db.Text, nullable=False)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 else:
     User = None
     PasswordResetToken = None
     EmailVerificationToken = None
+    KnowledgeDocument = None
+    KnowledgeChunk = None
 
 
 def ensure_user_schema():
@@ -4104,6 +4143,260 @@ def send_user_verification_and_admin_notice(user):
         app.logger.exception("Admin-notifikation kunne ikke sendes: %s", error)
 
 
+KNOWLEDGE_SYSTEM_PROMPT = """
+Du er en assistent til IndsatsBrief Brand.
+
+Du skal først og fremmest bruge de medsendte indlæste dokumenter som kilde. Hvis dokumenterne indeholder relevante oplysninger, skal svaret primært bygge på dem.
+
+Du må gerne supplere med generel faglig viden, hvis dokumenterne ikke dækker spørgsmålet fuldt ud. Når du gør det, skal du tydeligt markere det som 'Supplerende generel viden'.
+
+Du må ikke påstå, at noget står i de indlæste dokumenter, hvis det ikke gør.
+
+Du skal altid vise kilder. For indlæste dokumenter skal du vise dokumenttitel og sidetal. For supplerende generel viden skal du skrive, at det er generel viden, medmindre der senere implementeres eksterne webkilder.
+
+Svarene er vejledende og erstatter ikke lokale instrukser, indsatslederens beslutninger eller gældende procedurer.
+
+Undgå live-disponering og operative kommandoer. Skriv ikke 'send', 'disponér', 'anbefalet afsendelse' eller lignende. Brug formuleringer som 'dokumentet beskriver', 'vejledningen angiver', 'vær opmærksom på' og 'kontrollér lokale instrukser'.
+
+Svar altid i dette format:
+
+Kort svar:
+...
+
+Ifølge indlæste dokumenter:
+- ...
+
+Supplerende generel viden:
+- ...
+
+Praktisk betydning:
+- ...
+
+Kilder:
+- ...
+
+Hvis ingen relevante dokumentbidder er medsendt, skal svaret starte med:
+"Jeg fandt ikke et direkte svar i de indlæste dokumenter. Nedenstående er supplerende generel viden og bør kontrolleres mod lokale instrukser."
+"""
+
+
+def import_pypdf_reader():
+    from pypdf import PdfReader
+    return PdfReader
+
+
+def split_words_into_chunks(page_texts, target_words=1000):
+    chunks = []
+    current_words = []
+    page_start = None
+    page_end = None
+    for page_number, text in page_texts:
+        words = (text or "").split()
+        if not words:
+            continue
+        if page_start is None:
+            page_start = page_number
+        page_end = page_number
+        current_words.extend(words)
+        if len(current_words) >= target_words:
+            chunks.append({
+                "text": " ".join(current_words),
+                "page_start": page_start,
+                "page_end": page_end,
+            })
+            current_words = []
+            page_start = None
+            page_end = None
+    if current_words:
+        chunks.append({
+            "text": " ".join(current_words),
+            "page_start": page_start,
+            "page_end": page_end,
+        })
+    return chunks
+
+
+def extract_pdf_chunks(file_bytes):
+    PdfReader = import_pypdf_reader()
+    reader = PdfReader(BytesIO(file_bytes))
+    page_texts = []
+    for index, page in enumerate(reader.pages, start=1):
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        text = re.sub(r"\s+", " ", text).strip()
+        if text:
+            page_texts.append((index, text))
+    return len(reader.pages), split_words_into_chunks(page_texts)
+
+
+def normalize_search_terms(question):
+    words = re.findall(r"[A-Za-zÆØÅæøå0-9]{3,}", (question or "").lower())
+    stopwords = {
+        "hvad", "hvor", "hvordan", "hvilke", "skal", "kan", "der", "det", "den",
+        "til", "med", "for", "fra", "som", "eller", "ikke", "jeg", "ved", "om",
+    }
+    return [word for word in words if word not in stopwords]
+
+
+def score_knowledge_chunk(chunk, terms):
+    if not terms:
+        return 0
+    document = chunk.document
+    haystack = " ".join([
+        chunk.text or "",
+        document.title or "",
+        document.category or "",
+        document.publisher or "",
+    ]).lower()
+    score = 0
+    for term in terms:
+        score += haystack.count(term)
+    return score
+
+
+def search_knowledge_chunks(question, limit=8):
+    if not db or not KnowledgeDocument or not KnowledgeChunk:
+        return []
+    terms = normalize_search_terms(question)
+    chunks = (
+        KnowledgeChunk.query
+        .join(KnowledgeDocument)
+        .filter(KnowledgeDocument.is_active.is_(True))
+        .order_by(KnowledgeChunk.id.desc())
+        .limit(800)
+        .all()
+    )
+    scored = []
+    for chunk in chunks:
+        score = score_knowledge_chunk(chunk, terms)
+        if score > 0:
+            scored.append((score, chunk))
+    scored.sort(key=lambda item: (-item[0], item[1].document.title or "", item[1].chunk_index))
+    return [chunk for _, chunk in scored[:limit]]
+
+
+def format_page_range(start, end):
+    if start and end and start != end:
+        return f"{start}-{end}"
+    if start:
+        return str(start)
+    return "-"
+
+
+def knowledge_sources_from_chunks(chunks):
+    sources = []
+    seen = set()
+    for chunk in chunks:
+        document = chunk.document
+        page = format_page_range(chunk.page_start, chunk.page_end)
+        key = (document.id, page)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append({
+            "document_id": document.id,
+            "title": document.title,
+            "category": document.category,
+            "publisher": document.publisher,
+            "page": page,
+            "label": f"{document.title}, side {page}",
+        })
+    return sources
+
+
+def build_knowledge_context(chunks):
+    if not chunks:
+        return "Ingen relevante indlæste dokumentbidder blev fundet."
+    blocks = []
+    for index, chunk in enumerate(chunks, start=1):
+        document = chunk.document
+        blocks.append(
+            f"[DOKUMENT {index}]\n"
+            f"Titel: {document.title}\n"
+            f"Kategori: {document.category or '-'}\n"
+            f"Udgiver: {document.publisher or '-'}\n"
+            f"Side: {format_page_range(chunk.page_start, chunk.page_end)}\n"
+            f"Tekst:\n{chunk.text[:5000]}"
+        )
+    return "\n\n".join(blocks)
+
+
+def fallback_knowledge_answer(question, chunks):
+    sources = knowledge_sources_from_chunks(chunks)
+    if chunks:
+        excerpts = []
+        for chunk in chunks[:3]:
+            excerpt = chunk.text[:450].strip()
+            if excerpt:
+                excerpts.append(f"- {excerpt}...")
+        answer = (
+            "Kort svar:\n"
+            "Jeg fandt relevante indlæste dokumentbidder, men AI-svaret kunne ikke genereres lige nu.\n\n"
+            "Ifølge indlæste dokumenter:\n"
+            + ("\n".join(excerpts) if excerpts else "- Relevante dokumentbidder blev fundet.")
+            + "\n\nSupplerende generel viden:\n- Ikke tilføjet i fallback-svar.\n\n"
+            "Praktisk betydning:\n- Kontrollér de viste dokumentkilder og lokale instrukser.\n\n"
+            "Kilder:\n"
+            + "\n".join(f"- {source['label']}" for source in sources)
+        )
+        return answer, sources, False
+    answer = (
+        "Kort svar:\n"
+        "Jeg fandt ikke et direkte svar i de indlæste dokumenter. Nedenstående er supplerende generel viden og bør kontrolleres mod lokale instrukser.\n\n"
+        "Dokumentgrundlag:\n"
+        "Jeg fandt ikke et direkte svar i de indlæste dokumenter.\n\n"
+        "Supplerende generel viden:\n"
+        "- AI-svar er ikke tilgængeligt lige nu.\n\n"
+        "Praktisk betydning:\n"
+        "- Kontrollér lokale instrukser og gældende procedurer.\n\n"
+        "Kilder:\n"
+        "- Ingen relevante indlæste dokumenter fundet\n"
+        "- Supplerende generel viden"
+    )
+    return answer, [{"label": "Ingen relevante indlæste dokumenter fundet"}], True
+
+
+def ask_openai_knowledge(question, chunks):
+    context = build_knowledge_context(chunks)
+    no_docs_instruction = ""
+    if not chunks:
+        no_docs_instruction = (
+            "Der blev ikke fundet relevante dokumentbidder. Start svaret med den krævede sætning "
+            "om manglende direkte svar i de indlæste dokumenter, og placer resten under Supplerende generel viden."
+        )
+    payload = {
+        "question": question,
+        "document_context": context,
+        "has_document_context": bool(chunks),
+        "instruction": no_docs_instruction,
+    }
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.responses.create(
+        model=OPENAI_MODEL,
+        reasoning={"effort": "low"},
+        instructions=KNOWLEDGE_SYSTEM_PROMPT,
+        input=json.dumps(payload, ensure_ascii=False),
+    )
+    return response.output_text
+
+
+def answer_uses_supplemental_knowledge(answer, chunks):
+    if not chunks:
+        return True
+    text = (answer or "").lower()
+    if "supplerende generel viden" not in text:
+        return False
+    markers_without_supplement = [
+        "ikke tilføjet",
+        "ikke relevant",
+        "ingen supplerende",
+        "ikke nødvendig",
+    ]
+    return not any(marker in text for marker in markers_without_supplement)
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if not db or not User:
@@ -4594,6 +4887,279 @@ def admin_resend_user_verification(user_id):
     return redirect(url_for("admin_users"))
 
 
+def knowledge_document_card(document):
+    return f"""
+    <article class="user-card">
+        <h2>{html.escape(document.title or '')}</h2>
+        <p>Kategori: {html.escape(document.category or '-')} · Udgiver: {html.escape(document.publisher or '-')}</p>
+        <p>Version/dato: {html.escape(document.version_date or '-')} · Aktiv: {'ja' if document.is_active else 'nej'}</p>
+        <p>Sider: {document.page_count or 0} · Tekstbidder: {document.chunk_count or 0} · Status: {html.escape(document.import_status or '-')}</p>
+        {f'<p>Fejl: {html.escape(document.import_error)}</p>' if document.import_error else ''}
+        <div class="actions">
+            <form method="post" action="/admin/knowledge/{document.id}/toggle"><button type="submit">{'Deaktiver' if document.is_active else 'Aktivér'}</button></form>
+            <form method="post" action="/admin/knowledge/{document.id}/delete"><button type="submit">Slet dokument</button></form>
+        </div>
+    </article>
+    """
+
+
+@app.route("/admin/knowledge", methods=["GET"])
+@admin_required
+def admin_knowledge():
+    if not db or not KnowledgeDocument:
+        return Response(auth_page_html("Viden / Protokoller", "", error_message="Knowledge-database er ikke konfigureret."), status=503, mimetype="text/html")
+
+    documents = KnowledgeDocument.query.order_by(KnowledgeDocument.created_at.desc()).all()
+    message = session.pop("knowledge_admin_message", None)
+    message_html = f'<section class="admin-message">{html.escape(message)}</section>' if message else ""
+    cards = "".join(knowledge_document_card(document) for document in documents) or "<p>Ingen dokumenter importeret endnu.</p>"
+    body = f"""
+    <div class="admin-shell">
+        <header><div><h1>Viden / Protokoller</h1><p>Upload PDF’er og vedligehold indlæste dokumenter.</p></div><a href="/brief">Til brief</a></header>
+        {message_html}
+        <section class="user-card">
+            <h2>Upload PDF</h2>
+            <form method="post" action="/admin/knowledge/upload" enctype="multipart/form-data" class="stack-form">
+                <label>Titel<input name="title" required></label>
+                <label>Kategori<input name="category" placeholder="Fx Beredskabsstyrelsen, CBRN, Brand"></label>
+                <label>Udgiver<input name="publisher"></label>
+                <label>Version/dato<input name="version_date"></label>
+                <label>Kilde-URL<input name="source_url" type="url"></label>
+                <label>PDF-fil<input name="pdf_file" type="file" accept="application/pdf,.pdf" required></label>
+                <button type="submit">Importer PDF</button>
+            </form>
+        </section>
+        <main>{cards}</main>
+    </div>
+    """
+    admin_html = f"""
+<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Viden - IndsatsBrief</title>
+<style>
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px;margin-top:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}input{{min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#020617;color:#f8fafc;padding:9px 11px}}label{{display:grid;gap:6px;color:#cbd5e1;font-weight:800}}.stack-form{{display:grid;gap:12px}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
+</style></head><body>{body}</body></html>
+    """
+    return Response(admin_html, mimetype="text/html")
+
+
+@app.route("/admin/knowledge/upload", methods=["POST"])
+@admin_required
+def admin_knowledge_upload():
+    if not db or not KnowledgeDocument or not KnowledgeChunk:
+        return Response(auth_page_html("Viden / Protokoller", "", error_message="Knowledge-database er ikke konfigureret."), status=503, mimetype="text/html")
+
+    upload = request.files.get("pdf_file")
+    title = (request.form.get("title") or "").strip()
+    if not upload or not upload.filename or not upload.filename.lower().endswith(".pdf"):
+        session["knowledge_admin_message"] = "Vælg en PDF-fil."
+        return redirect(url_for("admin_knowledge"))
+    file_bytes = upload.read()
+    if len(file_bytes) > 25 * 1024 * 1024:
+        session["knowledge_admin_message"] = "PDF-filen er for stor. Maksimum er 25 MB."
+        return redirect(url_for("admin_knowledge"))
+    if not title:
+        title = os.path.splitext(secure_filename(upload.filename))[0] or "Uden titel"
+
+    document = KnowledgeDocument(
+        title=title,
+        category=(request.form.get("category") or "").strip(),
+        publisher=(request.form.get("publisher") or "").strip(),
+        version_date=(request.form.get("version_date") or "").strip(),
+        source_url=(request.form.get("source_url") or "").strip(),
+        original_filename=secure_filename(upload.filename),
+        uploaded_by_user_id=(current_user().id if current_user() else None),
+        import_status="importerer",
+    )
+    db.session.add(document)
+    db.session.commit()
+    try:
+        page_count, chunks = extract_pdf_chunks(file_bytes)
+        document.page_count = page_count
+        if not chunks:
+            document.import_status = "PDF indeholder ingen læsbar tekst"
+            document.import_error = "Der blev ikke fundet tekst i PDF'en. OCR er ikke implementeret i første version."
+            document.chunk_count = 0
+        else:
+            for index, chunk in enumerate(chunks, start=1):
+                db.session.add(KnowledgeChunk(
+                    document_id=document.id,
+                    chunk_index=index,
+                    page_start=chunk.get("page_start"),
+                    page_end=chunk.get("page_end"),
+                    text=chunk.get("text") or "",
+                ))
+            document.chunk_count = len(chunks)
+            document.import_status = "importeret"
+            document.import_error = None
+        db.session.commit()
+        session["knowledge_admin_message"] = f"Dokumentet er importeret med {document.chunk_count} tekstbidder."
+    except Exception as error:
+        app.logger.exception("PDF kunne ikke importeres: %s", error)
+        document.import_status = "fejl"
+        document.import_error = str(error)
+        db.session.commit()
+        session["knowledge_admin_message"] = "PDF kunne ikke læses. Kontrollér at filen indeholder tekst."
+    return redirect(url_for("admin_knowledge"))
+
+
+@app.route("/admin/knowledge/<int:document_id>/toggle", methods=["POST"])
+@admin_required
+def admin_knowledge_toggle(document_id):
+    document = db.session.get(KnowledgeDocument, int(document_id)) if KnowledgeDocument else None
+    if document:
+        document.is_active = not document.is_active
+        document.updated_at = datetime.utcnow()
+        db.session.commit()
+    return redirect(url_for("admin_knowledge"))
+
+
+@app.route("/admin/knowledge/<int:document_id>/delete", methods=["POST"])
+@admin_required
+def admin_knowledge_delete(document_id):
+    document = db.session.get(KnowledgeDocument, int(document_id)) if KnowledgeDocument else None
+    if document:
+        db.session.delete(document)
+        db.session.commit()
+    return redirect(url_for("admin_knowledge"))
+
+
+@app.route("/knowledge", methods=["GET"])
+def knowledge_page():
+    configuration_message = brief_configuration_message()
+    if configuration_message:
+        return Response(configuration_message, status=503, mimetype="text/plain")
+    if not is_logged_in():
+        return redirect(url_for("login", next="/knowledge"))
+    admin_link = '<a class="nav-link" href="/admin/knowledge">Administrer dokumenter</a>' if is_admin_user() else ""
+    html_page = f"""
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Viden / Protokoller</title>
+    <style>
+        :root {{ --bg:#0f172a; --card:#111827; --card-soft:#1e293b; --border:rgba(255,255,255,.08); --primary:#2563eb; --text:#f8fafc; --muted:#cbd5e1; --warning:#facc15; }}
+        html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}
+        body{{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
+        main{{width:min(100%,1050px);margin:0 auto;padding:22px}}
+        .topline,.card{{border:1px solid var(--border);border-radius:16px;background:var(--card);padding:18px 20px;box-shadow:0 16px 45px rgba(0,0,0,.22)}}
+        .topline{{display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:16px}}
+        h1,h2,p{{margin-top:0}}p,li{{color:var(--muted)}}a{{color:#93c5fd;overflow-wrap:anywhere}}.nav{{display:flex;gap:10px;flex-wrap:wrap}}.nav-link{{min-height:42px;display:inline-flex;align-items:center;padding:0 12px;border-radius:12px;background:rgba(255,255,255,.06);text-decoration:none;color:var(--text);font-weight:800}}
+        textarea{{width:100%;min-height:145px;border-radius:14px;border:1px solid var(--border);background:#020617;color:var(--text);padding:12px;font:inherit;resize:vertical}}
+        button{{min-height:48px;border:0;border-radius:12px;background:var(--primary);color:white;font-weight:900;padding:0 16px;cursor:pointer}}
+        .stack{{display:grid;gap:14px}}.answer{{white-space:pre-wrap;line-height:1.55}}.source-list{{display:grid;gap:8px}}.badge{{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(250,204,21,.13);color:#fde68a;font-size:12px;font-weight:850}}
+        @media(max-width:700px){{main{{padding:12px}}.topline{{display:block}}button{{width:100%}}}}
+    </style>
+</head>
+<body><main class="stack">
+    <section class="topline"><div><h1>Viden / Protokoller</h1><p>Stil spørgsmål til uploadede vejledninger og protokoller.</p></div><nav class="nav"><a class="nav-link" href="/brief">Til brief</a>{admin_link}</nav></section>
+    <section class="card">
+        <p><strong>AI’en bruger først de indlæste dokumenter.</strong> Hvis dokumenterne ikke dækker spørgsmålet, kan svaret suppleres med generel viden. Kontrollér altid mod lokale instrukser og gældende procedurer.</p>
+        <p>Svaret erstatter ikke lokale instrukser, indsatslederens beslutninger eller gældende procedurer.</p>
+        <div class="stack">
+            <textarea id="question" placeholder="Spørg fx: Hvad beskriver dokumenterne om lithium-ion batterier, CBRN eller røgdykning?"></textarea>
+            <button id="ask-button" type="button">Spørg</button>
+        </div>
+    </section>
+    <section id="answer-card" class="card" style="display:none">
+        <h2>Svar</h2>
+        <p id="supplemental-badge" class="badge" hidden>Supplerende generel viden brugt</p>
+        <div id="answer" class="answer"></div>
+    </section>
+    <section id="sources-card" class="card" style="display:none">
+        <h2>Kilder</h2>
+        <div id="sources" class="source-list"></div>
+    </section>
+</main>
+<script>
+const askButton = document.getElementById('ask-button');
+const answerCard = document.getElementById('answer-card');
+const answer = document.getElementById('answer');
+const sourcesCard = document.getElementById('sources-card');
+const sources = document.getElementById('sources');
+const supplementalBadge = document.getElementById('supplemental-badge');
+async function fetchJson(url, options) {{
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data;
+    try {{ data = JSON.parse(text); }} catch (error) {{ throw new Error('API’en returnerede ikke JSON.'); }}
+    if (!response.ok) throw new Error(data.error || `API-fejl ${{response.status}}`);
+    return data;
+}}
+askButton.addEventListener('click', async () => {{
+    const question = document.getElementById('question').value.trim();
+    if (!question) return;
+    askButton.disabled = true;
+    answerCard.style.display = 'block';
+    answer.textContent = 'Søger i dokumenter...';
+    sourcesCard.style.display = 'none';
+    try {{
+        const data = await fetchJson('/knowledge/ask', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ question }})
+        }});
+        answer.textContent = data.answer || '';
+        supplementalBadge.hidden = !data.used_supplemental_knowledge;
+        sources.innerHTML = '';
+        (data.sources || []).forEach(source => {{
+            const div = document.createElement('div');
+            div.textContent = source.label || source.title || 'Kilde';
+            sources.appendChild(div);
+        }});
+        if (data.sources && data.sources.length) sourcesCard.style.display = 'block';
+    }} catch (error) {{
+        answer.textContent = error.message || 'Kunne ikke hente svar.';
+    }} finally {{
+        askButton.disabled = false;
+    }}
+}});
+</script>
+</body></html>
+    """
+    return Response(html_page, mimetype="text/html")
+
+
+@app.route("/knowledge/ask", methods=["POST"])
+def knowledge_ask():
+    access_error = brief_api_access_error()
+    if access_error:
+        return access_error
+    try:
+        payload = request.get_json(silent=True) or {}
+        question = (payload.get("question") or "").strip()
+        if not question:
+            return jsonify({"ok": False, "error": "Spørgsmål mangler"}), 400
+        chunks = search_knowledge_chunks(question)
+        sources = knowledge_sources_from_chunks(chunks)
+        try:
+            if os.getenv("OPENAI_API_KEY"):
+                answer = ask_openai_knowledge(question, chunks)
+                used_supplemental = answer_uses_supplemental_knowledge(answer, chunks)
+            else:
+                answer, sources, used_supplemental = fallback_knowledge_answer(question, chunks)
+        except Exception as error:
+            app.logger.exception("Knowledge AI-svar fejlede: %s", error)
+            answer, sources, used_supplemental = fallback_knowledge_answer(question, chunks)
+        if not sources and not chunks:
+            sources = [{"label": "Ingen relevante indlæste dokumenter fundet"}, {"label": "Supplerende generel viden"}]
+            used_supplemental = True
+        elif used_supplemental:
+            labels = {source.get("label") for source in sources}
+            if "Supplerende generel viden" not in labels:
+                sources.append({"label": "Supplerende generel viden"})
+        return jsonify({
+            "ok": True,
+            "answer": answer,
+            "sources": sources,
+            "used_supplemental_knowledge": bool(used_supplemental),
+            "document_chunks_found": len(chunks),
+        })
+    except Exception as error:
+        app.logger.exception("Knowledge ask error")
+        return jsonify({"ok": False, "error": "Kunne ikke besvare spørgsmålet.", "details": str(error)}), 500
+
+
 @app.route("/brief", methods=["GET"])
 def brief_page():
     """Small browser client for the short, presentation-safe incident brief."""
@@ -4641,6 +5207,7 @@ def brief_page():
         .intro { margin: 0; color: var(--muted); }
         .user-status { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
         .topline { display: flex; justify-content: space-between; gap: 16px; align-items: center; max-width: 100%; min-width: 0; margin-bottom: 22px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(17,24,39,.95)); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
+        .top-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
         .logout { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.06); }
         .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { width: 100%; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; box-shadow: 0 16px 45px rgba(0,0,0,.24); }
         .search-card { margin-bottom: 14px; }
@@ -4694,7 +5261,7 @@ def brief_page():
         .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; max-width: 100%; }
         @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } #map-frame { height: 320px; } }
         @media (max-width: 700px) { main { padding-left: 12px; padding-right: 12px; } .topline { align-items: flex-start; } .search, .commands, .assistance-controls, .resource-form { grid-template-columns: minmax(0, 1fr); } .commands { gap: 9px; } button, select { width: 100%; } .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { padding: 16px; } #map-frame { height: 280px; } }
-        @media (max-width: 480px) { main { padding: 14px 12px 34px; } h1 { font-size: 24px; } .topline { display: block; } .logout { margin-top: 14px; width: 100%; } #map-frame { height: 260px; } #report { font-size: 15px; } }
+        @media (max-width: 480px) { main { padding: 14px 12px 34px; } h1 { font-size: 24px; } .topline { display: block; } .top-actions { margin-top: 14px; display: grid; grid-template-columns: 1fr; } .logout { width: 100%; } #map-frame { height: 260px; } #report { font-size: 15px; } }
         @media print {
             body { background: #fff; color: #000; }
             main { max-width: none; padding: 0; }
@@ -4708,7 +5275,7 @@ def brief_page():
 </head>
 <body>
     <main>
-        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p><p class="user-status">__USER_STATUS__</p></div><a class="logout" href="/logout">Log ud</a></div>
+        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p><p class="user-status">__USER_STATUS__</p></div><div class="top-actions"><a class="logout" href="/knowledge">Viden / Protokoller</a><a class="logout" href="/logout">Log ud</a></div></div>
         <section class="card search-card" aria-label="Adresse og handlinger">
             <form id="brief-form" class="search">
                 <div class="address-field"><label>Adresse<input id="address" name="address" required autocomplete="off" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label><div id="autocomplete-list" class="autocomplete-list" role="listbox"></div></div>

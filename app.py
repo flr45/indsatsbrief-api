@@ -631,6 +631,12 @@ def score_resource_text(value, expanded_terms, base_score):
     return best_score, matched_terms
 
 
+def resource_display_name(name, resource_type):
+    if name and resource_type and normalize_text(name) != normalize_text(resource_type):
+        return f"{name} – {resource_type}"
+    return name or resource_type
+
+
 def height_resource_priority_bonus(item, expanded_terms):
     query_term = normalize_text(expanded_terms[0]) if expanded_terms else ""
     text = normalize_text(" ".join([
@@ -688,8 +694,12 @@ def score_station_resource(item, expanded_terms, item_kind):
     best += height_resource_priority_bonus(item, expanded_terms)
 
     return {
-        "matched_resource": item.get("name") or item.get("type") or item_kind,
+        "matched_resource": resource_display_name(item.get("name"), item.get("type")) or item_kind,
         "matched_type": item_kind,
+        "matched_resource_name": item.get("name"),
+        "matched_resource_type": item.get("type"),
+        "matched_resource_kind": item_kind,
+        "matched_capabilities": item.get("capabilities") or [],
         "match_score": best,
         "matched_terms": matched_terms,
     }
@@ -722,7 +732,11 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                 score, terms = scored
                 station_matches.append({
                     "matched_resource": value,
-                    "matched_type": "station_special_resource",
+                    "matched_type": "station_resource",
+                    "matched_resource_name": value,
+                    "matched_resource_type": None,
+                    "matched_resource_kind": "station_resource",
+                    "matched_capabilities": [],
                     "match_score": score,
                     "matched_terms": terms,
                 })
@@ -734,6 +748,10 @@ def find_matching_station_resources(resource_query, include_non_operational=Fals
                 station_matches.append({
                     "matched_resource": value,
                     "matched_type": "alias",
+                    "matched_resource_name": value,
+                    "matched_resource_type": None,
+                    "matched_resource_kind": "station_resource",
+                    "matched_capabilities": [],
                     "match_score": score,
                     "matched_terms": terms,
                 })
@@ -3670,33 +3688,36 @@ def brief_page():
             --text: #f8fafc;
             --muted: #cbd5e1;
         }
+        html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
         * { box-sizing: border-box; }
         body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-        a { color: #93c5fd; overflow-wrap: anywhere; }
-        main { max-width: 1200px; margin: 0 auto; padding: 24px 24px 56px; }
+        a, p, li, .report-line, .result-line, .disclaimer { color: inherit; overflow-wrap: anywhere; word-break: break-word; }
+        a { color: #93c5fd; }
+        main { width: min(100%, 1200px); max-width: 100%; overflow-x: hidden; margin: 0 auto; padding: 24px 24px 56px; }
         h1, h2, h3 { letter-spacing: 0; }
         h1 { margin: 0 0 4px; font-size: 30px; }
         .intro { margin: 0; color: var(--muted); }
-        .topline { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 22px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(17,24,39,.95)); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
+        .topline { display: flex; justify-content: space-between; gap: 16px; align-items: center; max-width: 100%; min-width: 0; margin-bottom: 22px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(17,24,39,.95)); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
         .logout { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.06); }
-        .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; box-shadow: 0 16px 45px rgba(0,0,0,.24); }
+        .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { width: 100%; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; box-shadow: 0 16px 45px rgba(0,0,0,.24); }
         .search-card { margin-bottom: 14px; }
-        .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 18px; }
+        .tabs { display: flex; gap: 8px; flex-wrap: wrap; max-width: 100%; min-width: 0; margin: 0 0 18px; }
         .tab { background: rgba(255,255,255,.08); color: var(--muted); min-height: 44px; }
         .tab.active, .tab:hover { background: var(--card-soft); color: var(--text); }
-        .panel { display: none; }
+        .panel { display: none; max-width: 100%; min-width: 0; }
         .panel.active { display: block; }
-        .search { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 14px; align-items: end; }
+        .search { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 130px); gap: 14px; align-items: end; max-width: 100%; min-width: 0; }
+        .search > *, .commands > *, .main-grid > *, .side-stack > *, .resource-form > * { min-width: 0; }
         .address-field { position: relative; }
-        .commands { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(160px, max-content)) repeat(2, minmax(120px, 150px)); gap: 10px; align-items: end; }
-        .autocomplete-list { display: none; position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 8px); max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: #020617; box-shadow: 0 24px 60px rgba(0,0,0,.42); }
+        .commands { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) repeat(2, minmax(0, 150px)); gap: 10px; align-items: end; max-width: 100%; }
+        .autocomplete-list { display: none; position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 8px); max-width: 100%; max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: #020617; box-shadow: 0 24px 60px rgba(0,0,0,.42); }
         .autocomplete-option { display: block; width: 100%; min-height: 52px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
         .autocomplete-option:hover, .autocomplete-option:focus { background: rgba(37,99,235,.22); }
         label { display: grid; gap: 7px; color: var(--muted); font-size: 14px; font-weight: 800; }
-        input, select, textarea { width: 100%; min-height: 48px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; background: #020617; color: var(--text); font: inherit; outline: none; }
+        input, select, textarea { width: 100%; max-width: 100%; min-height: 48px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; background: #020617; color: var(--text); font: inherit; outline: none; }
         input:focus, select:focus, textarea:focus, button:focus, a:focus { outline: 3px solid rgba(37,99,235,.5); outline-offset: 2px; }
         textarea { min-height: 124px; resize: vertical; }
-        button { min-height: 48px; border: 0; border-radius: 12px; padding: 10px 16px; background: var(--primary); color: #fff; font: inherit; font-weight: 850; cursor: pointer; transition: transform .12s ease, filter .12s ease, opacity .12s ease; }
+        button { max-width: 100%; min-height: 48px; border: 0; border-radius: 12px; padding: 10px 16px; background: var(--primary); color: #fff; font: inherit; font-weight: 850; cursor: pointer; transition: transform .12s ease, filter .12s ease, opacity .12s ease; }
         button:hover { filter: brightness(1.08); transform: translateY(-1px); }
         button.secondary { background: var(--card-soft); color: var(--text); }
         button:disabled { cursor: not-allowed; opacity: .48; transform: none; }
@@ -3708,31 +3729,32 @@ def brief_page():
         #status[data-state="done"]::before { background: var(--success); }
         #status[data-state="error"]::before { background: var(--error); box-shadow: 0 0 0 4px rgba(239,68,68,.15); }
         @keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
-        .main-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .9fr); gap: 18px; align-items: start; }
-        .side-stack { display: grid; gap: 18px; }
+        .main-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr); gap: 18px; align-items: start; max-width: 100%; overflow-x: hidden; }
+        .side-stack { display: grid; gap: 18px; min-width: 0; max-width: 100%; }
         #result { display: none; }
-        #report { font-size: 16px; line-height: 1.58; overflow-wrap: anywhere; }
+        #report { font-size: 16px; line-height: 1.58; overflow-wrap: anywhere; word-break: break-word; }
         #report h2 { margin: 0 0 16px; font-size: 23px; }
         #report h3 { margin: 18px 0 8px; font-size: 15px; color: #bfdbfe; text-transform: uppercase; }
         #report ul { margin: 0; padding-left: 22px; }
         #report li { margin: 7px 0; }
-        .actions { display: none; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+        .actions { display: none; gap: 10px; flex-wrap: wrap; max-width: 100%; margin: 14px 0 0; }
         #map-section { display: none; }
         #map-section h2, .tool-panel h2, #assistance-section h2, #resource-section h2 { margin: 0 0 14px; font-size: 20px; }
-        #map-frame { width: 100%; height: 360px; border: 0; border-radius: 12px; background: #020617; }
-        .map-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-        .map-links a { min-height: 42px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 10px; background: rgba(37,99,235,.16); text-decoration: none; font-weight: 800; }
+        iframe, #map-frame { width: 100%; max-width: 100%; border: 0; }
+        #map-frame { height: 360px; border-radius: 12px; background: #020617; }
+        .map-links { display: flex; gap: 10px; flex-wrap: wrap; max-width: 100%; margin-top: 12px; }
+        .map-links a { max-width: 100%; min-height: 42px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 10px; background: rgba(37,99,235,.16); text-decoration: none; font-weight: 800; }
         .tool-result { display: none; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 12px; background: rgba(2,6,23,.52); overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); }
         #assistance-section, #resource-section { display: block; }
         .empty-hint { color: var(--muted); margin: 0; }
-        .station-list { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
-        .station-card { border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--card-soft); overflow-wrap: anywhere; }
+        .station-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-width: 100%; margin-top: 14px; }
+        .station-card { width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 14px; padding: 14px; background: var(--card-soft); overflow-wrap: anywhere; word-break: break-word; }
         .station-card h3 { margin: 0 0 8px; font-size: 17px; }
         .station-card p { margin: 5px 0; color: var(--muted); }
         .badge { display: inline-flex; align-items: center; min-height: 26px; border-radius: 999px; padding: 3px 9px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; font-weight: 850; }
-        .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+        .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; max-width: 100%; }
         @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } .commands { grid-template-columns: repeat(3, minmax(150px, 1fr)); } #map-frame { height: 320px; } }
-        @media (max-width: 700px) { .topline { align-items: flex-start; } .search, .commands, .resource-form { grid-template-columns: 1fr; } .commands { gap: 9px; } button { width: 100%; } .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { padding: 16px; } #map-frame { height: 280px; } }
+        @media (max-width: 700px) { main { padding-left: 12px; padding-right: 12px; } .topline { align-items: flex-start; } .search, .commands, .resource-form { grid-template-columns: minmax(0, 1fr); } .commands { gap: 9px; } button, select { width: 100%; } .card, #result, #map-section, .tool-panel, #assistance-section, #resource-section { padding: 16px; } #map-frame { height: 280px; } }
         @media (max-width: 480px) { main { padding: 14px 12px 34px; } h1 { font-size: 24px; } .topline { display: block; } .logout { margin-top: 14px; width: 100%; } #map-frame { height: 260px; } #report { font-size: 15px; } }
         @media print {
             body { background: #fff; color: #000; }
@@ -4070,6 +4092,14 @@ def brief_page():
             container.appendChild(document.createTextNode(source.slice(cursor)));
         }
 
+        function matchedResourceLabel(item) {
+            const name = item.matched_resource_name;
+            const type = item.matched_resource_type;
+            if (name && type && String(name).toLowerCase() !== String(type).toLowerCase()) return `${name} – ${type}`;
+            if (name || type) return name || type;
+            return item.matched_resource || null;
+        }
+
         function translateReportLine(line) {
             return String(line)
                 .replace(/^Attic used area\s*:/i, 'Udnyttet tagetage:')
@@ -4344,7 +4374,15 @@ def brief_page():
                     const title = document.createElement('h3');
                     title.textContent = station.name;
                     card.appendChild(title);
-                    const parts = [station.type, station.organization && `Organisation: ${station.organization}`, station.operator && `Operatør: ${station.operator}`, station.area, `Luftlinje: ${String(station.air_distance_km).replace('.', ',')} km`].filter(Boolean);
+                    const resourceLabel = matchedResourceLabel(station);
+                    const parts = [
+                        resourceLabel && `Ressource: ${resourceLabel}`,
+                        station.type && `Type: ${station.type}`,
+                        station.organization && `Organisation: ${station.organization}`,
+                        station.operator && `Operatør: ${station.operator}`,
+                        station.area && `Område: ${station.area}`,
+                        `Luftlinje: ${String(station.air_distance_km).replace('.', ',')} km`
+                    ].filter(Boolean);
                     if (station.road_distance_km !== null && station.drive_time_min !== null) {
                         parts.push(`Vej: ${String(station.road_distance_km).replace('.', ',')} km`);
                         parts.push(`Ca. ${station.drive_time_min} min.`);
@@ -4385,15 +4423,20 @@ def brief_page():
                     const card = document.createElement('article');
                     card.className = 'station-card';
                     const title = document.createElement('h3');
-                    title.textContent = result.matched_resource || resource;
+                    title.textContent = result.station_name || result.matched_resource || resource;
                     card.appendChild(title);
                     const badge = document.createElement('span');
                     badge.className = 'badge';
                     badge.textContent = result.operational_response_station ? 'Primær station' : 'Støtte/ikke primær station';
                     card.appendChild(badge);
+                    const resourceLabel = matchedResourceLabel(result);
                     [
-                        result.station_name && `Station: ${result.station_name}`,
-                        (result.organization || result.operator || result.authority) && `Organisation/operatør: ${result.organization || result.operator || result.authority}`,
+                        resourceLabel && `Ressource: ${resourceLabel}`,
+                        result.type && `Type: ${result.type}`,
+                        result.organization && `Organisation: ${result.organization}`,
+                        result.operator && `Operatør: ${result.operator}`,
+                        !result.operator && !result.organization && result.authority && `Organisation: ${result.authority}`,
+                        result.area && `Område: ${result.area}`,
                         result.air_distance_km !== null && result.air_distance_km !== undefined && `Luftlinje: ${String(result.air_distance_km).replace('.', ',')} km`,
                         result.road_distance_km !== null && result.road_time_min !== null && `Vej: ${String(result.road_distance_km).replace('.', ',')} km · ca. ${result.road_time_min} min.`,
                         result.source && `Kilde: ${result.source}`
@@ -5658,6 +5701,7 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
         results.append({
             "station_id": station.get("id"),
             "station_name": station.get("name"),
+            "type": station.get("type"),
             "organization": station.get("organization"),
             "authority": station.get("authority"),
             "operator": station.get("operator"),
@@ -5666,6 +5710,10 @@ def build_nearest_resource_payload(address, resource_query, radius_km=100, limit
             "operational_response_station": station.get("operational_response_station") is not False,
             "matched_resource": item.get("matched_resource"),
             "matched_type": item.get("matched_type"),
+            "matched_resource_name": item.get("matched_resource_name"),
+            "matched_resource_type": item.get("matched_resource_type"),
+            "matched_resource_kind": item.get("matched_resource_kind"),
+            "matched_capabilities": item.get("matched_capabilities", []),
             "matched_terms": item.get("matched_terms", []),
             "air_distance_km": item.get("air_distance_km"),
             "road_distance_km": item.get("road_distance_km"),

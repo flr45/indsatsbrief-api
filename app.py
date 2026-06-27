@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, Response, redirect, session, url_for
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 from urllib.parse import quote
 import requests
@@ -11,6 +11,10 @@ import re
 import hmac
 import time
 import html
+import secrets
+import hashlib
+import smtplib
+from email.message import EmailMessage
 from openai import OpenAI
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -28,6 +32,16 @@ BRIEF_ACCESS_CODE = os.getenv("BRIEF_ACCESS_CODE")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_APPROVAL_REQUIRED = os.getenv("ADMIN_APPROVAL_REQUIRED", "true").lower() == "true"
 ADMIN_EMAIL = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+SHOW_CODE_LOGIN = os.getenv("SHOW_CODE_LOGIN", "false").lower() == "true"
+SMTP_HOST = os.getenv("SMTP_HOST")
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+except ValueError:
+    SMTP_PORT = 587
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_FROM = os.getenv("SMTP_FROM") or SMTP_USERNAME
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
 app.secret_key = FLASK_SECRET_KEY or os.getenv("SECRET_KEY", "dev-only-change-me")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -327,8 +341,22 @@ if db:
 
         def check_password(self, password):
             return check_password_hash(self.password_hash, password or "")
+
+
+    class PasswordResetToken(db.Model):
+        __tablename__ = "password_reset_tokens"
+
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+        token_hash = db.Column(db.String(128), nullable=False, unique=True, index=True)
+        expires_at = db.Column(db.DateTime, nullable=False)
+        used_at = db.Column(db.DateTime, nullable=True)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+        user = db.relationship("User", backref=db.backref("password_reset_tokens", lazy=True))
 else:
     User = None
+    PasswordResetToken = None
 
 
 def init_database():
@@ -3854,6 +3882,71 @@ def should_make_admin(email):
     return db and User and User.query.count() == 0
 
 
+def hash_reset_token(token):
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def smtp_is_configured():
+    return bool(SMTP_HOST and SMTP_FROM)
+
+
+def log_reset_link_allowed():
+    return not bool(os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_HOSTNAME"))
+
+
+def send_password_reset_email(user, reset_link):
+    if not smtp_is_configured():
+        if log_reset_link_allowed():
+            app.logger.warning("Password reset link for %s: %s", user.email, reset_link)
+        return False
+
+    message = EmailMessage()
+    message["Subject"] = "Nulstil adgangskode til IndsatsBrief Brand"
+    message["From"] = SMTP_FROM
+    message["To"] = user.email
+    message.set_content(
+        "Hej.\n\n"
+        "Du har bedt om at nulstille din adgangskode til IndsatsBrief Brand.\n"
+        "Linket udløber om 30 minutter.\n\n"
+        f"{reset_link}\n\n"
+        "Hvis du ikke har bedt om nulstilling, kan du ignorere denne mail."
+    )
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as smtp:
+        if SMTP_USE_TLS:
+            smtp.starttls()
+        if SMTP_USERNAME and SMTP_PASSWORD:
+            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(message)
+    return True
+
+
+def create_password_reset_link(user):
+    if not db or not PasswordResetToken or not user:
+        return None
+    token = secrets.token_urlsafe(32)
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token_hash=hash_reset_token(token),
+        expires_at=datetime.utcnow() + timedelta(minutes=30),
+    )
+    db.session.add(reset_token)
+    db.session.commit()
+    return url_for("reset_password", token=token, _external=True)
+
+
+def find_valid_password_reset_token(token):
+    if not db or not PasswordResetToken or not token:
+        return None
+    token_hash = hash_reset_token(token)
+    reset_token = PasswordResetToken.query.filter_by(token_hash=token_hash).first()
+    if not reset_token or reset_token.used_at:
+        return None
+    if reset_token.expires_at < datetime.utcnow():
+        return None
+    return reset_token
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if not db or not User:
@@ -3880,22 +3973,24 @@ def register():
             error = "E-mail er allerede oprettet."
         else:
             make_admin = should_make_admin(email)
+            is_approved = bool(make_admin or not ADMIN_APPROVAL_REQUIRED)
             user = User(
                 email=email,
                 name=name,
                 organization=organization,
                 role="admin" if make_admin else "user",
                 is_active=True,
-                is_approved=(not ADMIN_APPROVAL_REQUIRED) or make_admin,
+                is_approved=is_approved,
             )
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
+            session.clear()
             if user.is_approved:
                 session.clear()
                 session["user_id"] = user.id
                 return redirect(url_for("brief_page"))
-            info = "Din bruger er oprettet og afventer godkendelse."
+            info = 'Din bruger er oprettet og afventer godkendelse af administrator. <a href="/login">Til login</a>'
 
     body = """
     <form method="post" action="/register">
@@ -3906,7 +4001,7 @@ def register():
         <label>Gentag password<input type="password" name="password_repeat" required autocomplete="new-password"></label>
         <button type="submit">Opret bruger</button>
     </form>
-    <div class="links"><a href="/login">Log ind</a><a href="/privacy">Privatliv</a></div>
+    <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Opret bruger", body, error, info), status=400 if error else 200, mimetype="text/html")
 
@@ -3917,7 +4012,7 @@ def login():
     next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
     if request.method == "POST":
         access_code = request.form.get("access_code") or ""
-        if BRIEF_ACCESS_CODE and access_code and hmac.compare_digest(access_code, BRIEF_ACCESS_CODE):
+        if SHOW_CODE_LOGIN and BRIEF_ACCESS_CODE and access_code and hmac.compare_digest(access_code, BRIEF_ACCESS_CODE):
             session.clear()
             session["access_granted"] = True
             session["brief_authenticated"] = True
@@ -3939,17 +4034,108 @@ def login():
             session["user_id"] = user.id
             return redirect(next_url)
 
+    code_login_html = (
+        '<label>Adgangskode<input type="password" name="access_code" autocomplete="off"></label>'
+        if SHOW_CODE_LOGIN else ""
+    )
     body = f"""
     <form method="post" action="/login">
         <input type="hidden" name="next" value="{html.escape(next_url)}">
         <label>E-mail<input type="email" name="email" autocomplete="email"></label>
         <label>Password<input type="password" name="password" autocomplete="current-password"></label>
-        <label>Adgangskode (fallback)<input type="password" name="access_code" autocomplete="off"></label>
+        {code_login_html}
         <button type="submit">Log ind</button>
     </form>
-    <div class="links"><a href="/register">Opret bruger</a><a href="/privacy">Privatliv</a></div>
+    <div class="links"><a href="/register">Opret bruger</a><a href="/forgot-password">Glemt password?</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Log ind", body, error), status=401 if error else 200, mimetype="text/html")
+
+
+@app.route("/code-login", methods=["GET", "POST"])
+def code_login():
+    if not BRIEF_ACCESS_CODE:
+        return Response(auth_page_html("Adgangskode", "", error_message="Kode-login er ikke konfigureret."), status=503, mimetype="text/html")
+    error = None
+    next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
+    if request.method == "POST":
+        access_code = request.form.get("access_code") or ""
+        if hmac.compare_digest(access_code, BRIEF_ACCESS_CODE):
+            session.clear()
+            session["access_granted"] = True
+            session["brief_authenticated"] = True
+            return redirect(next_url)
+        error = "Forkert adgangskode."
+    body = f"""
+    <form method="post" action="/code-login">
+        <input type="hidden" name="next" value="{html.escape(next_url)}">
+        <label>Adgangskode<input type="password" name="access_code" required autocomplete="off"></label>
+        <button type="submit">Åbn</button>
+    </form>
+    <div class="links"><a href="/login">Log ind med bruger</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Adgangskode", body, error), status=401 if error else 200, mimetype="text/html")
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if not db or not User or not PasswordResetToken:
+        return Response(auth_page_html("Glemt password", "", error_message="Database/login er ikke konfigureret."), status=503, mimetype="text/html")
+
+    info = None
+    if request.method == "POST":
+        email = normalize_email(request.form.get("email"))
+        user = User.query.filter_by(email=email).first() if email else None
+        if user and user.is_active:
+            try:
+                reset_link = create_password_reset_link(user)
+                send_password_reset_email(user, reset_link)
+            except Exception as error:
+                app.logger.exception("Password reset kunne ikke sendes: %s", error)
+        info = "Hvis e-mailen findes, er der sendt et link til nulstilling."
+
+    body = """
+    <form method="post" action="/forgot-password">
+        <label>E-mail<input type="email" name="email" required autocomplete="email"></label>
+        <button type="submit">Send nulstillingslink</button>
+    </form>
+    <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Glemt password", body, info_message=info), mimetype="text/html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    if not db or not User or not PasswordResetToken:
+        return Response(auth_page_html("Nulstil password", "", error_message="Database/login er ikke konfigureret."), status=503, mimetype="text/html")
+
+    reset_token = find_valid_password_reset_token(token)
+    if not reset_token:
+        return Response(auth_page_html("Nulstil password", "", error_message="Linket er ugyldigt eller udløbet."), status=400, mimetype="text/html")
+
+    error = None
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        password_repeat = request.form.get("password_repeat") or ""
+        if len(password) < 8:
+            error = "Password skal være mindst 8 tegn."
+        elif password != password_repeat:
+            error = "Password og gentag password skal matche."
+        else:
+            reset_token.user.set_password(password)
+            reset_token.used_at = datetime.utcnow()
+            db.session.commit()
+            session.clear()
+            return Response(auth_page_html("Nulstil password", '<div class="links"><a href="/login">Til login</a></div>', info_message="Password er ændret."), mimetype="text/html")
+
+    body = f"""
+    <form method="post" action="/reset-password/{html.escape(token)}">
+        <label>Nyt password<input type="password" name="password" required autocomplete="new-password"></label>
+        <label>Gentag password<input type="password" name="password_repeat" required autocomplete="new-password"></label>
+        <button type="submit">Gem nyt password</button>
+    </form>
+    <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Nulstil password", body, error), status=400 if error else 200, mimetype="text/html")
 
 
 @app.route("/logout", methods=["GET"])
@@ -3981,6 +4167,12 @@ def user_action_button(user, action, label):
 def admin_users():
     users = User.query.order_by(User.created_at.desc()).all()
     current = current_user()
+    reset_link = session.pop("admin_reset_link", None)
+    reset_email = session.pop("admin_reset_email", None)
+    reset_message = (
+        f'<section class="admin-message"><strong>Nulstillingslink til {html.escape(reset_email or "")}</strong><br><a href="{html.escape(reset_link)}">{html.escape(reset_link)}</a></section>'
+        if reset_link else ""
+    )
     rows = []
     for user in users:
         actions = []
@@ -3988,6 +4180,7 @@ def admin_users():
             actions.append(user_action_button(user, "approve", "Godkend"))
         actions.append(user_action_button(user, "enable" if not user.is_active else "disable", "Aktivér" if not user.is_active else "Deaktiver"))
         actions.append(user_action_button(user, "remove-admin" if user.role == "admin" else "make-admin", "Fjern admin" if user.role == "admin" else "Gør til admin"))
+        actions.append(user_action_button(user, "reset-password", "Nulstil kodeord"))
         self_note = " <span class='badge'>dig</span>" if current and user.id == current.id else ""
         rows.append(f"""
         <article class="user-card">
@@ -4002,13 +4195,14 @@ def admin_users():
     body = f"""
     <div class="admin-shell">
         <header><div><h1>Brugere</h1><p>Admin-godkendelse til IndsatsBrief Brand</p></div><a href="/brief">Til brief</a></header>
+        {reset_message}
         <main>{''.join(rows) if rows else '<p>Ingen brugere.</p>'}</main>
     </div>
     """
     admin_html = f"""
 <!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin - IndsatsBrief</title>
 <style>
-html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd}}main{{display:grid;gap:14px}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
 </style></head><body>{body}</body></html>
     """
     return Response(admin_html, mimetype="text/html")
@@ -4021,6 +4215,7 @@ def update_user_admin_action(user_id, action):
     current = current_user()
     if action == "approve":
         user.is_approved = True
+        user.is_active = True
     elif action == "disable":
         if current and user.id == current.id:
             return redirect(url_for("admin_users"))
@@ -4069,6 +4264,24 @@ def admin_make_admin(user_id):
 @admin_required
 def admin_remove_admin(user_id):
     return update_user_admin_action(user_id, "remove-admin")
+
+
+@app.route("/admin/users/<int:user_id>/reset-password", methods=["POST"])
+@admin_required
+def admin_reset_user_password(user_id):
+    user = db.session.get(User, int(user_id))
+    if user:
+        try:
+            reset_link = create_password_reset_link(user)
+            try:
+                send_password_reset_email(user, reset_link)
+            except Exception as error:
+                app.logger.exception("Admin password reset mail kunne ikke sendes: %s", error)
+            session["admin_reset_link"] = reset_link
+            session["admin_reset_email"] = user.email
+        except Exception as error:
+            app.logger.exception("Admin password reset kunne ikke oprettes: %s", error)
+    return redirect(url_for("admin_users"))
 
 
 @app.route("/brief", methods=["GET"])

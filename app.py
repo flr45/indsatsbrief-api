@@ -4075,6 +4075,23 @@ def send_admin_pending_user_email(user):
     return send_email(recipient, "Ny bruger afventer godkendelse", body)
 
 
+def send_user_approved_email(user):
+    login_url = f"{APP_BASE_URL}/login" if APP_BASE_URL else build_external_url("login")
+    body = (
+        f"Hej {user.name}\n\n"
+        "Din konto til IndsatsBrief Brand er nu godkendt.\n\n"
+        "Du kan nu logge ind her:\n"
+        f"{login_url}\n\n"
+        "Venlig hilsen\n"
+        "IndsatsBrief Brand"
+    )
+    if not smtp_is_configured():
+        if log_reset_link_allowed():
+            app.logger.warning("Approval mail for %s would include login link: %s", user.email, login_url)
+        return False
+    return send_email(user.email, "Din konto til IndsatsBrief Brand er godkendt", body)
+
+
 def send_user_verification_and_admin_notice(user):
     try:
         verification_link = create_email_verification_link(user)
@@ -4166,7 +4183,11 @@ def login():
         if not user or not user.check_password(password):
             error = "Forkert e-mail eller password."
         elif not user.email_verified:
-            error = "Du skal bekræfte din e-mail, før du kan logge ind. Tjek også spam/uønsket mail."
+            error = (
+                'Du skal bekræfte din e-mail, før du kan logge ind. '
+                'Tjek også spam/uønsket mail. '
+                f'<a href="/resend-verification?email={quote(email)}">Send bekræftelsesmail igen</a>'
+            )
         elif not user.is_approved:
             error = "Din bruger afventer godkendelse af administrator."
         elif not user.is_active:
@@ -4190,7 +4211,7 @@ def login():
         {code_login_html}
         <button type="submit">Log ind</button>
     </form>
-    <div class="links"><a href="/register">Opret bruger</a><a href="/forgot-password">Glemt adgangskode?</a><a href="/resend-verification">Send bekræftelsesmail igen</a><a href="/contact">Kontakt support</a><a href="/privacy">Privatliv</a></div>
+    <div class="links"><a href="/register">Opret bruger</a><a href="/forgot-password">Glemt adgangskode?</a><a href="/contact">Kontakt support</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Log ind", body, error), status=401 if error else 200, mimetype="text/html")
 
@@ -4299,7 +4320,15 @@ def verify_email(token):
     db.session.commit()
     session.clear()
     body = '<div class="links"><a href="/login">Til login</a><a href="/contact">Kontakt support</a></div>'
-    return Response(auth_page_html("Bekræft e-mail", body, info_message="Din e-mail er bekræftet. Din bruger afventer nu godkendelse af administrator."), mimetype="text/html")
+    if user.is_approved and user.is_active:
+        message = "Din e-mail er nu bekræftet. Du kan nu logge ind."
+        body = '<div class="links"><a href="/login">Log ind</a><a href="/contact">Kontakt support</a></div>'
+    else:
+        message = (
+            "Din e-mail er nu bekræftet. Din konto afventer stadig godkendelse "
+            "af administrator, før du kan logge ind. Du får besked, når din konto er godkendt."
+        )
+    return Response(auth_page_html("Bekræft e-mail", body, info_message=message), mimetype="text/html")
 
 
 def send_verification_for_email(email):
@@ -4414,9 +4443,15 @@ def admin_users():
     current = current_user()
     reset_link = session.pop("admin_reset_link", None)
     reset_email = session.pop("admin_reset_email", None)
+    admin_status_message = session.pop("admin_status_message", None)
+    admin_status_kind = session.pop("admin_status_kind", "success")
     reset_message = (
         f'<section class="admin-message"><strong>Nulstillingslink til {html.escape(reset_email or "")}</strong><br><a href="{html.escape(reset_link)}">{html.escape(reset_link)}</a></section>'
         if reset_link else ""
+    )
+    status_message = (
+        f'<section class="admin-message {html.escape(admin_status_kind)}">{html.escape(admin_status_message)}</section>'
+        if admin_status_message else ""
     )
     rows = []
     for user in users:
@@ -4443,6 +4478,7 @@ def admin_users():
     body = f"""
     <div class="admin-shell">
         <header><div><h1>Brugere</h1><p>Admin-godkendelse til IndsatsBrief Brand</p></div><a href="/brief">Til brief</a></header>
+        {status_message}
         {reset_message}
         <main>{''.join(rows) if rows else '<p>Ingen brugere.</p>'}</main>
     </div>
@@ -4450,7 +4486,7 @@ def admin_users():
     admin_html = f"""
 <!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin - IndsatsBrief</title>
 <style>
-html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}.warning-badge{{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(250,204,21,.16);color:#fde68a;font-size:12px;font-weight:800}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.admin-message.warning{{border-color:rgba(250,204,21,.4);background:rgba(250,204,21,.13);color:#fde68a}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}.warning-badge{{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(250,204,21,.16);color:#fde68a;font-size:12px;font-weight:800}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
 </style></head><body>{body}</body></html>
     """
     return Response(admin_html, mimetype="text/html")
@@ -4464,6 +4500,19 @@ def update_user_admin_action(user_id, action):
     if action == "approve":
         user.is_approved = True
         user.is_active = True
+        db.session.commit()
+        try:
+            if send_user_approved_email(user):
+                session["admin_status_message"] = "Brugeren er godkendt, og der er sendt besked pr. mail."
+                session["admin_status_kind"] = "success"
+            else:
+                session["admin_status_message"] = "Brugeren er godkendt, men mailen kunne ikke sendes."
+                session["admin_status_kind"] = "warning"
+        except Exception as error:
+            app.logger.exception("Godkendelsesmail kunne ikke sendes: %s", error)
+            session["admin_status_message"] = "Brugeren er godkendt, men mailen kunne ikke sendes."
+            session["admin_status_kind"] = "warning"
+        return redirect(url_for("admin_users"))
     elif action == "disable":
         if current and user.id == current.id:
             return redirect(url_for("admin_users"))

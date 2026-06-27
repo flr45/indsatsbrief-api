@@ -359,6 +359,7 @@ API_ERROR_PREFIXES = (
     "/api/stations",
     "/address-autocomplete",
     "/knowledge/ask",
+    "/admin/knowledge/test-search",
     "/test-bbr",
     "/test-hydrants",
     "/osm-risk-check",
@@ -416,6 +417,21 @@ if db:
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
         user = db.relationship("User", backref=db.backref("email_verification_tokens", lazy=True))
+
+
+    class AuditLog(db.Model):
+        __tablename__ = "audit_logs"
+
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+        user_email = db.Column(db.String(255), nullable=True)
+        action = db.Column(db.String(120), nullable=False, index=True)
+        entity_type = db.Column(db.String(120), nullable=True, index=True)
+        entity_id = db.Column(db.String(120), nullable=True)
+        entity_name = db.Column(db.String(255), nullable=True)
+        details = db.Column(db.JSON, nullable=True)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+        ip_address = db.Column(db.String(80), nullable=True)
 
 
     class KnowledgeDocument(db.Model):
@@ -530,6 +546,7 @@ else:
     User = None
     PasswordResetToken = None
     EmailVerificationToken = None
+    AuditLog = None
     KnowledgeDocument = None
     KnowledgeChunk = None
     Station = None
@@ -5640,8 +5657,10 @@ def admin_nav_html():
         '<a class="button secondary" href="/admin">Dashboard</a>'
         '<a class="button secondary" href="/admin/users">Brugere</a>'
         '<a class="button secondary" href="/admin/stations">Stationer</a>'
+        '<a class="button secondary" href="/admin/resource-test">Ressourcetest</a>'
         '<a class="button secondary" href="/admin/knowledge">Viden</a>'
         '<a class="button secondary" href="/admin/status">Status</a>'
+        '<a class="button secondary" href="/admin/audit">Ændringslog</a>'
         '<a class="button secondary" href="/brief">App</a>'
         '<a class="button secondary" href="/logout">Log ud</a>'
         '</nav>'
@@ -5722,18 +5741,48 @@ def send_admin_test_email():
         return False, f"Testmail kunne ikke sendes: {str(error)[:180]}"
 
 
+def audit_log(action, entity_type=None, entity_id=None, entity_name=None, details=None):
+    if not db or not AuditLog:
+        return
+    try:
+        user = current_user()
+        db.session.add(AuditLog(
+            user_id=user.id if user else None,
+            user_email=user.email if user else None,
+            action=action,
+            entity_type=entity_type,
+            entity_id=str(entity_id) if entity_id is not None else None,
+            entity_name=entity_name,
+            details=details or {},
+            ip_address=request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip(),
+        ))
+        db.session.commit()
+    except Exception as error:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        app.logger.exception("Audit-log kunne ikke gemmes: %s", error)
+
+
 @app.route("/admin", methods=["GET"])
 @admin_required
 def admin_dashboard():
     user_count = safe_model_count(User)
     pending_users = safe_model_count(User, filter_pending=True)
     station_count = safe_model_count(Station)
+    vehicle_count = safe_model_count(StationVehicle)
+    resource_count = safe_model_count(StationResource)
     document_count = safe_model_count(KnowledgeDocument)
+    chunk_count = safe_model_count(KnowledgeChunk)
+    audit_count = safe_model_count(AuditLog)
     cards = [
         ("Brugere", "/admin/users", display_count(user_count), f"{display_count(pending_users)} afventer godkendelse"),
-        ("Stationer", "/admin/stations", display_count(station_count), "Vedligehold stationer og ressourcer"),
-        ("Viden / Protokoller", "/admin/knowledge", display_count(document_count), "Importer og aktiver dokumenter"),
+        ("Stationer", "/admin/stations", display_count(station_count), f"{display_count(vehicle_count)} køretøjer · {display_count(resource_count)} ressourcer"),
+        ("Ressourcetest", "/admin/resource-test", "Test", "Afprøv søgeord og match-score"),
+        ("Viden / Protokoller", "/admin/knowledge", display_count(document_count), f"{display_count(chunk_count)} tekstbidder"),
         ("Systemstatus", "/admin/status", "Status", "Database, SMTP, OpenAI og config"),
+        ("Ændringslog", "/admin/audit", display_count(audit_count), "Seneste adminhandlinger"),
         ("Til appen", "/brief", "Åbn", "Gå til IndsatsBrief Brand"),
     ]
     body = '<section class="grid">'
@@ -5760,6 +5809,7 @@ def database_status_payload():
         "resources": None,
         "documents": None,
         "chunks": None,
+        "audit_logs": None,
     }
     if not db:
         return payload
@@ -5774,6 +5824,7 @@ def database_status_payload():
         payload["resources"] = safe_model_count(StationResource)
         payload["documents"] = safe_model_count(KnowledgeDocument)
         payload["chunks"] = safe_model_count(KnowledgeChunk)
+        payload["audit_logs"] = safe_model_count(AuditLog)
     except Exception as error:
         app.logger.exception("Database status kunne ikke læses: %s", error)
         payload["detail"] = str(error)[:180]
@@ -5806,6 +5857,7 @@ def admin_status():
             <p>Ressourcer: {display_count(db_status["resources"])}</p>
             <p>Knowledge dokumenter: {display_count(db_status["documents"])}</p>
             <p>Knowledge chunks: {display_count(db_status["chunks"])}</p>
+            <p>Audit logs: {display_count(db_status["audit_logs"])}</p>
         </article>
         <article class="card">
             <h2>SMTP/mail</h2>
@@ -5836,6 +5888,14 @@ def admin_status():
             <p>APP_BASE_URL: {html.escape(APP_BASE_URL or "mangler")}</p>
             <p>DATABASE_URL: {env_set_label("DATABASE_URL")}</p>
             <p>FLASK_SECRET_KEY: {env_set_label("FLASK_SECRET_KEY")}</p>
+            {('<p class="status-warning">APP_BASE_URL mangler. Links i mails kan blive forkerte.</p>' if not APP_BASE_URL else '')}
+            {('<p class="status-warning">APP_BASE_URL bruger Render-domæne. Når custom domæne er sat op, bør den ændres.</p>' if 'onrender.com' in (APP_BASE_URL or '') else '')}
+        </article>
+        <article class="card">
+            <h2>PWA</h2>
+            <p>Manifest: <a href="/manifest.webmanifest">/manifest.webmanifest</a></p>
+            <p>Service worker: <a href="/service-worker.js">/service-worker.js</a></p>
+            <p>Kan installeres på telefon via “Føj til hjemmeskærm”.</p>
         </article>
         <article class="card">
             <h2>Runtime</h2>
@@ -5853,9 +5913,118 @@ def admin_status():
 @admin_required
 def admin_status_send_test_email():
     ok, message = send_admin_test_email()
+    audit_log("testmail_sent" if ok else "testmail_failed", "system", None, "SMTP testmail", {"ok": ok, "message": message})
     session["admin_status_message"] = message
     session["admin_status_kind"] = "success" if ok else "warning"
     return redirect(url_for("admin_status"))
+
+
+RESOURCE_TEST_TERMS = [
+    "stige", "drejestige", "lift", "robot", "luf", "luf-60", "drone", "droner",
+    "uas", "båd", "redningsbåd", "kran", "tankvogn", "kemi", "cbrn", "frigørelse",
+    "pumpe", "lys", "logistik",
+]
+
+RESOURCE_TEST_EXPECTATIONS = {
+    "robot": "Bør kun vise stationer/køretøjer/ressourcer med eksplicit robot/LUF/TAF/crawler/fjernstyret.",
+    "båd": "Bør kun vise båd/redningsbåd/vandredning/overfladeredning.",
+    "kran": "Bør kun vise eksplicit kran/redningskran/kranvogn/køretøjskran.",
+    "stige": "Bør vise konkrete køretøjer som S1 – drejestige, S2 – lift, specialstige osv.",
+    "drone": "Bør vise drone/UAS/RPAS/UAV, ikke kamera/overblik alene.",
+}
+
+
+def admin_resource_test_results(query, address):
+    if not query:
+        return [], []
+    matches = find_matching_station_resources(query, include_non_operational=True)
+    warnings = []
+    origin_lat = origin_lon = None
+    if address:
+        try:
+            address_data = lookup_address(address)
+            origin_lat = address_data.get("latitude")
+            origin_lon = address_data.get("longitude")
+            if origin_lat is None or origin_lon is None:
+                warnings.append("Adressen kunne ikke slås op. Viser resultater uden afstand.")
+        except Exception as error:
+            app.logger.warning("Resource test address lookup failed: %s", error)
+            warnings.append("Adressen kunne ikke slås op. Viser resultater uden afstand.")
+    if origin_lat is not None and origin_lon is not None:
+        matches = rank_stations_by_distance(origin_lat, origin_lon, matches, limit=10, radius_km=None)
+    return matches[:10], warnings
+
+
+@app.route("/admin/resource-test", methods=["GET"])
+@admin_required
+def admin_resource_test():
+    query = (request.args.get("q") or "").strip()
+    address = (request.args.get("address") or "").strip()
+    matches, warnings = admin_resource_test_results(query, address)
+    quick_buttons = "".join(
+        f'<a class="button secondary" href="/admin/resource-test?q={quote(term)}">{html.escape(term)}</a>'
+        for term in RESOURCE_TEST_TERMS
+    )
+    expectation_cards = "".join(
+        f'<article class="card"><h3>{html.escape(term)}</h3><p>{html.escape(text)}</p></article>'
+        for term, text in RESOURCE_TEST_EXPECTATIONS.items()
+    )
+    rows = []
+    for item in matches:
+        station = item.get("station") or {}
+        rows.append(f"""
+        <article class="card">
+            <h2>{html.escape(station.get("name") or "Station")}</h2>
+            <p><strong>Ressource:</strong> {html.escape(item.get("display_resource") or item.get("matched_resource") or "-")}</p>
+            <p>matched_resource: {html.escape(str(item.get("matched_resource") or "-"))}</p>
+            <p>match_source: {html.escape(str(item.get("match_source") or "-"))} · match_score: {html.escape(str(item.get("match_score") or "-"))}</p>
+            <p>matched_terms: {html.escape(", ".join(item.get("matched_terms") or []) or "-")}</p>
+            <p>Afstand/tid: {html.escape(str(item.get("air_distance_km") if item.get("air_distance_km") is not None else "-"))} km luftlinje · {html.escape(str(item.get("road_distance_km") if item.get("road_distance_km") is not None else "-"))} km vej · {html.escape(str(item.get("road_time_min") if item.get("road_time_min") is not None else "-"))} min</p>
+            <p>data_source: {html.escape(station_resource_data_source())}</p>
+        </article>
+        """)
+    body = f"""
+    <section class="card">
+        <h2>Test ressourcesøgning</h2>
+        <form method="get" action="/admin/resource-test" class="form-grid">
+            <label>Søgeord<input name="q" value="{html.escape(query)}" placeholder="fx robot"></label>
+            <label>Adresse / koordinater<input name="address" value="{html.escape(address)}" placeholder="valgfrit, fx Antvorskov Alle 135, 4200 Slagelse"></label>
+            <p class="actions full"><button type="submit">Test søgning</button></p>
+        </form>
+        <div class="actions">{quick_buttons}</div>
+    </section>
+    {' '.join(f'<section class="admin-message warning">{html.escape(warning)}</section>' for warning in warnings)}
+    <section class="grid">{''.join(rows) if query else '<article class="card"><p>Indtast et søgeord eller brug hurtigknapperne.</p></article>'}</section>
+    <section><h2>Forventningsliste</h2><div class="grid">{expectation_cards}</div></section>
+    """
+    return Response(admin_layout("Ressourcetest", body), mimetype="text/html")
+
+
+@app.route("/admin/audit", methods=["GET"])
+@admin_required
+def admin_audit():
+    if not db or not AuditLog:
+        return Response(admin_layout("Ændringslog", '<section class="admin-message warning">Audit-log er ikke konfigureret.</section>'), status=503, mimetype="text/html")
+    try:
+        logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(100).all()
+    except Exception as error:
+        app.logger.exception("Audit-log kunne ikke læses: %s", error)
+        logs = []
+    cards = []
+    for entry in logs:
+        details = entry.details if isinstance(entry.details, dict) else {}
+        detail_text = ", ".join(f"{key}: {value}" for key, value in list(details.items())[:5])
+        cards.append(f"""
+        <article class="card">
+            <h2>{html.escape(entry.action or "-")}</h2>
+            <p>{format_datetime(entry.created_at)} · {html.escape(entry.user_email or "system")}</p>
+            <p>{html.escape(entry.entity_type or "-")} {html.escape(entry.entity_id or "")} · {html.escape(entry.entity_name or "")}</p>
+            <p>{html.escape(detail_text or "-")}</p>
+        </article>
+        """)
+    audit_cards = "".join(cards) or '<article class="card"><p>Ingen audit-log endnu.</p></article>'
+    body = f'<section class="grid">{audit_cards}</section>'
+    return Response(admin_layout("Ændringslog", body), mimetype="text/html")
 
 
 def lines_from_form(name):
@@ -6080,6 +6249,7 @@ def update_user_admin_action(user_id, action):
             app.logger.exception("Godkendelsesmail kunne ikke sendes: %s", error)
             session["admin_status_message"] = "Brugeren er godkendt, men mailen kunne ikke sendes."
             session["admin_status_kind"] = "warning"
+        audit_log("user_approved", "user", user.id, user.email)
         return redirect(url_for("admin_users"))
     elif action == "disable":
         if current and user.id == current.id:
@@ -6087,16 +6257,20 @@ def update_user_admin_action(user_id, action):
         if user.role == "admin" and admin_count() <= 1:
             return redirect(url_for("admin_users"))
         user.is_active = False
+        audit_log("user_disabled", "user", user.id, user.email)
     elif action == "enable":
         user.is_active = True
+        audit_log("user_enabled", "user", user.id, user.email)
     elif action == "make-admin":
         user.role = "admin"
         user.is_approved = True
         user.is_active = True
+        audit_log("user_role_changed", "user", user.id, user.email, {"role": "admin"})
     elif action == "remove-admin":
         if user.role == "admin" and admin_count() <= 1:
             return redirect(url_for("admin_users"))
         user.role = "user"
+        audit_log("user_role_changed", "user", user.id, user.email, {"role": "user"})
     db.session.commit()
     return redirect(url_for("admin_users"))
 
@@ -6210,6 +6384,7 @@ def admin_import_stations_json():
     after = Station.query.count()
     if after > before:
         session["station_admin_message"] = f"Importerede {after - before} stationer fra JSON."
+        audit_log("stations_imported", "station", None, "JSON import", {"count": after - before})
     else:
         session["station_admin_message"] = "Databasen har allerede stationer. Importen overskrev ikke admin-data."
         session["station_admin_kind"] = "warning"
@@ -6383,6 +6558,7 @@ def admin_station_new():
             db.session.add(station)
             db.session.commit()
             invalidate_station_data_cache()
+            audit_log("station_created", "station", station.id, station.name)
             session["station_admin_message"] = "Stationen er oprettet."
             return redirect(url_for("admin_stations"))
     return Response(admin_layout("Opret station", station_form_html("/admin/stations/new", None, error)), status=400 if error else 200, mimetype="text/html")
@@ -6403,6 +6579,7 @@ def admin_station_edit(station_id):
             apply_station_values(station, values)
             db.session.commit()
             invalidate_station_data_cache()
+            audit_log("station_updated", "station", station.id, station.name)
             session["station_admin_message"] = "Stationen er gemt."
             return redirect(url_for("admin_stations"))
     return Response(admin_layout("Rediger station", station_form_html(f"/admin/stations/{station.id}/edit", station, error)), status=400 if error else 200, mimetype="text/html")
@@ -6416,6 +6593,7 @@ def admin_station_toggle(station_id):
         station.is_active = not station.is_active
         db.session.commit()
         invalidate_station_data_cache()
+        audit_log("station_toggled", "station", station.id, station.name, {"is_active": station.is_active})
         session["station_admin_message"] = "Stationens status er opdateret."
     return redirect(url_for("admin_stations"))
 
@@ -6483,6 +6661,7 @@ def admin_vehicle_new(station_id):
             db.session.add(vehicle)
             db.session.commit()
             invalidate_station_data_cache()
+            audit_log("vehicle_created", "vehicle", vehicle.id, vehicle.name, {"station_id": station.id})
             session["station_admin_message"] = "Køretøj gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_vehicles", station_id=station.id))
     return Response(admin_layout("Opret køretøj", resource_form_html(f"/admin/stations/{station.id}/vehicles/new", station, kind="vehicle", error=error)), status=400 if error else 200, mimetype="text/html")
@@ -6505,6 +6684,7 @@ def admin_resource_new(station_id):
             db.session.add(resource)
             db.session.commit()
             invalidate_station_data_cache()
+            audit_log("resource_created", "resource", resource.id, resource.name, {"station_id": station.id})
             session["station_admin_message"] = "Ressource gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_resources", station_id=station.id))
     return Response(admin_layout("Opret ressource", resource_form_html(f"/admin/stations/{station.id}/resources/new", station, kind="resource", error=error)), status=400 if error else 200, mimetype="text/html")
@@ -6523,6 +6703,7 @@ def admin_vehicle_edit(vehicle_id):
             apply_vehicle_values(vehicle, values)
             db.session.commit()
             invalidate_station_data_cache()
+            audit_log("vehicle_updated", "vehicle", vehicle.id, vehicle.name, {"station_id": vehicle.station_id})
             session["station_admin_message"] = "Køretøj gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_vehicles", station_id=vehicle.station_id))
     return Response(admin_layout("Rediger køretøj", resource_form_html(f"/admin/vehicles/{vehicle.id}/edit", vehicle.station, item, "vehicle")), mimetype="text/html")
@@ -6541,6 +6722,7 @@ def admin_resource_edit(resource_id):
             apply_resource_values(resource, values)
             db.session.commit()
             invalidate_station_data_cache()
+            audit_log("resource_updated", "resource", resource.id, resource.name, {"station_id": resource.station_id})
             session["station_admin_message"] = "Ressource gemt. Ændringen bruges nu i ressourcesøgningen."
             return redirect(url_for("admin_station_resources", station_id=resource.station_id))
     return Response(admin_layout("Rediger ressource", resource_form_html(f"/admin/resources/{resource.id}/edit", resource.station, item, "resource")), mimetype="text/html")
@@ -6555,6 +6737,7 @@ def admin_vehicle_toggle(vehicle_id):
         vehicle.is_active = not vehicle.is_active
         db.session.commit()
         invalidate_station_data_cache()
+        audit_log("vehicle_toggled", "vehicle", vehicle.id, vehicle.name, {"is_active": vehicle.is_active})
         session["station_admin_message"] = "Køretøjets status er opdateret. Ændringen bruges nu i ressourcesøgningen."
         return redirect(url_for("admin_station_vehicles", station_id=vehicle.station_id))
     return redirect(url_for("admin_stations"))
@@ -6569,6 +6752,7 @@ def admin_resource_toggle(resource_id):
         resource.is_active = not resource.is_active
         db.session.commit()
         invalidate_station_data_cache()
+        audit_log("resource_toggled", "resource", resource.id, resource.name, {"is_active": resource.is_active})
         session["station_admin_message"] = "Ressourcens status er opdateret. Ændringen bruges nu i ressourcesøgningen."
         return redirect(url_for("admin_station_resources", station_id=resource.station_id))
     return redirect(url_for("admin_stations"))
@@ -6580,7 +6764,7 @@ def knowledge_document_card(document):
         <h2>{html.escape(document.title or '')}</h2>
         <p>Kategori: {html.escape(document.category or '-')} · Udgiver: {html.escape(document.publisher or '-')}</p>
         <p>Version/dato: {html.escape(document.version_date or '-')} · Aktiv: {'ja' if document.is_active else 'nej'}</p>
-        <p>Sider: {document.page_count or 0} · Tekstbidder: {document.chunk_count or 0} · Status: {html.escape(document.import_status or '-')}</p>
+        <p>Sider: {document.page_count or 0} · Tekstbidder: {document.chunk_count or 0} · Status: {html.escape(document.import_status or '-')} · Oprettet: {format_datetime(document.created_at)}</p>
         {f'<p>Fejl: {html.escape(document.import_error)}</p>' if document.import_error else ''}
         <div class="actions">
             <form method="post" action="/admin/knowledge/{document.id}/toggle"><button type="submit">{'Deaktiver' if document.is_active else 'Aktivér'}</button></form>
@@ -6612,6 +6796,13 @@ def admin_knowledge():
             <label>Kilde-URL<input name="source_url" type="url"></label>
             <label>PDF-fil<input name="pdf_file" type="file" accept="application/pdf,.pdf" required></label>
             <button type="submit">Importer PDF</button>
+        </form>
+    </section>
+    <section class="card">
+        <h2>Test spørgsmål mod dokumenter</h2>
+        <form method="post" action="/admin/knowledge/test-search" class="stack-form">
+            <label>Spørgsmål<input name="question" placeholder="Fx Hvad siger dokumenterne om lithiumbatterier?" required></label>
+            <button type="submit">Test søgning</button>
         </form>
     </section>
     <section class="grid">{cards}</section>
@@ -6669,14 +6860,42 @@ def admin_knowledge_upload():
             document.import_status = "importeret"
             document.import_error = None
         db.session.commit()
+        audit_log("document_uploaded", "knowledge_document", document.id, document.title, {"chunks": document.chunk_count, "status": document.import_status})
         session["knowledge_admin_message"] = f"Dokumentet er importeret med {document.chunk_count} tekstbidder."
     except Exception as error:
         app.logger.exception("PDF kunne ikke importeres: %s", error)
         document.import_status = "fejl"
         document.import_error = str(error)
         db.session.commit()
+        audit_log("document_upload_failed", "knowledge_document", document.id, document.title, {"error": str(error)[:300]})
         session["knowledge_admin_message"] = "PDF kunne ikke læses. Kontrollér at filen indeholder tekst."
     return redirect(url_for("admin_knowledge"))
+
+
+@app.route("/admin/knowledge/test-search", methods=["POST"])
+@admin_required
+def admin_knowledge_test_search():
+    question = (request.form.get("question") or "").strip()
+    if not question:
+        return redirect(url_for("admin_knowledge"))
+    chunks = search_knowledge_chunks(question, limit=5)
+    cards = []
+    for chunk in chunks:
+        document = chunk.document
+        excerpt = (chunk.text or "")[:650].strip()
+        cards.append(f"""
+        <article class="card">
+            <h2>{html.escape(document.title or 'Dokument')}</h2>
+            <p>Side: {html.escape(format_page_range(chunk.page_start, chunk.page_end))} · Chunk: {chunk.chunk_index}</p>
+            <p>{html.escape(excerpt)}{'...' if len(chunk.text or '') > 650 else ''}</p>
+        </article>
+        """)
+    audit_log("knowledge_test_search", "knowledge", None, "Test spørgsmål", {"question": question, "chunks": len(chunks)})
+    body = f"""
+    <section class="card"><h2>Testresultat</h2><p><strong>Spørgsmål:</strong> {html.escape(question)}</p><p><a class="button secondary" href="/admin/knowledge">Tilbage</a></p></section>
+    <section class="grid">{''.join(cards) or '<article class="card"><p>Ingen dokumentbidder fundet.</p></article>'}</section>
+    """
+    return Response(admin_layout("Knowledge test", body), mimetype="text/html")
 
 
 @app.route("/admin/knowledge/<int:document_id>/toggle", methods=["POST"])
@@ -6687,6 +6906,7 @@ def admin_knowledge_toggle(document_id):
         document.is_active = not document.is_active
         document.updated_at = datetime.utcnow()
         db.session.commit()
+        audit_log("document_toggled", "knowledge_document", document.id, document.title, {"is_active": document.is_active})
     return redirect(url_for("admin_knowledge"))
 
 
@@ -6695,8 +6915,10 @@ def admin_knowledge_toggle(document_id):
 def admin_knowledge_delete(document_id):
     document = db.session.get(KnowledgeDocument, int(document_id)) if KnowledgeDocument else None
     if document:
+        title = document.title
         db.session.delete(document)
         db.session.commit()
+        audit_log("document_deleted", "knowledge_document", document_id, title)
     return redirect(url_for("admin_knowledge"))
 
 
@@ -6859,6 +7081,11 @@ def brief_page():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IndsatsBrief Brand</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="IndsatsBrief">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
         :root {
             color-scheme: dark;
@@ -6938,6 +7165,8 @@ def brief_page():
         .station-details { margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(15,23,42,.8); }
         .station-details h4 { margin: 12px 0 6px; }
         .station-detail-item { padding: 8px 0; border-top: 1px solid var(--border); }
+        .station-detail-title { margin: 0 0 4px; color: var(--text); font-weight: 900; }
+        .station-detail-subtitle { margin: 0 0 10px; color: var(--muted); }
         .badge { display: inline-flex; align-items: center; min-height: 26px; border-radius: 999px; padding: 3px 9px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; font-weight: 850; }
         .resource-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; max-width: 100%; }
         @media (max-width: 1000px) { main { padding: 20px 18px 44px; } .main-grid { grid-template-columns: 1fr; } #map-frame { height: 320px; } }
@@ -6956,7 +7185,7 @@ def brief_page():
 </head>
 <body>
     <main>
-        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p><p class="user-status">__USER_STATUS__</p></div><div class="top-actions"><a class="logout" href="/knowledge">Viden / Protokoller</a><a class="logout" href="/logout">Log ud</a></div></div>
+        <div class="topline"><div><h1>IndsatsBrief Brand</h1><p class="intro">Adressebrief · BBR · OSM · Vejr · Assistance</p><p class="user-status">__USER_STATUS__</p><p class="user-status">Kan installeres på telefon via “Føj til hjemmeskærm”.</p></div><div class="top-actions"><a class="logout" href="/knowledge">Viden / Protokoller</a><a class="logout" href="/contact">Kontakt support</a><a class="logout" href="/logout">Log ud</a></div></div>
         <section class="card search-card" aria-label="Adresse og handlinger">
             <form id="brief-form" class="search">
                 <div class="address-field"><label>Adresse<input id="address" name="address" required autocomplete="off" placeholder="Fx Hovedgaden 1, 4000 Roskilde"></label><div id="autocomplete-list" class="autocomplete-list" role="listbox"></div></div>
@@ -6989,6 +7218,11 @@ def brief_page():
         </div>
     </main>
     <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+            });
+        }
         const forbiddenKeys = new Set([
             'tactical_note', 'fire_relevant_notes', 'limitations', 'critical_missing',
             'preliminary_access_assessment', 'verification_status', 'utilities', 'hazmat'
@@ -7324,18 +7558,32 @@ def brief_page():
             });
         }
 
+        function uniqueResourceBadges(item) {
+            const seen = new Set();
+            return [...(item.tags || []), ...(item.capabilities || []), ...(item.aliases || [])].filter(value => {
+                const key = String(value || '').toLowerCase();
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        }
+
         function renderStationDetails(container, data) {
             container.replaceChildren();
             const title = document.createElement('h3');
             title.textContent = data.name || 'Stationsdetaljer';
             container.appendChild(title);
+            const subtitle = document.createElement('p');
+            subtitle.className = 'station-detail-subtitle';
+            subtitle.textContent = [data.organization || data.organisation, data.area].filter(Boolean).join(' · ');
+            if (subtitle.textContent) container.appendChild(subtitle);
+            const address = [data.address, data.postal_code, data.city].filter(Boolean).join(', ');
             [
                 data.type && `Type: ${data.type}`,
-                (data.organization || data.organisation) && `Organisation: ${data.organization || data.organisation}`,
                 data.operator && `Operatør: ${data.operator}`,
-                data.area && `Område: ${data.area}`,
-                data.address && `Adresse: ${data.address}`,
-                data.source && `Kilde: ${data.source}`
+                address && `Adresse: ${address}`,
+                data.source && `Kilde: ${data.source}`,
+                'Vejledende ressourceoversigt – ikke live disponering.'
             ].filter(Boolean).forEach(text => { const p = document.createElement('p'); p.textContent = text; container.appendChild(p); });
 
             const vehicles = data.vehicles || [];
@@ -7349,9 +7597,15 @@ def brief_page():
                     item.className = 'station-detail-item';
                     const label = vehicle.vehicle_type ? `${vehicle.name} – ${vehicle.vehicle_type}` : vehicle.name;
                     const p = document.createElement('p');
+                    p.className = 'station-detail-title';
                     p.textContent = label;
                     item.appendChild(p);
-                    appendBadgeList(item, vehicle.capabilities || vehicle.aliases);
+                    if (vehicle.description) {
+                        const description = document.createElement('p');
+                        description.textContent = vehicle.description;
+                        item.appendChild(description);
+                    }
+                    appendBadgeList(item, uniqueResourceBadges(vehicle));
                     container.appendChild(item);
                 });
             }
@@ -7363,9 +7617,15 @@ def brief_page():
                     const item = document.createElement('div');
                     item.className = 'station-detail-item';
                     const p = document.createElement('p');
+                    p.className = 'station-detail-title';
                     p.textContent = resource.resource_type && resource.resource_type !== resource.name ? `${resource.name} – ${resource.resource_type}` : resource.name;
                     item.appendChild(p);
-                    appendBadgeList(item, resource.capabilities || resource.aliases);
+                    if (resource.description) {
+                        const description = document.createElement('p');
+                        description.textContent = resource.description;
+                        item.appendChild(description);
+                    }
+                    appendBadgeList(item, uniqueResourceBadges(resource));
                     container.appendChild(item);
                 });
             }
@@ -7771,6 +8031,56 @@ def brief_page():
     return Response(html, mimetype="text/html")
 
 
+@app.route("/manifest.webmanifest", methods=["GET"])
+def manifest_webmanifest():
+    payload = {
+        "name": "IndsatsBrief Brand",
+        "short_name": "IndsatsBrief",
+        "start_url": "/brief",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#0f172a",
+        "theme_color": "#7f1d1d",
+        "description": "Adressebrief, BBR, OSM, vejr og assistance til brand/redning.",
+        "icons": [
+            {"src": "/static/icons/indsatsbrief-icon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable"},
+            {"src": "/static/icons/indsatsbrief-icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable"},
+        ],
+    }
+    return Response(json.dumps(payload, ensure_ascii=False), mimetype="application/manifest+json")
+
+
+@app.route("/static/icons/indsatsbrief-icon.svg", methods=["GET"])
+def indsatsbrief_icon_svg():
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#0f172a"/><path d="M256 66c50 54 86 105 86 167 0 73-45 129-86 129s-86-56-86-129c0-62 36-113 86-167z" fill="#ef4444"/><path d="M256 178c30 33 52 64 52 101 0 44-27 78-52 78s-52-34-52-78c0-37 22-68 52-101z" fill="#facc15"/><path d="M128 398h256v38H128z" fill="#f8fafc"/></svg>"""
+    return Response(svg, mimetype="image/svg+xml")
+
+
+@app.route("/service-worker.js", methods=["GET"])
+def service_worker_js():
+    js = """
+const CACHE_NAME = 'indsatsbrief-shell-v1';
+const SHELL_ASSETS = ['/manifest.webmanifest', '/static/icons/indsatsbrief-icon.svg'];
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_ASSETS)).catch(() => null));
+  self.skipWaiting();
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))));
+  self.clients.claim();
+});
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET') return;
+  if (url.pathname.startsWith('/admin') || url.pathname.startsWith('/api') || url.pathname.includes('brief') || url.pathname.startsWith('/login') || url.pathname.startsWith('/register')) return;
+  if (SHELL_ASSETS.includes(url.pathname)) {
+    event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  }
+});
+"""
+    return Response(js, mimetype="application/javascript")
+
+
 @app.route("/privacy", methods=["GET"])
 def privacy_policy():
     html = """
@@ -7795,27 +8105,33 @@ def privacy_policy():
     </head>
     <body><main><div class="card">
         <h1>Privatliv og cookies</h1>
-        <p><strong>Senest opdateret:</strong> 27. juni 2026</p>
+        <p><strong>Senest opdateret:</strong> 28. juni 2026</p>
 
-        <p>IndsatsBrief Brand drives af Frederik Racher som et støtteværktøj til brand-/redningsbriefs. Værktøjet samler oplysninger fra adresseopslag, BBR, OSM, vejrdata, kortlinks og stations-/ressourcedata.</p>
+        <p>IndsatsBrief Brand er et støtteværktøj til brand-/redningsbriefs. Værktøjet samler oplysninger fra adresseopslag, BBR, OSM, vejrdata, kortlinks, stations-/ressourcedata og indlæste vidensdokumenter.</p>
 
         <h2>Brugeroplysninger</h2>
         <p>Ved brugeroprettelse gemmes navn, e-mail, organisation/arbejdssted, rolle/status, e-mailbekræftelse, godkendelsesstatus, oprettelsestidspunkt og seneste login. Oplysningerne bruges til login og adgangsstyring. Password gemmes som hash og aldrig i klartekst.</p>
+
+        <h2>Adminændringer og audit-log</h2>
+        <p>Adminhandlinger kan gemmes i en ændringslog med tidspunkt, bruger, handling, berørt post og tekniske oplysninger som IP-adresse. Det bruges til drift, sikkerhed og fejlfinding.</p>
+
+        <h2>Viden og dokumenter</h2>
+        <p>Uploadede PDF’er kan udtrækkes til dokumenttekster og tekstbidder/chunks, så de kan søges i og bruges som kildegrundlag for AI-svar.</p>
 
         <h2>Adresseopslag og eksterne datakilder</h2>
         <p>Når du laver en brief, kan adressen og radius sendes til relevante datakilder/API’er som DAWA/Dataforsyningen, Datafordeleren/BBR, Open-Meteo, OpenStreetMap/Overpass og kort-/luftfotolinks. Data bruges til at danne briefen og til fejlfinding.</p>
 
         <h2>Cookies</h2>
-        <p>IndsatsBrief bruger nødvendige cookies til login og sikker session. Der bruges ikke marketing- eller trackingcookies i denne version. Hvis der senere tilføjes analytics eller tracking, skal der laves samtykke-banner.</p>
+        <p>IndsatsBrief bruger nødvendige session-cookies til login og sikker adgang. Der bruges ikke marketing- eller trackingcookies i denne version.</p>
 
         <h2>Logs og drift</h2>
         <p>Hostingplatformen kan behandle tekniske logs som tidspunkt, endpoint, IP-adresse og fejlbeskeder til drift, sikkerhed og fejlfinding.</p>
 
         <h2>Sletning af konto</h2>
-        <p>Brugere kan bede admin/support om at få deres konto slettet.</p>
+        <p>Brugere kan kontakte admin/support for sletning eller rettelse af konto og tilknyttede oplysninger.</p>
 
         <h2>Begrænsning</h2>
-        <div class="note">IndsatsBrief er støtteoplysninger. Det erstatter ikke beredskabets egne systemer, lokale procedurer, objektplaner, officielle databaser eller faglig vurdering.</div>
+        <div class="note">IndsatsBrief og AI-svar er vejledende støtteoplysninger. Det erstatter ikke beredskabets egne systemer, lokale procedurer, objektplaner, officielle databaser eller faglig vurdering.</div>
 
         <p><a href="/brief">Tilbage til IndsatsBrief</a> · <a href="/contact">Kontakt support</a></p>
     </div></main>
@@ -9357,8 +9673,11 @@ def station_detail_payload(identifier):
                         "description": item["description"],
                         "aliases": item["aliases"],
                         "capabilities": item["capabilities"],
+                        "tags": item.get("tags", []),
+                        "sort_order": item.get("sort_order", 0),
                     }
-                    for item in payload.get("vehicles", [])
+                    for item in sorted(payload.get("vehicles", []), key=lambda value: (value.get("sort_order") or 0, value.get("name") or ""))
+                    if item.get("is_active", True) or is_admin_user()
                 ]
                 payload["resources"] = [
                     {
@@ -9368,9 +9687,14 @@ def station_detail_payload(identifier):
                         "description": item["description"],
                         "aliases": item["aliases"],
                         "capabilities": item["capabilities"],
+                        "tags": item.get("tags", []),
+                        "sort_order": item.get("sort_order", 0),
                     }
-                    for item in payload.get("resources", [])
+                    for item in sorted(payload.get("resources", []), key=lambda value: (value.get("sort_order") or 0, value.get("name") or ""))
+                    if item.get("is_active", True) or is_admin_user()
                 ]
+                if not is_admin_user():
+                    payload.pop("notes", None)
                 payload["disclaimer"] = "Ressourcerne er vejledende og ikke live disponering."
                 return payload
         except Exception as error:
@@ -9386,7 +9710,10 @@ def api_station_details(station_id):
 
     payload = station_detail_payload(station_id)
     if not payload:
-        return jsonify({"error": "Stationen blev ikke fundet"}), 404
+        return jsonify({"ok": False, "error": "Stationen blev ikke fundet"}), 404
+    if not is_admin_user():
+        payload.pop("notes", None)
+    payload["ok"] = True
     return jsonify(payload)
 
 

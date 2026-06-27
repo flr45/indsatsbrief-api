@@ -10,6 +10,7 @@ import base64
 import re
 import hmac
 import time
+import sys
 import html
 import secrets
 import hashlib
@@ -30,6 +31,7 @@ except Exception:  # pragma: no cover - dependency is installed in production vi
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
+APP_START_TIME = datetime.now(timezone.utc)
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 BRIEF_ACCESS_CODE = os.getenv("BRIEF_ACCESS_CODE")
@@ -5389,7 +5391,7 @@ def login():
                 f'<a href="/resend-verification?email={quote(email)}">Send bekræftelsesmail igen</a>'
             )
         elif not user.is_approved:
-            error = "Din bruger afventer godkendelse af administrator."
+            error = "Din konto afventer godkendelse af administrator. Du får besked, når den er godkendt."
         elif not user.is_active:
             error = "Brugeren er deaktiveret."
         else:
@@ -5525,8 +5527,8 @@ def verify_email(token):
         body = '<div class="links"><a href="/login">Log ind</a><a href="/contact">Kontakt support</a></div>'
     else:
         message = (
-            "Din e-mail er nu bekræftet. Din konto afventer stadig godkendelse "
-            "af administrator, før du kan logge ind. Du får besked, når din konto er godkendt."
+            "Din e-mail er bekræftet. Din konto afventer stadig godkendelse "
+            "af administrator. Du får besked, når kontoen er godkendt."
         )
     return Response(auth_page_html("Bekræft e-mail", body, info_message=message), mimetype="text/html")
 
@@ -5632,6 +5634,20 @@ def format_datetime(value):
     return value.strftime("%Y-%m-%d %H:%M") if value else "-"
 
 
+def admin_nav_html():
+    return (
+        '<nav class="actions admin-nav">'
+        '<a class="button secondary" href="/admin">Dashboard</a>'
+        '<a class="button secondary" href="/admin/users">Brugere</a>'
+        '<a class="button secondary" href="/admin/stations">Stationer</a>'
+        '<a class="button secondary" href="/admin/knowledge">Viden</a>'
+        '<a class="button secondary" href="/admin/status">Status</a>'
+        '<a class="button secondary" href="/brief">App</a>'
+        '<a class="button secondary" href="/logout">Log ud</a>'
+        '</nav>'
+    )
+
+
 def admin_layout(title, body):
     return f"""
 <!doctype html>
@@ -5641,17 +5657,205 @@ def admin_layout(title, body):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)} - IndsatsBrief Brand</title>
 <style>
-html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1180px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,h3,p{{margin-top:0}}p,small{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.admin-message.warning{{border-color:rgba(250,204,21,.4);background:rgba(250,204,21,.13);color:#fde68a}}.card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}}.actions{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}}button,.button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white!important;font-weight:800;padding:9px 13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}}button.secondary,.button.secondary{{background:#334155}}button.warning{{background:#b45309}}input,textarea,select{{width:100%;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#020617;color:#f8fafc;padding:9px 11px}}textarea{{min-height:110px}}label{{display:grid;gap:6px;color:#cbd5e1;font-weight:800}}.form-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}}.full{{grid-column:1/-1}}.badge{{display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;color:#cbd5e1;font-weight:800}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}.actions form,.actions a,.actions button{{width:100%}}button,.button{{width:100%}}}}
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1180px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,h3,p{{margin-top:0}}p,small{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.admin-message.warning{{border-color:rgba(250,204,21,.4);background:rgba(250,204,21,.13);color:#fde68a}}.card,.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}}.actions{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}}.admin-nav{{justify-content:flex-end}}button,.button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white!important;font-weight:800;padding:9px 13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}}button.secondary,.button.secondary{{background:#334155}}button.warning{{background:#b45309}}input,textarea,select{{width:100%;min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#020617;color:#f8fafc;padding:9px 11px}}textarea{{min-height:110px}}label{{display:grid;gap:6px;color:#cbd5e1;font-weight:800}}.form-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}}.full{{grid-column:1/-1}}.badge{{display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;color:#cbd5e1;font-weight:800}}.metric{{font-size:30px;font-weight:900;color:#f8fafc;margin:0}}.status-ok{{color:#bbf7d0}}.status-warning{{color:#fde68a}}.status-error{{color:#fecaca}}.warning-badge{{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(250,204,21,.16);color:#fde68a;font-size:12px;font-weight:800}}.stack-form{{display:grid;gap:12px}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}.actions form,.actions a,.actions button{{width:100%}}button,.button{{width:100%}}}}
 </style>
 </head>
 <body>
 <div class="admin-shell">
-<header><div><h1>{html.escape(title)}</h1><p>Vejledende stations- og ressourceadministration</p></div><nav class="actions"><a class="button secondary" href="/admin/users">Brugere</a><a class="button secondary" href="/brief">Til brief</a><a class="button secondary" href="/logout">Log ud</a></nav></header>
+<header><div><h1>{html.escape(title)}</h1><p>Admin · IndsatsBrief Brand</p></div>{admin_nav_html()}</header>
 <main>{body}</main>
 </div>
 </body>
 </html>
 """
+
+
+def safe_model_count(model, filter_pending=False):
+    if not db or not model:
+        return None
+    try:
+        query = model.query
+        if filter_pending:
+            query = query.filter(model.is_approved.is_(False))
+        return query.count()
+    except Exception as error:
+        app.logger.warning("Admin count failed for %s: %s", getattr(model, "__name__", model), error)
+        return None
+
+
+def display_count(value):
+    return "–" if value is None else str(value)
+
+
+def status_line(label, ok, detail=""):
+    css = "status-ok" if ok else "status-warning"
+    status = "OK" if ok else "Mangler"
+    return f"<p><strong>{html.escape(label)}:</strong> <span class='{css}'>{status}</span>{' · ' + html.escape(detail) if detail else ''}</p>"
+
+
+def env_set_label(name):
+    return "sat" if os.getenv(name) else "mangler"
+
+
+def test_email_recipient():
+    return ADMIN_NOTIFY_EMAIL or ADMIN_EMAIL or SMTP_USERNAME
+
+
+def send_admin_test_email():
+    recipient = test_email_recipient()
+    if not recipient:
+        return False, "Ingen modtager er konfigureret."
+    if not smtp_is_configured():
+        return False, "SMTP mangler host eller afsender."
+    body = (
+        "Hej\n\n"
+        "Dette er en testmail fra IndsatsBrief Brand.\n\n"
+        "Hvis du modtager denne mail, virker SMTP-opsætningen.\n\n"
+        "Venlig hilsen\n"
+        "IndsatsBrief Brand"
+    )
+    try:
+        send_email(recipient, "Testmail fra IndsatsBrief Brand", body)
+        return True, "Testmail sendt."
+    except Exception as error:
+        app.logger.exception("Testmail kunne ikke sendes: %s", error)
+        return False, f"Testmail kunne ikke sendes: {str(error)[:180]}"
+
+
+@app.route("/admin", methods=["GET"])
+@admin_required
+def admin_dashboard():
+    user_count = safe_model_count(User)
+    pending_users = safe_model_count(User, filter_pending=True)
+    station_count = safe_model_count(Station)
+    document_count = safe_model_count(KnowledgeDocument)
+    cards = [
+        ("Brugere", "/admin/users", display_count(user_count), f"{display_count(pending_users)} afventer godkendelse"),
+        ("Stationer", "/admin/stations", display_count(station_count), "Vedligehold stationer og ressourcer"),
+        ("Viden / Protokoller", "/admin/knowledge", display_count(document_count), "Importer og aktiver dokumenter"),
+        ("Systemstatus", "/admin/status", "Status", "Database, SMTP, OpenAI og config"),
+        ("Til appen", "/brief", "Åbn", "Gå til IndsatsBrief Brand"),
+    ]
+    body = '<section class="grid">'
+    for title, link, metric, description in cards:
+        body += f"""
+        <article class="card">
+            <h2>{html.escape(title)}</h2>
+            <p class="metric">{html.escape(str(metric))}</p>
+            <p>{html.escape(description)}</p>
+            <p><a class="button" href="{html.escape(link)}">Åbn</a></p>
+        </article>
+        """
+    body += "</section>"
+    return Response(admin_layout("Admin", body), mimetype="text/html")
+
+
+def database_status_payload():
+    payload = {
+        "ok": False,
+        "detail": "Database er ikke konfigureret.",
+        "users": None,
+        "stations": None,
+        "vehicles": None,
+        "resources": None,
+        "documents": None,
+        "chunks": None,
+    }
+    if not db:
+        return payload
+    try:
+        with db.engine.connect() as connection:
+            connection.exec_driver_sql("SELECT 1")
+        payload["ok"] = True
+        payload["detail"] = "Database kan queries."
+        payload["users"] = safe_model_count(User)
+        payload["stations"] = safe_model_count(Station)
+        payload["vehicles"] = safe_model_count(StationVehicle)
+        payload["resources"] = safe_model_count(StationResource)
+        payload["documents"] = safe_model_count(KnowledgeDocument)
+        payload["chunks"] = safe_model_count(KnowledgeChunk)
+    except Exception as error:
+        app.logger.exception("Database status kunne ikke læses: %s", error)
+        payload["detail"] = str(error)[:180]
+    return payload
+
+
+@app.route("/admin/status", methods=["GET"])
+@admin_required
+def admin_status():
+    message = session.pop("admin_status_message", None)
+    message_kind = session.pop("admin_status_kind", "success")
+    message_html = f'<section class="admin-message {html.escape(message_kind)}">{html.escape(message)}</section>' if message else ""
+
+    db_status = database_status_payload()
+    smtp_required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM", "SMTP_USE_TLS"]
+    missing_smtp = [name for name in smtp_required if not os.getenv(name)]
+    smtp_ok = not missing_smtp
+    runtime_env = os.getenv("FLASK_ENV") or os.getenv("ENVIRONMENT") or ("production" if os.getenv("RENDER") else "development")
+    uptime_seconds = max(0, int((datetime.now(timezone.utc) - APP_START_TIME).total_seconds()))
+
+    body = f"""
+    {message_html}
+    <section class="grid">
+        <article class="card">
+            <h2>Database</h2>
+            {status_line("Status", db_status["ok"], db_status["detail"])}
+            <p>Brugere: {display_count(db_status["users"])}</p>
+            <p>Stationer: {display_count(db_status["stations"])}</p>
+            <p>Køretøjer: {display_count(db_status["vehicles"])}</p>
+            <p>Ressourcer: {display_count(db_status["resources"])}</p>
+            <p>Knowledge dokumenter: {display_count(db_status["documents"])}</p>
+            <p>Knowledge chunks: {display_count(db_status["chunks"])}</p>
+        </article>
+        <article class="card">
+            <h2>SMTP/mail</h2>
+            {status_line("Status", smtp_ok, "Alle SMTP env vars er sat." if smtp_ok else "Mangler: " + ", ".join(missing_smtp))}
+            <p>SMTP_HOST: {html.escape(SMTP_HOST or "mangler")}</p>
+            <p>SMTP_PORT: {html.escape(str(SMTP_PORT or "mangler"))}</p>
+            <p>SMTP_USERNAME: {env_set_label("SMTP_USERNAME")}</p>
+            <p>SMTP_PASSWORD: {env_set_label("SMTP_PASSWORD")}</p>
+            <p>SMTP_FROM: {html.escape(SMTP_FROM or "mangler")}</p>
+            <p>SMTP_USE_TLS: {html.escape(os.getenv("SMTP_USE_TLS") or "mangler")}</p>
+            <form method="post" action="/admin/status/send-test-email"><button type="submit">Send testmail</button></form>
+        </article>
+        <article class="card">
+            <h2>OpenAI</h2>
+            {status_line("OPENAI_API_KEY", bool(os.getenv("OPENAI_API_KEY")))}
+            <p>OPENAI_MODEL: {html.escape(OPENAI_MODEL or "mangler")}</p>
+        </article>
+        <article class="card">
+            <h2>Datafordeler</h2>
+            {status_line("DATAFORDELER_API_KEY", bool(os.getenv("DATAFORDELER_API_KEY")))}
+        </article>
+        <article class="card">
+            <h2>App config</h2>
+            <p>ADMIN_APPROVAL_REQUIRED: {str(ADMIN_APPROVAL_REQUIRED).lower()}</p>
+            <p>ADMIN_EMAIL: {html.escape(ADMIN_EMAIL or "mangler")}</p>
+            <p>ADMIN_NOTIFY_EMAIL: {html.escape(ADMIN_NOTIFY_EMAIL or "mangler")}</p>
+            <p>CONTACT_EMAIL: {html.escape(CONTACT_EMAIL or "mangler")}</p>
+            <p>APP_BASE_URL: {html.escape(APP_BASE_URL or "mangler")}</p>
+            <p>DATABASE_URL: {env_set_label("DATABASE_URL")}</p>
+            <p>FLASK_SECRET_KEY: {env_set_label("FLASK_SECRET_KEY")}</p>
+        </article>
+        <article class="card">
+            <h2>Runtime</h2>
+            <p>Starttid: {html.escape(APP_START_TIME.strftime("%Y-%m-%d %H:%M:%S UTC"))}</p>
+            <p>Oppetid: {uptime_seconds} sekunder</p>
+            <p>Python: {html.escape(sys.version.split()[0])}</p>
+            <p>Environment: {html.escape(runtime_env)}</p>
+        </article>
+    </section>
+    """
+    return Response(admin_layout("Systemstatus", body), mimetype="text/html")
+
+
+@app.route("/admin/status/send-test-email", methods=["POST"])
+@admin_required
+def admin_status_send_test_email():
+    ok, message = send_admin_test_email()
+    session["admin_status_message"] = message
+    session["admin_status_kind"] = "success" if ok else "warning"
+    return redirect(url_for("admin_status"))
 
 
 def lines_from_form(name):
@@ -5849,20 +6053,11 @@ def admin_users():
         </article>
         """)
     body = f"""
-    <div class="admin-shell">
-        <header><div><h1>Brugere</h1><p>Admin-godkendelse til IndsatsBrief Brand</p></div><nav class="actions"><a href="/admin/stations">Stationer</a><a href="/admin/knowledge">Viden</a><a href="/brief">Til brief</a></nav></header>
-        {status_message}
-        {reset_message}
-        <main>{''.join(rows) if rows else '<p>Ingen brugere.</p>'}</main>
-    </div>
+    {status_message}
+    {reset_message}
+    <section class="grid">{''.join(rows) if rows else '<article class="card"><p>Ingen brugere.</p></article>'}</section>
     """
-    admin_html = f"""
-<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin - IndsatsBrief</title>
-<style>
-html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.admin-message.warning{{border-color:rgba(250,204,21,.4);background:rgba(250,204,21,.13);color:#fde68a}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}.warning-badge{{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(250,204,21,.16);color:#fde68a;font-size:12px;font-weight:800}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
-</style></head><body>{body}</body></html>
-    """
-    return Response(admin_html, mimetype="text/html")
+    return Response(admin_layout("Brugere", body), mimetype="text/html")
 
 
 def update_user_admin_action(user_id, action):
@@ -6404,33 +6599,24 @@ def admin_knowledge():
     documents = KnowledgeDocument.query.order_by(KnowledgeDocument.created_at.desc()).all()
     message = session.pop("knowledge_admin_message", None)
     message_html = f'<section class="admin-message">{html.escape(message)}</section>' if message else ""
-    cards = "".join(knowledge_document_card(document) for document in documents) or "<p>Ingen dokumenter importeret endnu.</p>"
+    cards = "".join(knowledge_document_card(document) for document in documents) or '<article class="card"><p>Ingen dokumenter importeret endnu.</p></article>'
     body = f"""
-    <div class="admin-shell">
-        <header><div><h1>Viden / Protokoller</h1><p>Upload PDF’er og vedligehold indlæste dokumenter.</p></div><a href="/brief">Til brief</a></header>
-        {message_html}
-        <section class="user-card">
-            <h2>Upload PDF</h2>
-            <form method="post" action="/admin/knowledge/upload" enctype="multipart/form-data" class="stack-form">
-                <label>Titel<input name="title" required></label>
-                <label>Kategori<input name="category" placeholder="Fx Beredskabsstyrelsen, CBRN, Brand"></label>
-                <label>Udgiver<input name="publisher"></label>
-                <label>Version/dato<input name="version_date"></label>
-                <label>Kilde-URL<input name="source_url" type="url"></label>
-                <label>PDF-fil<input name="pdf_file" type="file" accept="application/pdf,.pdf" required></label>
-                <button type="submit">Importer PDF</button>
-            </form>
-        </section>
-        <main>{cards}</main>
-    </div>
+    {message_html}
+    <section class="card">
+        <h2>Upload PDF</h2>
+        <form method="post" action="/admin/knowledge/upload" enctype="multipart/form-data" class="stack-form">
+            <label>Titel<input name="title" required></label>
+            <label>Kategori<input name="category" placeholder="Fx Beredskabsstyrelsen, CBRN, Brand"></label>
+            <label>Udgiver<input name="publisher"></label>
+            <label>Version/dato<input name="version_date"></label>
+            <label>Kilde-URL<input name="source_url" type="url"></label>
+            <label>PDF-fil<input name="pdf_file" type="file" accept="application/pdf,.pdf" required></label>
+            <button type="submit">Importer PDF</button>
+        </form>
+    </section>
+    <section class="grid">{cards}</section>
     """
-    admin_html = f"""
-<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Viden - IndsatsBrief</title>
-<style>
-html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px;margin-top:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}input{{min-height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#020617;color:#f8fafc;padding:9px 11px}}label{{display:grid;gap:6px;color:#cbd5e1;font-weight:800}}.stack-form{{display:grid;gap:12px}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
-</style></head><body>{body}</body></html>
-    """
-    return Response(admin_html, mimetype="text/html")
+    return Response(admin_layout("Viden / Protokoller", body), mimetype="text/html")
 
 
 @app.route("/admin/knowledge/upload", methods=["POST"])

@@ -21,8 +21,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 try:
     from flask_sqlalchemy import SQLAlchemy
+    from sqlalchemy import inspect
 except Exception:  # pragma: no cover - dependency is installed in production via requirements.txt
     SQLAlchemy = None
+    inspect = None
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -32,6 +34,9 @@ BRIEF_ACCESS_CODE = os.getenv("BRIEF_ACCESS_CODE")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_APPROVAL_REQUIRED = os.getenv("ADMIN_APPROVAL_REQUIRED", "true").lower() == "true"
 ADMIN_EMAIL = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+ADMIN_NOTIFY_EMAIL = (os.getenv("ADMIN_NOTIFY_EMAIL") or ADMIN_EMAIL).strip().lower()
+CONTACT_EMAIL = (os.getenv("CONTACT_EMAIL") or ADMIN_EMAIL).strip().lower()
+APP_BASE_URL = (os.getenv("APP_BASE_URL") or "").rstrip("/")
 SHOW_CODE_LOGIN = os.getenv("SHOW_CODE_LOGIN", "false").lower() == "true"
 SMTP_HOST = os.getenv("SMTP_HOST")
 try:
@@ -333,6 +338,8 @@ if db:
         role = db.Column(db.String(50), nullable=False, default="user")
         is_active = db.Column(db.Boolean, nullable=False, default=True)
         is_approved = db.Column(db.Boolean, nullable=False, default=False)
+        email_verified = db.Column(db.Boolean, nullable=False, default=False)
+        email_verified_at = db.Column(db.DateTime, nullable=True)
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
         last_login_at = db.Column(db.DateTime, nullable=True)
 
@@ -354,9 +361,48 @@ if db:
         created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
         user = db.relationship("User", backref=db.backref("password_reset_tokens", lazy=True))
+
+
+    class EmailVerificationToken(db.Model):
+        __tablename__ = "email_verification_tokens"
+
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+        token_hash = db.Column(db.String(128), nullable=False, unique=True, index=True)
+        expires_at = db.Column(db.DateTime, nullable=False)
+        used_at = db.Column(db.DateTime, nullable=True)
+        created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+        user = db.relationship("User", backref=db.backref("email_verification_tokens", lazy=True))
 else:
     User = None
     PasswordResetToken = None
+    EmailVerificationToken = None
+
+
+def ensure_user_schema():
+    """Add small auth columns when an existing DB predates this release."""
+    if not db or not inspect:
+        return
+    try:
+        inspector = inspect(db.engine)
+        if "users" not in inspector.get_table_names():
+            return
+        existing_columns = {column["name"] for column in inspector.get_columns("users")}
+        with db.engine.begin() as connection:
+            if "email_verified" not in existing_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+                connection.exec_driver_sql(
+                    "UPDATE users SET email_verified = TRUE WHERE is_approved = TRUE OR role = 'admin'"
+                )
+            if "email_verified_at" not in existing_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN email_verified_at TIMESTAMP"
+                )
+    except Exception as error:
+        app.logger.exception("Database schema kunne ikke opdateres: %s", error)
 
 
 def init_database():
@@ -366,6 +412,7 @@ def init_database():
     try:
         with app.app_context():
             db.create_all()
+            ensure_user_schema()
     except Exception as error:
         app.logger.exception("Database kunne ikke initialiseres: %s", error)
 
@@ -3774,13 +3821,14 @@ def is_logged_in():
         user
         and user.is_active
         and user.is_approved
+        and user.email_verified
         and session.get("user_id") == user.id
     ) or bool(session.get("access_granted") or session.get("brief_authenticated"))
 
 
 def is_admin_user(user=None):
     user = user or current_user()
-    return bool(user and user.is_active and user.is_approved and user.role == "admin")
+    return bool(user and user.is_active and user.is_approved and user.email_verified and user.role == "admin")
 
 
 def login_required(api=False):
@@ -3886,6 +3934,13 @@ def hash_reset_token(token):
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
+def build_external_url(endpoint, **values):
+    path = url_for(endpoint, **values)
+    if APP_BASE_URL:
+        return f"{APP_BASE_URL}{path}"
+    return url_for(endpoint, _external=True, **values)
+
+
 def smtp_is_configured():
     return bool(SMTP_HOST and SMTP_FROM)
 
@@ -3894,23 +3949,15 @@ def log_reset_link_allowed():
     return not bool(os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_HOSTNAME"))
 
 
-def send_password_reset_email(user, reset_link):
+def send_email(to_email, subject, body):
     if not smtp_is_configured():
-        if log_reset_link_allowed():
-            app.logger.warning("Password reset link for %s: %s", user.email, reset_link)
         return False
 
     message = EmailMessage()
-    message["Subject"] = "Nulstil adgangskode til IndsatsBrief Brand"
+    message["Subject"] = subject
     message["From"] = SMTP_FROM
-    message["To"] = user.email
-    message.set_content(
-        "Hej.\n\n"
-        "Du har bedt om at nulstille din adgangskode til IndsatsBrief Brand.\n"
-        "Linket udløber om 30 minutter.\n\n"
-        f"{reset_link}\n\n"
-        "Hvis du ikke har bedt om nulstilling, kan du ignorere denne mail."
-    )
+    message["To"] = to_email
+    message.set_content(body)
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as smtp:
         if SMTP_USE_TLS:
@@ -3919,6 +3966,21 @@ def send_password_reset_email(user, reset_link):
             smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
         smtp.send_message(message)
     return True
+
+
+def send_password_reset_email(user, reset_link):
+    body = (
+        "Hej.\n\n"
+        "Du har bedt om at nulstille din adgangskode til IndsatsBrief Brand.\n"
+        "Linket udløber om 30 minutter.\n\n"
+        f"{reset_link}\n\n"
+        "Hvis du ikke har bedt om nulstilling, kan du ignorere denne mail."
+    )
+    if not smtp_is_configured():
+        if log_reset_link_allowed():
+            app.logger.warning("Password reset link for %s: %s", user.email, reset_link)
+        return False
+    return send_email(user.email, "Nulstil adgangskode til IndsatsBrief Brand", body)
 
 
 def create_password_reset_link(user):
@@ -3932,7 +3994,7 @@ def create_password_reset_link(user):
     )
     db.session.add(reset_token)
     db.session.commit()
-    return url_for("reset_password", token=token, _external=True)
+    return build_external_url("reset_password", token=token)
 
 
 def find_valid_password_reset_token(token):
@@ -3945,6 +4007,84 @@ def find_valid_password_reset_token(token):
     if reset_token.expires_at < datetime.utcnow():
         return None
     return reset_token
+
+
+def create_email_verification_link(user):
+    if not db or not EmailVerificationToken or not user:
+        return None
+    token = secrets.token_urlsafe(32)
+    verification_token = EmailVerificationToken(
+        user_id=user.id,
+        token_hash=hash_reset_token(token),
+        expires_at=datetime.utcnow() + timedelta(hours=24),
+    )
+    db.session.add(verification_token)
+    db.session.commit()
+    return build_external_url("verify_email", token=token)
+
+
+def find_valid_email_verification_token(token):
+    if not db or not EmailVerificationToken or not token:
+        return None
+    token_hash = hash_reset_token(token)
+    verification_token = EmailVerificationToken.query.filter_by(token_hash=token_hash).first()
+    if not verification_token or verification_token.used_at:
+        return None
+    if verification_token.expires_at < datetime.utcnow():
+        return None
+    return verification_token
+
+
+def send_verification_email(user, verification_link):
+    body = (
+        f"Hej {user.name}\n\n"
+        "Tak fordi du oprettede en bruger til IndsatsBrief Brand.\n\n"
+        "Klik på linket herunder for at bekræfte din e-mailadresse:\n\n"
+        f"{verification_link}\n\n"
+        "Linket udløber om 24 timer.\n\n"
+        "Når din e-mail er bekræftet, skal din bruger godkendes af administrator, før du kan logge ind.\n\n"
+        "Hvis du ikke kan finde mailen, så tjek spam/uønsket mail.\n\n"
+        "Venlig hilsen\n"
+        "IndsatsBrief Brand"
+    )
+    if not smtp_is_configured():
+        if log_reset_link_allowed():
+            app.logger.warning("Email verification link for %s: %s", user.email, verification_link)
+        return False
+    return send_email(user.email, "Bekræft din e-mail til IndsatsBrief Brand", body)
+
+
+def send_admin_pending_user_email(user):
+    recipient = ADMIN_NOTIFY_EMAIL or ADMIN_EMAIL
+    if not recipient:
+        return False
+    admin_url = f"{APP_BASE_URL}/admin/users" if APP_BASE_URL else build_external_url("admin_users")
+    body = (
+        "Der er oprettet en ny bruger i IndsatsBrief Brand.\n\n"
+        f"Navn: {user.name}\n"
+        f"E-mail: {user.email}\n"
+        f"Organisation: {user.organization}\n"
+        f"Tidspunkt: {format_datetime(user.created_at)}\n\n"
+        "Brugeren skal først bekræfte sin e-mail og derefter godkendes af admin.\n\n"
+        f"Adminside:\n{admin_url}"
+    )
+    if not smtp_is_configured():
+        if log_reset_link_allowed():
+            app.logger.warning("Admin notification for pending user %s would be sent to %s", user.email, recipient)
+        return False
+    return send_email(recipient, "Ny bruger afventer godkendelse", body)
+
+
+def send_user_verification_and_admin_notice(user):
+    try:
+        verification_link = create_email_verification_link(user)
+        send_verification_email(user, verification_link)
+    except Exception as error:
+        app.logger.exception("Bekræftelsesmail kunne ikke sendes: %s", error)
+    try:
+        send_admin_pending_user_email(user)
+    except Exception as error:
+        app.logger.exception("Admin-notifikation kunne ikke sendes: %s", error)
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -3981,16 +4121,18 @@ def register():
                 role="admin" if make_admin else "user",
                 is_active=True,
                 is_approved=is_approved,
+                email_verified=False,
             )
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
             session.clear()
-            if user.is_approved:
-                session.clear()
-                session["user_id"] = user.id
-                return redirect(url_for("brief_page"))
-            info = 'Din bruger er oprettet og afventer godkendelse af administrator. <a href="/login">Til login</a>'
+            send_user_verification_and_admin_notice(user)
+            info = (
+                'Din bruger er oprettet. Vi har sendt en bekræftelsesmail til dig. '
+                'Klik på linket i mailen for at bekræfte din e-mailadresse. '
+                'Tjek også spam/uønsket mail. <a href="/login">Til login</a>'
+            )
 
     body = """
     <form method="post" action="/register">
@@ -4001,7 +4143,7 @@ def register():
         <label>Gentag password<input type="password" name="password_repeat" required autocomplete="new-password"></label>
         <button type="submit">Opret bruger</button>
     </form>
-    <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
+    <div class="links"><a href="/login">Til login</a><a href="/contact">Kontakt support</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Opret bruger", body, error, info), status=400 if error else 200, mimetype="text/html")
 
@@ -4023,10 +4165,12 @@ def login():
         user = User.query.filter_by(email=email).first() if db and User and email else None
         if not user or not user.check_password(password):
             error = "Forkert e-mail eller password."
+        elif not user.email_verified:
+            error = "Du skal bekræfte din e-mail, før du kan logge ind. Tjek også spam/uønsket mail."
+        elif not user.is_approved:
+            error = "Din bruger afventer godkendelse af administrator."
         elif not user.is_active:
             error = "Brugeren er deaktiveret."
-        elif not user.is_approved:
-            error = "Brugeren afventer godkendelse."
         else:
             user.last_login_at = datetime.utcnow()
             db.session.commit()
@@ -4046,7 +4190,7 @@ def login():
         {code_login_html}
         <button type="submit">Log ind</button>
     </form>
-    <div class="links"><a href="/register">Opret bruger</a><a href="/forgot-password">Glemt password?</a><a href="/privacy">Privatliv</a></div>
+    <div class="links"><a href="/register">Opret bruger</a><a href="/forgot-password">Glemt adgangskode?</a><a href="/resend-verification">Send bekræftelsesmail igen</a><a href="/contact">Kontakt support</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Log ind", body, error), status=401 if error else 200, mimetype="text/html")
 
@@ -4091,14 +4235,14 @@ def forgot_password():
                 send_password_reset_email(user, reset_link)
             except Exception as error:
                 app.logger.exception("Password reset kunne ikke sendes: %s", error)
-        info = "Hvis e-mailen findes, er der sendt et link til nulstilling."
+        info = "Hvis e-mailen findes, er der sendt et link til nulstilling. Tjek også spam/uønsket mail."
 
     body = """
     <form method="post" action="/forgot-password">
         <label>E-mail<input type="email" name="email" required autocomplete="email"></label>
         <button type="submit">Send nulstillingslink</button>
     </form>
-    <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
+    <div class="links"><a href="/login">Til login</a><a href="/contact">Kontakt support</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Glemt password", body, info_message=info), mimetype="text/html")
 
@@ -4136,6 +4280,107 @@ def reset_password(token):
     <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
     """
     return Response(auth_page_html("Nulstil password", body, error), status=400 if error else 200, mimetype="text/html")
+
+
+@app.route("/verify-email/<token>", methods=["GET"])
+def verify_email(token):
+    if not db or not User or not EmailVerificationToken:
+        return Response(auth_page_html("Bekræft e-mail", "", error_message="Database/login er ikke konfigureret."), status=503, mimetype="text/html")
+
+    verification_token = find_valid_email_verification_token(token)
+    if not verification_token:
+        body = '<div class="links"><a href="/resend-verification">Send bekræftelsesmail igen</a><a href="/contact">Kontakt support</a></div>'
+        return Response(auth_page_html("Bekræft e-mail", body, error_message="Linket er ugyldigt eller udløbet."), status=400, mimetype="text/html")
+
+    user = verification_token.user
+    user.email_verified = True
+    user.email_verified_at = datetime.utcnow()
+    verification_token.used_at = datetime.utcnow()
+    db.session.commit()
+    session.clear()
+    body = '<div class="links"><a href="/login">Til login</a><a href="/contact">Kontakt support</a></div>'
+    return Response(auth_page_html("Bekræft e-mail", body, info_message="Din e-mail er bekræftet. Din bruger afventer nu godkendelse af administrator."), mimetype="text/html")
+
+
+def send_verification_for_email(email):
+    user = User.query.filter_by(email=normalize_email(email)).first() if email else None
+    if user and user.is_active and not user.email_verified:
+        verification_link = create_email_verification_link(user)
+        send_verification_email(user, verification_link)
+
+
+@app.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification():
+    if not db or not User or not EmailVerificationToken:
+        return Response(auth_page_html("Send bekræftelsesmail igen", "", error_message="Database/login er ikke konfigureret."), status=503, mimetype="text/html")
+
+    info = None
+    email = request.args.get("email", "").strip()
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+    if email:
+        try:
+            send_verification_for_email(email)
+        except Exception as error:
+            app.logger.exception("Bekræftelsesmail kunne ikke gensendes: %s", error)
+        info = "Hvis e-mailen findes, har vi sendt en ny bekræftelsesmail. Tjek også spam/uønsket mail."
+
+    body = f"""
+    <form method="post" action="/resend-verification">
+        <label>E-mail<input type="email" name="email" value="{html.escape(email)}" required autocomplete="email"></label>
+        <button type="submit">Send bekræftelsesmail igen</button>
+    </form>
+    <div class="links"><a href="/login">Til login</a><a href="/contact">Kontakt support</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Send bekræftelsesmail igen", body, info_message=info), mimetype="text/html")
+
+
+@app.route("/contact", methods=["GET", "POST"])
+def contact():
+    error = None
+    info = None
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        email = normalize_email(request.form.get("email"))
+        subject = (request.form.get("subject") or "").strip()
+        message = (request.form.get("message") or "").strip()
+        recipient = CONTACT_EMAIL or ADMIN_EMAIL
+
+        if not name or not subject or not email or not message:
+            error = "Udfyld alle felter."
+        elif not email_looks_valid(email):
+            error = "E-mail skal være gyldig."
+        elif len(message) < 10:
+            error = "Besked skal være mindst 10 tegn."
+        elif not recipient:
+            error = "Kontaktmail er ikke konfigureret lige nu."
+        elif not smtp_is_configured():
+            error = "Beskeden kunne ikke sendes lige nu. Prøv igen senere."
+        else:
+            body = (
+                f"Navn: {name}\n"
+                f"E-mail: {email}\n\n"
+                "Besked:\n"
+                f"{message}"
+            )
+            try:
+                send_email(recipient, f"Kontakt fra IndsatsBrief Brand: {subject}", body)
+                info = "Din besked er sendt. Vi vender tilbage hurtigst muligt."
+            except Exception as mail_error:
+                app.logger.exception("Kontaktbesked kunne ikke sendes: %s", mail_error)
+                error = "Beskeden kunne ikke sendes lige nu. Prøv igen senere."
+
+    body = """
+    <form method="post" action="/contact">
+        <label>Navn<input name="name" required autocomplete="name"></label>
+        <label>E-mail<input type="email" name="email" required autocomplete="email"></label>
+        <label>Emne<input name="subject" required></label>
+        <label>Besked<textarea name="message" required minlength="10" style="min-height:140px;border:1px solid var(--border);background:#020617;color:var(--text);padding:11px 13px;border-radius:14px;font:inherit;resize:vertical;"></textarea></label>
+        <button type="submit">Send besked</button>
+    </form>
+    <div class="links"><a href="/login">Til login</a><a href="/privacy">Privatliv</a></div>
+    """
+    return Response(auth_page_html("Kontakt support", body, error, info), status=400 if error else 200, mimetype="text/html")
 
 
 @app.route("/logout", methods=["GET"])
@@ -4178,16 +4423,19 @@ def admin_users():
         actions = []
         if not user.is_approved:
             actions.append(user_action_button(user, "approve", "Godkend"))
+        if not user.email_verified:
+            actions.append(user_action_button(user, "resend-verification", "Send bekræftelsesmail igen"))
         actions.append(user_action_button(user, "enable" if not user.is_active else "disable", "Aktivér" if not user.is_active else "Deaktiver"))
         actions.append(user_action_button(user, "remove-admin" if user.role == "admin" else "make-admin", "Fjern admin" if user.role == "admin" else "Gør til admin"))
         actions.append(user_action_button(user, "reset-password", "Nulstil kodeord"))
         self_note = " <span class='badge'>dig</span>" if current and user.id == current.id else ""
+        email_note = " <span class='warning-badge'>E-mail ikke bekræftet</span>" if not user.email_verified else ""
         rows.append(f"""
         <article class="user-card">
             <h2>{html.escape(user.name or '')}{self_note}</h2>
-            <p>{html.escape(user.email or '')}</p>
+            <p>{html.escape(user.email or '')}{email_note}</p>
             <p>Organisation: {html.escape(user.organization or '')}</p>
-            <p>Rolle: {html.escape(user.role or '')} · Godkendt: {'ja' if user.is_approved else 'nej'} · Aktiv: {'ja' if user.is_active else 'nej'}</p>
+            <p>Rolle: {html.escape(user.role or '')} · E-mail bekræftet: {'ja' if user.email_verified else 'nej'} · Godkendt: {'ja' if user.is_approved else 'nej'} · Aktiv: {'ja' if user.is_active else 'nej'}</p>
             <p>Oprettet: {format_datetime(user.created_at)} · Seneste login: {format_datetime(user.last_login_at)}</p>
             <div class="actions">{''.join(actions)}</div>
         </article>
@@ -4202,7 +4450,7 @@ def admin_users():
     admin_html = f"""
 <!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin - IndsatsBrief</title>
 <style>
-html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
+html,body{{width:100%;max-width:100%;overflow-x:hidden}}*{{box-sizing:border-box}}body{{margin:0;background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}.admin-shell{{width:min(100%,1100px);margin:0 auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#111827}}h1,h2,p{{margin-top:0}}p{{color:#cbd5e1}}a{{color:#93c5fd;overflow-wrap:anywhere}}main{{display:grid;gap:14px}}.admin-message{{margin-bottom:14px;padding:14px 16px;border:1px solid rgba(34,197,94,.35);border-radius:14px;background:rgba(34,197,94,.12);color:#bbf7d0;overflow-wrap:anywhere}}.user-card{{width:100%;max-width:100%;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#1e293b;overflow-wrap:anywhere}}.actions{{display:flex;gap:8px;flex-wrap:wrap}}button{{min-height:42px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:800;padding:8px 12px;cursor:pointer}}.badge{{font-size:12px;color:#bbf7d0}}.warning-badge{{display:inline-block;margin-left:8px;padding:3px 7px;border-radius:999px;background:rgba(250,204,21,.16);color:#fde68a;font-size:12px;font-weight:800}}@media(max-width:700px){{.admin-shell{{padding:12px}}header{{display:block}}button{{width:100%}}.actions form{{width:100%}}}}
 </style></head><body>{body}</body></html>
     """
     return Response(admin_html, mimetype="text/html")
@@ -4281,6 +4529,19 @@ def admin_reset_user_password(user_id):
             session["admin_reset_email"] = user.email
         except Exception as error:
             app.logger.exception("Admin password reset kunne ikke oprettes: %s", error)
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/resend-verification", methods=["POST"])
+@admin_required
+def admin_resend_user_verification(user_id):
+    user = db.session.get(User, int(user_id))
+    if user and not user.email_verified:
+        try:
+            verification_link = create_email_verification_link(user)
+            send_verification_email(user, verification_link)
+        except Exception as error:
+            app.logger.exception("Admin kunne ikke gensende bekræftelsesmail: %s", error)
     return redirect(url_for("admin_users"))
 
 
@@ -5148,7 +5409,7 @@ def privacy_policy():
         <p>IndsatsBrief Brand drives af Frederik Racher som et støtteværktøj til brand-/redningsbriefs. Værktøjet samler oplysninger fra adresseopslag, BBR, OSM, vejrdata, kortlinks og stations-/ressourcedata.</p>
 
         <h2>Brugeroplysninger</h2>
-        <p>Ved brugeroprettelse gemmes navn, e-mail, organisation/arbejdssted, rolle/status, godkendelsesstatus, oprettelsestidspunkt og seneste login. Password gemmes som hash og aldrig i klartekst.</p>
+        <p>Ved brugeroprettelse gemmes navn, e-mail, organisation/arbejdssted, rolle/status, e-mailbekræftelse, godkendelsesstatus, oprettelsestidspunkt og seneste login. Oplysningerne bruges til login og adgangsstyring. Password gemmes som hash og aldrig i klartekst.</p>
 
         <h2>Adresseopslag og eksterne datakilder</h2>
         <p>Når du laver en brief, kan adressen og radius sendes til relevante datakilder/API’er som DAWA/Dataforsyningen, Datafordeleren/BBR, Open-Meteo, OpenStreetMap/Overpass og kort-/luftfotolinks. Data bruges til at danne briefen og til fejlfinding.</p>
@@ -5160,12 +5421,12 @@ def privacy_policy():
         <p>Hostingplatformen kan behandle tekniske logs som tidspunkt, endpoint, IP-adresse og fejlbeskeder til drift, sikkerhed og fejlfinding.</p>
 
         <h2>Sletning af konto</h2>
-        <p>Brugere kan bede om at få deres konto slettet. Kontaktinfo kan udfyldes nærmere senere.</p>
+        <p>Brugere kan bede admin/support om at få deres konto slettet.</p>
 
         <h2>Begrænsning</h2>
         <div class="note">IndsatsBrief er støtteoplysninger. Det erstatter ikke beredskabets egne systemer, lokale procedurer, objektplaner, officielle databaser eller faglig vurdering.</div>
 
-        <p><a href="/brief">Tilbage til IndsatsBrief</a></p>
+        <p><a href="/brief">Tilbage til IndsatsBrief</a> · <a href="/contact">Kontakt support</a></p>
     </div></main>
     </body>
     </html>

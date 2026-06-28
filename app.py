@@ -5080,29 +5080,56 @@ Du må ikke påstå, at noget står i de indlæste dokumenter, hvis det ikke gø
 
 Du skal altid vise kilder. For indlæste dokumenter skal du vise dokumenttitel og sidetal. For supplerende generel viden skal du skrive, at det er generel viden, medmindre der senere implementeres eksterne webkilder.
 
-Svarene er vejledende og erstatter ikke lokale instrukser, indsatslederens beslutninger eller gældende procedurer.
+Skriv dansk, kort, praktisk, indsatsvenligt og let at læse på mobil.
+Undgå lange afsnit, gentagelser, akademisk stil og mange forbehold.
+Svar som udgangspunkt på højst ca. 1200-1800 tegn. Hvis brugeren spørger bredt, skal du stadig svare kort og evt. afslutte med: "Spørg gerne mere specifikt for flere detaljer."
+Hvis brugeren udtrykkeligt beder om et detaljeret svar, må svaret være længere.
 
-Undgå live-disponering og operative kommandoer. Skriv ikke 'send', 'disponér', 'anbefalet afsendelse' eller lignende. Brug formuleringer som 'dokumentet beskriver', 'vejledningen angiver', 'vær opmærksom på' og 'kontrollér lokale instrukser'.
+Undgå live-disponering og operative kommandoer. Skriv ikke 'send', 'disponér', 'anbefalet afsendelse', 'du skal afsende' eller lignende.
+Brug formuleringer som 'dokumentet beskriver', 'vær opmærksom på', 'kontrollér' og 'overvej efter lokal instruks'.
 
 Svar altid i dette format:
 
 Kort svar:
-...
+1-3 korte sætninger.
 
-Ifølge indlæste dokumenter:
-- ...
-
-Supplerende generel viden:
-- ...
+Dokumentgrundlag:
+- 2-5 korte punkter fra indlæste dokumenter.
+- Kun det vigtigste.
+- Ingen lange forklaringer.
 
 Praktisk betydning:
-- ...
+- 2-4 korte punkter.
+- Fokus på hvad brugeren skal være opmærksom på.
+- Ingen konkrete afsendelses- eller disponeringsanbefalinger.
+
+Supplerende viden:
+- Vis kun denne sektion hvis dokumenterne ikke dækker spørgsmålet fuldt ud.
+- Hold den kort.
+- Markér tydeligt at det er supplerende/generel viden.
+
+Forbehold:
+- Vejledende svar – kontrollér altid lokale instrukser og gældende procedurer.
 
 Kilder:
-- ...
+- Dokumenttitel, side X-Y.
+- Supplerende generel viden, hvis brugt.
 
-Hvis ingen relevante dokumentbidder er medsendt, skal svaret starte med:
-"Jeg fandt ikke et direkte svar i de indlæste dokumenter. Nedenstående er supplerende generel viden og bør kontrolleres mod lokale instrukser."
+Hvis ingen relevante dokumentbidder er medsendt, skal svaret være:
+
+Kort svar:
+Jeg fandt ikke et direkte svar i de indlæste dokumenter.
+
+Supplerende viden:
+- Kort generelt svar.
+- Tydeligt at det ikke kommer fra dokumentarkivet.
+
+Forbehold:
+- Vejledende svar – kontrollér altid lokale instrukser og gældende procedurer.
+
+Kilder:
+- Ingen relevante indlæste dokumenter fundet
+- Supplerende generel viden
 """
 
 
@@ -5254,29 +5281,29 @@ def fallback_knowledge_answer(question, chunks):
     if chunks:
         excerpts = []
         for chunk in chunks[:3]:
-            excerpt = chunk.text[:450].strip()
+            excerpt = chunk.text[:220].strip()
             if excerpt:
                 excerpts.append(f"- {excerpt}...")
         answer = (
             "Kort svar:\n"
-            "Jeg fandt relevante indlæste dokumentbidder, men AI-svaret kunne ikke genereres lige nu.\n\n"
-            "Ifølge indlæste dokumenter:\n"
+            "Jeg fandt relevante dokumentbidder, men AI-svaret kunne ikke genereres lige nu.\n\n"
+            "Dokumentgrundlag:\n"
             + ("\n".join(excerpts) if excerpts else "- Relevante dokumentbidder blev fundet.")
-            + "\n\nSupplerende generel viden:\n- Ikke tilføjet i fallback-svar.\n\n"
-            "Praktisk betydning:\n- Kontrollér de viste dokumentkilder og lokale instrukser.\n\n"
+            + "\n\nPraktisk betydning:\n"
+            "- Brug dokumentkilderne som pejlemærke.\n"
+            "- Kontrollér lokale instrukser og gældende procedurer.\n\n"
+            "Forbehold:\n- Vejledende svar – kontrollér altid lokale instrukser og gældende procedurer.\n\n"
             "Kilder:\n"
             + "\n".join(f"- {source['label']}" for source in sources)
         )
         return answer, sources, False
     answer = (
         "Kort svar:\n"
-        "Jeg fandt ikke et direkte svar i de indlæste dokumenter. Nedenstående er supplerende generel viden og bør kontrolleres mod lokale instrukser.\n\n"
-        "Dokumentgrundlag:\n"
         "Jeg fandt ikke et direkte svar i de indlæste dokumenter.\n\n"
-        "Supplerende generel viden:\n"
-        "- AI-svar er ikke tilgængeligt lige nu.\n\n"
-        "Praktisk betydning:\n"
-        "- Kontrollér lokale instrukser og gældende procedurer.\n\n"
+        "Supplerende viden:\n"
+        "- Der kan gives et kort generelt svar, når AI er tilgængelig.\n"
+        "- Dette kommer ikke fra dokumentarkivet.\n\n"
+        "Forbehold:\n- Vejledende svar – kontrollér altid lokale instrukser og gældende procedurer.\n\n"
         "Kilder:\n"
         "- Ingen relevante indlæste dokumenter fundet\n"
         "- Supplerende generel viden"
@@ -5289,8 +5316,8 @@ def ask_openai_knowledge(question, chunks):
     no_docs_instruction = ""
     if not chunks:
         no_docs_instruction = (
-            "Der blev ikke fundet relevante dokumentbidder. Start svaret med den krævede sætning "
-            "om manglende direkte svar i de indlæste dokumenter, og placer resten under Supplerende generel viden."
+            "Der blev ikke fundet relevante dokumentbidder. Brug formatet for ingen dokumentkilder. "
+            "Svar kort, og placer generelle oplysninger under Supplerende viden."
         )
     payload = {
         "question": question,
@@ -5312,7 +5339,7 @@ def answer_uses_supplemental_knowledge(answer, chunks):
     if not chunks:
         return True
     text = (answer or "").lower()
-    if "supplerende generel viden" not in text:
+    if "supplerende generel viden" not in text and "supplerende viden" not in text:
         return False
     markers_without_supplement = [
         "ikke tilføjet",
@@ -6947,7 +6974,7 @@ def knowledge_page():
         h1,h2,p{{margin-top:0}}p,li{{color:var(--muted)}}a{{color:#93c5fd;overflow-wrap:anywhere}}.nav{{display:flex;gap:10px;flex-wrap:wrap}}.nav-link{{min-height:42px;display:inline-flex;align-items:center;padding:0 12px;border-radius:12px;background:rgba(255,255,255,.06);text-decoration:none;color:var(--text);font-weight:800}}
         textarea{{width:100%;min-height:145px;border-radius:14px;border:1px solid var(--border);background:#020617;color:var(--text);padding:12px;font:inherit;resize:vertical}}
         button{{min-height:48px;border:0;border-radius:12px;background:var(--primary);color:white;font-weight:900;padding:0 16px;cursor:pointer}}
-        .stack{{display:grid;gap:14px}}.answer{{white-space:pre-wrap;line-height:1.55}}.source-list{{display:grid;gap:8px}}.badge{{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(250,204,21,.13);color:#fde68a;font-size:12px;font-weight:850}}
+        .stack{{display:grid;gap:14px}}.answer{{white-space:pre-wrap;line-height:1.55;overflow-wrap:anywhere}}.answer-section{{padding:12px 0;border-top:1px solid var(--border)}}.answer-section:first-child{{border-top:0;padding-top:0}}.answer-heading{{margin:0 0 8px;color:#bfdbfe;font-weight:900;text-transform:uppercase;font-size:13px;letter-spacing:.03em}}.answer-body{{white-space:pre-wrap;color:var(--muted)}}.source-list{{display:grid;gap:8px}}.badge{{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(250,204,21,.13);color:#fde68a;font-size:12px;font-weight:850}}
         @media(max-width:700px){{main{{padding:12px}}.topline{{display:block}}button{{width:100%}}}}
     </style>
 </head>
@@ -6978,6 +7005,31 @@ const answer = document.getElementById('answer');
 const sourcesCard = document.getElementById('sources-card');
 const sources = document.getElementById('sources');
 const supplementalBadge = document.getElementById('supplemental-badge');
+function renderAnswer(text) {{
+    answer.replaceChildren();
+    const raw = String(text || '').trim();
+    if (!raw) return;
+    const headingPattern = /^(Kort svar|Dokumentgrundlag|Praktisk betydning|Supplerende viden|Forbehold|Kilder):\\s*$/gmi;
+    const matches = [...raw.matchAll(headingPattern)];
+    if (!matches.length) {{
+        answer.textContent = raw;
+        return;
+    }}
+    matches.forEach((match, index) => {{
+        const start = match.index + match[0].length;
+        const end = index + 1 < matches.length ? matches[index + 1].index : raw.length;
+        const section = document.createElement('section');
+        section.className = 'answer-section';
+        const heading = document.createElement('h3');
+        heading.className = 'answer-heading';
+        heading.textContent = match[1];
+        const body = document.createElement('div');
+        body.className = 'answer-body';
+        body.textContent = raw.slice(start, end).trim();
+        section.append(heading, body);
+        answer.appendChild(section);
+    }});
+}}
 async function fetchJson(url, options) {{
     const response = await fetch(url, options);
     const text = await response.text();
@@ -6999,7 +7051,7 @@ askButton.addEventListener('click', async () => {{
             headers: {{ 'Content-Type': 'application/json' }},
             body: JSON.stringify({{ question }})
         }});
-        answer.textContent = data.answer || '';
+        renderAnswer(data.answer || '');
         supplementalBadge.hidden = !data.used_supplemental_knowledge;
         sources.innerHTML = '';
         (data.sources || []).forEach(source => {{

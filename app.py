@@ -5,6 +5,8 @@ from urllib.parse import quote
 import requests
 import os
 import json
+import csv
+import zipfile
 import math
 import base64
 import re
@@ -16,7 +18,7 @@ import secrets
 import hashlib
 import smtplib
 from email.message import EmailMessage
-from io import BytesIO
+from io import BytesIO, StringIO
 from openai import OpenAI
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -5688,6 +5690,7 @@ def admin_nav_html():
         '<a class="button secondary" href="/admin/knowledge">Viden</a>'
         '<a class="button secondary" href="/admin/status">Status</a>'
         '<a class="button secondary" href="/admin/audit">Ændringslog</a>'
+        '<a class="button secondary" href="/admin/backup">Backup</a>'
         '<a class="button secondary" href="/brief">App</a>'
         '<a class="button secondary" href="/logout">Log ud</a>'
         '</nav>'
@@ -5810,6 +5813,7 @@ def admin_dashboard():
         ("Viden / Protokoller", "/admin/knowledge", display_count(document_count), f"{display_count(chunk_count)} tekstbidder"),
         ("Systemstatus", "/admin/status", "Status", "Database, SMTP, OpenAI og config"),
         ("Ændringslog", "/admin/audit", display_count(audit_count), "Seneste adminhandlinger"),
+        ("Backup / Eksport", "/admin/backup", "Backup", "Download CSV eller samlet ZIP"),
         ("Til appen", "/brief", "Åbn", "Gå til IndsatsBrief Brand"),
     ]
     body = '<section class="grid">'
@@ -6052,6 +6056,318 @@ def admin_audit():
     audit_cards = "".join(cards) or '<article class="card"><p>Ingen audit-log endnu.</p></article>'
     body = f'<section class="grid">{audit_cards}</section>'
     return Response(admin_layout("Ændringslog", body), mimetype="text/html")
+
+
+def backup_timestamp():
+    return datetime.utcnow().strftime("%Y%m%d_%H%M")
+
+
+def backup_json_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False)
+    return value
+
+
+def backup_csv_bytes(headers, rows):
+    output = StringIO()
+    output.write("\ufeff")
+    writer = csv.DictWriter(output, fieldnames=headers, delimiter=";", extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({header: backup_json_value(row.get(header)) for header in headers})
+    return output.getvalue().encode("utf-8")
+
+
+def backup_download_response(data, filename, mimetype):
+    response = Response(data, mimetype=mimetype)
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def query_all(model, order_attr="id"):
+    if not db or not model:
+        return []
+    try:
+        order_column = getattr(model, order_attr, None)
+        query = model.query
+        if order_column is not None:
+            query = query.order_by(order_column.asc())
+        return query.all()
+    except Exception as error:
+        app.logger.exception("Backup query failed for %s: %s", getattr(model, "__name__", model), error)
+        return []
+
+
+def backup_stations_rows():
+    return [
+        {
+            "id": station.id,
+            "name": station.name,
+            "aliases": station.aliases,
+            "type": station.type,
+            "organisation": station.organization,
+            "operator": station.operator,
+            "area": station.area,
+            "address": station.address,
+            "postal_code": station.postal_code,
+            "city": station.city,
+            "lat": station.lat,
+            "lon": station.lon,
+            "source": station.source,
+            "is_active": station.is_active,
+            "operational_response_station": station.operational_response_station,
+            "notes": station.notes,
+            "created_at": station.created_at,
+            "updated_at": station.updated_at,
+        }
+        for station in query_all(Station)
+    ]
+
+
+def backup_vehicles_rows():
+    rows = []
+    for vehicle in query_all(StationVehicle):
+        station = getattr(vehicle, "station", None)
+        rows.append({
+            "id": vehicle.id,
+            "station_id": vehicle.station_id,
+            "station_name": station.name if station else "",
+            "name": vehicle.name,
+            "callsign": vehicle.callsign,
+            "vehicle_type": vehicle.vehicle_type,
+            "description": vehicle.description,
+            "aliases": vehicle.aliases,
+            "capabilities": vehicle.capabilities,
+            "tags": getattr(vehicle, "tags", []),
+            "is_active": vehicle.is_active,
+            "sort_order": vehicle.sort_order,
+            "created_at": vehicle.created_at,
+            "updated_at": vehicle.updated_at,
+        })
+    return rows
+
+
+def backup_resources_rows():
+    rows = []
+    for resource in query_all(StationResource):
+        station = getattr(resource, "station", None)
+        rows.append({
+            "id": resource.id,
+            "station_id": resource.station_id,
+            "station_name": station.name if station else "",
+            "name": resource.name,
+            "resource_type": resource.resource_type,
+            "description": resource.description,
+            "aliases": resource.aliases,
+            "capabilities": resource.capabilities,
+            "tags": getattr(resource, "tags", []),
+            "is_active": resource.is_active,
+            "sort_order": resource.sort_order,
+            "created_at": resource.created_at,
+            "updated_at": resource.updated_at,
+        })
+    return rows
+
+
+def backup_users_rows():
+    return [
+        {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "organization": user.organization,
+            "role": user.role,
+            "is_active": user.is_active,
+            "is_approved": user.is_approved,
+            "email_verified": user.email_verified,
+            "created_at": user.created_at,
+            "last_login_at": user.last_login_at,
+        }
+        for user in query_all(User)
+    ]
+
+
+def backup_knowledge_documents_rows():
+    return [
+        {
+            "id": document.id,
+            "title": document.title,
+            "category": document.category,
+            "publisher": document.publisher,
+            "version_date": document.version_date,
+            "source_url": document.source_url,
+            "original_filename": document.original_filename,
+            "is_active": document.is_active,
+            "created_at": document.created_at,
+            "updated_at": document.updated_at,
+            "import_status": document.import_status,
+            "import_error": document.import_error,
+            "page_count": document.page_count,
+            "chunk_count": document.chunk_count,
+        }
+        for document in query_all(KnowledgeDocument)
+    ]
+
+
+def backup_knowledge_chunks_rows():
+    return [
+        {
+            "id": chunk.id,
+            "document_id": chunk.document_id,
+            "chunk_index": chunk.chunk_index,
+            "page_start": chunk.page_start,
+            "page_end": chunk.page_end,
+            "text": chunk.text,
+            "created_at": chunk.created_at,
+        }
+        for chunk in query_all(KnowledgeChunk)
+    ]
+
+
+def backup_audit_log_rows():
+    return [
+        {
+            "id": entry.id,
+            "user_id": entry.user_id,
+            "user_email": entry.user_email,
+            "action": entry.action,
+            "entity_type": entry.entity_type,
+            "entity_id": entry.entity_id,
+            "entity_name": entry.entity_name,
+            "details": entry.details,
+            "created_at": entry.created_at,
+            "ip_address": entry.ip_address,
+        }
+        for entry in query_all(AuditLog)
+    ]
+
+
+BACKUP_EXPORTS = {
+    "stations": {
+        "filename": "stations.csv",
+        "headers": ["id", "name", "aliases", "type", "organisation", "operator", "area", "address", "postal_code", "city", "lat", "lon", "source", "is_active", "operational_response_station", "notes", "created_at", "updated_at"],
+        "rows": backup_stations_rows,
+        "audit": "Exported stations.csv",
+    },
+    "vehicles": {
+        "filename": "vehicles.csv",
+        "headers": ["id", "station_id", "station_name", "name", "callsign", "vehicle_type", "description", "aliases", "capabilities", "tags", "is_active", "sort_order", "created_at", "updated_at"],
+        "rows": backup_vehicles_rows,
+        "audit": "Exported vehicles.csv",
+    },
+    "resources": {
+        "filename": "resources.csv",
+        "headers": ["id", "station_id", "station_name", "name", "resource_type", "description", "aliases", "capabilities", "tags", "is_active", "sort_order", "created_at", "updated_at"],
+        "rows": backup_resources_rows,
+        "audit": "Exported resources.csv",
+    },
+    "users": {
+        "filename": "users.csv",
+        "headers": ["id", "email", "name", "organization", "role", "is_active", "is_approved", "email_verified", "created_at", "last_login_at"],
+        "rows": backup_users_rows,
+        "audit": "Exported users.csv",
+    },
+    "knowledge-documents": {
+        "filename": "knowledge_documents.csv",
+        "headers": ["id", "title", "category", "publisher", "version_date", "source_url", "original_filename", "is_active", "created_at", "updated_at", "import_status", "import_error", "page_count", "chunk_count"],
+        "rows": backup_knowledge_documents_rows,
+        "audit": "Exported knowledge_documents.csv",
+    },
+    "knowledge-chunks": {
+        "filename": "knowledge_chunks.csv",
+        "headers": ["id", "document_id", "chunk_index", "page_start", "page_end", "text", "created_at"],
+        "rows": backup_knowledge_chunks_rows,
+        "audit": "Exported knowledge_chunks.csv",
+    },
+    "audit-log": {
+        "filename": "audit_log.csv",
+        "headers": ["id", "user_id", "user_email", "action", "entity_type", "entity_id", "entity_name", "details", "created_at", "ip_address"],
+        "rows": backup_audit_log_rows,
+        "audit": "Exported audit_log.csv",
+    },
+}
+
+
+def backup_csv_for_key(key):
+    config = BACKUP_EXPORTS[key]
+    return backup_csv_bytes(config["headers"], config["rows"]())
+
+
+@app.route("/admin/backup", methods=["GET"])
+@admin_required
+def admin_backup():
+    body = """
+    <section class="card">
+        <h2>Backup / eksport</h2>
+        <p>Her kan du eksportere data fra IndsatsBrief Brand som backup. Eksporten indeholder ikke adgangskoder eller hemmelige nøgler.</p>
+        <p class="status-warning">Backupfiler kan indeholde interne stationsdata og dokumenttekst. Del dem ikke offentligt.</p>
+    </section>
+    <section class="grid">
+        <article class="card"><h2>Stationer</h2><p><a class="button" href="/admin/backup/stations.csv">Eksportér stationer</a></p></article>
+        <article class="card"><h2>Køretøjer</h2><p><a class="button" href="/admin/backup/vehicles.csv">Eksportér køretøjer</a></p></article>
+        <article class="card"><h2>Ressourcer</h2><p><a class="button" href="/admin/backup/resources.csv">Eksportér ressourcer</a></p></article>
+        <article class="card"><h2>Brugere</h2><p><a class="button" href="/admin/backup/users.csv">Eksportér brugere</a></p></article>
+        <article class="card"><h2>Dokumentliste</h2><p><a class="button" href="/admin/backup/knowledge-documents.csv">Eksportér dokumentliste</a></p></article>
+        <article class="card"><h2>Audit-log</h2><p><a class="button" href="/admin/backup/audit-log.csv">Eksportér audit-log</a></p></article>
+        <article class="card"><h2>Alt</h2><p><a class="button warning" href="/admin/backup/all.zip">Eksportér alt som ZIP</a></p><p>ZIP indeholder også knowledge_chunks.csv med dokumenttekst.</p></article>
+    </section>
+    <section class="card"><p><a class="button secondary" href="/admin">Til admin dashboard</a></p></section>
+    """
+    return Response(admin_layout("Backup / Eksport", body), mimetype="text/html")
+
+
+@app.route("/admin/backup/<export_name>.csv", methods=["GET"])
+@admin_required
+def admin_backup_csv(export_name):
+    if export_name not in BACKUP_EXPORTS or export_name == "knowledge-chunks":
+        return Response(admin_layout("Backup", '<section class="admin-message warning">Eksporttypen blev ikke fundet.</section>'), status=404, mimetype="text/html")
+    try:
+        config = BACKUP_EXPORTS[export_name]
+        audit_log("backup_export", "backup", None, config["filename"], {"details": config["audit"]})
+        filename = f"indsatsbrief_{export_name.replace('-', '_')}_{backup_timestamp()}.csv"
+        return backup_download_response(backup_csv_for_key(export_name), filename, "text/csv; charset=utf-8")
+    except Exception as error:
+        app.logger.exception("Backup CSV failed: %s", error)
+        return Response(admin_layout("Backup", '<section class="admin-message warning">Eksporten kunne ikke oprettes.</section>'), status=500, mimetype="text/html")
+
+
+def backup_metadata():
+    return {
+        "exported_at": datetime.utcnow().isoformat(),
+        "app_name": "IndsatsBrief Brand",
+        "app_base_url": APP_BASE_URL,
+        "counts": {
+            "users": safe_model_count(User),
+            "stations": safe_model_count(Station),
+            "vehicles": safe_model_count(StationVehicle),
+            "resources": safe_model_count(StationResource),
+            "knowledge_documents": safe_model_count(KnowledgeDocument),
+            "knowledge_chunks": safe_model_count(KnowledgeChunk),
+            "audit_logs": safe_model_count(AuditLog),
+        },
+    }
+
+
+@app.route("/admin/backup/all.zip", methods=["GET"])
+@admin_required
+def admin_backup_all_zip():
+    try:
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for key, config in BACKUP_EXPORTS.items():
+                archive.writestr(config["filename"], backup_csv_for_key(key))
+            archive.writestr("metadata.json", json.dumps(backup_metadata(), ensure_ascii=False, indent=2).encode("utf-8"))
+        audit_log("backup_export", "backup", None, "all.zip", {"details": "Exported full backup ZIP"})
+        filename = f"indsatsbrief_backup_{backup_timestamp()}.zip"
+        return backup_download_response(buffer.getvalue(), filename, "application/zip")
+    except Exception as error:
+        app.logger.exception("Full backup ZIP failed: %s", error)
+        return Response(admin_layout("Backup", '<section class="admin-message warning">Backup ZIP kunne ikke oprettes.</section>'), status=500, mimetype="text/html")
 
 
 def lines_from_form(name):

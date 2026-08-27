@@ -30,6 +30,7 @@ jobs:
 
       - name: Check frontend JavaScript
         run: |
+          node --check static/smoke-map-bridge-v1.js
           node --check static/smoke-v3.js
           node --check static/operational-ui.js
           node --check static/operational-intelligence-v4.js

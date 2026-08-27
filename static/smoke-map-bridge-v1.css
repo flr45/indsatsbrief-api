@@ -1,0 +1,123 @@
+.ib-context-map-pin-shell {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.ib-context-map-pin {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  background: #334155;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.48), 0 0 0 3px rgba(15, 23, 42, 0.36);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.ib-context-map-pin.hospital,
+.ib-context-map-pin.healthcare {
+  background: #dc2626;
+}
+
+.ib-context-map-pin.childcare,
+.ib-context-map-pin.school,
+.ib-context-map-pin.education {
+  background: #2563eb;
+}
+
+.ib-context-map-pin.care,
+.ib-context-map-pin.social {
+  background: #7c3aed;
+}
+
+.ib-context-map-pin.institution {
+  background: #475569;
+}
+
+.ib-context-map-control {
+  border: 0 !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 9px 28px rgba(2, 6, 23, 0.34) !important;
+}
+
+.ib-context-map-control[hidden] {
+  display: none !important;
+}
+
+.ib-context-map-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  width: auto;
+  padding: 7px 9px 7px 11px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ib-context-map-toggle:hover,
+.ib-context-map-toggle:focus-visible {
+  background: rgba(30, 41, 59, 0.98);
+  outline: none;
+}
+
+.ib-context-map-toggle strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 23px;
+  min-height: 23px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.22);
+  color: #dbeafe;
+  font-size: 11px;
+}
+
+.ib-context-map-toggle.inactive {
+  opacity: 0.68;
+}
+
+.ib-context-map-toggle.inactive strong {
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+.ib-context-map-toggle.loading strong {
+  animation: ib-context-map-pulse 1s ease-in-out infinite;
+}
+
+@keyframes ib-context-map-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+#ib-operational-map .leaflet-popup-content {
+  line-height: 1.45;
+}
+
+#ib-operational-map .leaflet-popup-content small {
+  color: #64748b;
+}
+
+@media (max-width: 700px) {
+  .ib-context-map-toggle span {
+    display: none;
+  }
+
+  .ib-context-map-toggle {
+    padding-left: 8px;
+  }
+}

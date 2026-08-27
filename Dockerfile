@@ -17,11 +17,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . .
 
+# Fail the image build early if the runtime layer or BBR adapter has a syntax error.
+RUN python -m py_compile app.py wsgi.py bbr_danskadresse.py
+
 USER app
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl --fail --silent http://127.0.0.1:8000/health >/dev/null || curl --fail --silent http://127.0.0.1:8000/ >/dev/null || exit 1
+  CMD curl --fail --silent http://127.0.0.1:8000/health >/dev/null || exit 1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "180", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "180", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]

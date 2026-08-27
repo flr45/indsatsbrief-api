@@ -3,6 +3,7 @@
 import asbestos_guard
 import bbr_danskadresse
 import danskadresse_full
+import property_inventory
 import wsgi as runtime
 
 
@@ -12,7 +13,7 @@ legacy = runtime.legacy
 
 # wsgi._provider_bbr_lookup resolves bbr_danskadresse.get_building at request
 # time. Wrap the full provider so every lookup also performs the property-wide
-# asbestos check across all registered BBR buildings on the access address.
+# asbestos check and captures all registered BBR buildings on the access address.
 _original_full_get_building = danskadresse_full.get_building
 
 
@@ -22,20 +23,24 @@ def get_building_with_asbestos(address_data, app_module):
         (address_data or {}).get("access_address_id")
         or (building or {}).get("access_address_id")
     )
-    return asbestos_guard.enrich_building(building, access_address_id)
+    building = asbestos_guard.enrich_building(building, access_address_id)
+    # This reuses asbestos_guard's 24h cache, so the building inventory normally
+    # does not create a second external API request.
+    return property_inventory.enrich_building(building, access_address_id)
 
 
 bbr_danskadresse.get_building = get_building_with_asbestos
 
 
-# Always surface the asbestos control result. The older enrichment only emitted
-# a line when BBR said yes; operationally we also need to know that the check was
-# performed when BBR says no, unknown, or does not return the field.
+# Always surface the asbestos control result and all registered BBR buildings.
+# The older enrichment only emitted an asbestos line when BBR said yes;
+# operationally we also need no/unknown/not-returned to be explicit.
 _original_operational_report_additions = danskadresse_full.operational_report_additions
 
 
 def operational_report_additions_with_asbestos(building):
     additions = _original_operational_report_additions(building)
+
     risk_lines = [
         line
         for line in list(additions.get("risk_context_lines") or [])
@@ -45,6 +50,13 @@ def operational_report_additions_with_asbestos(building):
         if line not in risk_lines:
             risk_lines.append(line)
     additions["risk_context_lines"] = risk_lines
+
+    details = list(additions.get("building_details") or [])
+    for line in property_inventory.report_lines(building):
+        if line not in details:
+            details.append(line)
+    additions["building_details"] = details
+
     return additions
 
 

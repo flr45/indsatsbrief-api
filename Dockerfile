@@ -17,6 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . .
 
+# Gunicorn 26 writes its control socket under the working directory by default.
+# WORKDIR is created as root, so explicitly hand the directory to the runtime user.
+RUN chown app:app /app
+
 # Fail the image build early on syntax or provider-contract regressions.
 RUN python -m py_compile app.py wsgi.py bbr_danskadresse.py \
     && python -m unittest discover -s tests -p 'test_*.py'

@@ -1,79 +1,144 @@
-# Tidsregistrering
+# IndsatsBrief
 
-Statisk PWA til registrering af ture på døgnvagt. Appen er klar til GitHub og Render og bruger kun disse filer:
+IndsatsBrief er en dansk webapp til at samle et hurtigt, struktureret informationsgrundlag før og under en brand- og redningsindsats. Appen kombinerer adresseopslag, BBR/bygningsdata, vejr, kort, OSM-risikodata, mulige brandhaner, beredskabsstationer, ressourcer og en intern vidensbase.
 
-- `index.html`
-- `style.css`
-- `app.js`
-- `manifest.json`
-- `service-worker.js`
-- `README.md`
+> IndsatsBrief er et beslutningsstøtteværktøj. Registerdata og åbne datakilder kan være mangelfulde eller forsinkede og skal vurderes kritisk ved operativ brug.
 
-## Funktioner
+## Teknologi
 
-- Dansk UI
-- Vagtstart via `Ny vagt`
-- `Gem tur` er slået fra, indtil vagtstart er valgt
-- Vagtstart gemmes med dato og klokkeslæt i `localStorage`
-- Start- og sluttid bevares ved reload
-- Dag-vælger for start og slut: `Vagtdag` og `Næste dag`
-- Ture beregnes absolut relativt til vagtstart
-- Fremskudt pause: ingen, 30 min eller 60 min
-- Mørk tilstand
-- Service worker med cache-version, `skipWaiting` og `clients.claim`
+- Python 3.12 + Flask
+- Gunicorn
+- PostgreSQL via Flask-SQLAlchemy
+- DanskAdresseAPI som primær BBR-kilde, når API-nøgle er konfigureret
+- Datafordeleren som valgfri BBR-fallback
+- Dataforsyningen/DAWA til adresseopslag
+- OpenStreetMap/Overpass til åbne kort- og risikodata
+- OSRM til vejafstand/køretid
+- Open-Meteo til vejrdata
+- OpenAI til valgte analysefunktioner
+- Docker/GHCR til deployment
 
-## Tidsregler
+## Produktionsentrypoint
 
-Vagtstart er referencepunkt.
+Docker-image starter `wsgi:app` med to Gunicorn-workers. `wsgi.py` er et tyndt produktionslag oven på den eksisterende applikation i `app.py` og håndterer blandt andet:
 
-Eksempel med vagtstart 07:30:
+- PostgreSQL advisory lock under startup, så parallelle workers ikke racer ved stations-seeding
+- `ProxyFix` bag Cloudflare/Nginx Proxy Manager
+- sikre session-cookie defaults
+- security headers og cache-policy
+- `/health` endpoint
+- adgangsbeskyttelse af diagnostiske endpoints
+- DanskAdresseAPI som primær BBR-provider med kontrolleret fallback
+- progressiv moderne UI-styling uden en risikabel total omskrivning af de eksisterende inline templates
 
-- Før 07:30 samme dag = overtid før vagt
-- 07:30 til 23:30 = A-tid
-- 23:30 til 07:30 næste dag = B-tid
-- Efter 07:30 næste dag = overtid efter vagt
+## Centrale environment variables
 
-A-tid må gerne overstige 510 minutter. Der er ikke 510-loft i opsummeringen.
+```env
+FLASK_SECRET_KEY=...
+BRIEF_ACCESS_CODE=...
+DATABASE_URL=postgresql://user:password@postgres:5432/database
+APP_BASE_URL=https://indsatsbrief.example.dk
 
-Fremskudt pause trækkes fra normal A/B-total, først fra A hvis muligt og derefter fra B. Pausen reducerer ikke overtid før eller efter vagt.
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.4-mini
 
-## Test
+# Primær BBR-provider
+DANSKADRESSE_API_KEY=...
+DANSKADRESSE_BBR_CACHE_TTL_SECONDS=86400
+DANSKADRESSE_FALLBACK_TO_DATAFORDELER=true
 
-Appen kører interne test ved opstart. Resultatet kan ses under `Teststatus` nederst på siden og i browserens console.
+# Valgfri fallback til Datafordeleren
+DATAFORDELER_API_KEY=...
 
-Testene dækker:
-
-- 07:20-07:54 på vagtdag
-- 07:30-08:30 på vagtdag
-- 07:30-23:30 på vagtdag
-- 23:30 vagtdag til 00:30 næste dag
-- 06:00-07:45 næste dag
-- Summering af flere ture
-- Bevaring af start/slut-felter
-- Disabled gem-knap før vagtstart
-
-## Lokal kørsel
-
-Åbn `index.html` direkte i browseren, eller kør en lille lokal server:
-
-```bash
-python3 -m http.server 8000
+# Reverse proxy / session
+TRUST_PROXY_HEADERS=true
+SESSION_COOKIE_SECURE=true
 ```
 
-Besøg derefter `http://localhost:8000`.
+Appen accepterer også `INDSATSBRIEF_DANSKADRESSE_API_KEY` som alternativt navn til DanskAdresseAPI-nøglen.
 
-## GitHub
+## DanskAdresseAPI
 
-1. Opret et nyt repository på GitHub.
-2. Upload filerne eller push dem fra din lokale mappe.
-3. Commit ændringerne til `main`.
+Når `DANSKADRESSE_API_KEY` er sat, hentes BBR via:
 
-## Render
+```text
+GET /v1/adgangsadresser/{access_address_id}?include=bbr
+Authorization: Bearer <API_KEY>
+```
 
-Deploy som `Static Site`:
+Resultatet normaliseres til den samme interne bygningsstruktur, som resten af IndsatsBrief allerede bruger. Dermed kan rapportgeneratoren fortsætte uændret, selv om datakilden skiftes.
 
-- Build command: tomt felt
-- Publish directory: `.`
-- Branch: `main`
+BBR-opslag caches som standard i 24 timer pr. worker for at reducere svartid og API-forbrug. Cachen indeholder kun eksterne registerdata og ligger i proceshukommelsen.
 
-Hvis appen ikke opdaterer efter deploy, så tryk `Opdater` i appen eller ryd browserens site data/service worker-cache.
+## Health check
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Eksempel:
+
+```json
+{
+  "ok": true,
+  "service": "indsatsbrief",
+  "bbr_provider": "danskadresse"
+}
+```
+
+## Docker
+
+Byg lokalt:
+
+```bash
+docker build -t indsatsbrief .
+```
+
+Kør eksempelvis:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env indsatsbrief
+```
+
+GitHub Actions bygger automatisk multi-architecture images til `linux/amd64` og `linux/arm64`. Push til `main` publicerer `ghcr.io/flr45/indsatsbrief-api:latest`.
+
+## Sikkerhed
+
+Produktionslaget sender som standard blandt andet:
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- begrænset `Permissions-Policy`
+- HSTS når den offentlige base-URL bruger HTTPS
+- `Cache-Control: no-store` på rapport-, admin- og API-sider
+
+Diagnostiske endpoints som BBR-, hydrant-, OSM- og luftfototest er admin-beskyttede i produktionsentrypointet.
+
+## UI
+
+`static/modern.css` og `static/modern.js` lægges progressivt oven på de eksisterende sider. Målet er et mere moderne og operationelt udtryk med:
+
+- bedre kontrast og informationshierarki
+- større touch-targets
+- tydelig tastaturfokus
+- forbedret mobilvisning
+- mere kompakt og læsbar rapportvisning
+- printvenlig rapport
+- `Ctrl/Cmd + K` til hurtigt fokus på adressefeltet
+- huskning af ufølsomme UI-præferencer som radius, men aldrig adresse eller rapportindhold
+
+## Projektstruktur
+
+```text
+app.py                 Legacy/applikationskerne og routes
+wsgi.py                Produktionsruntime og sikker integrationslag
+bbr_danskadresse.py    DanskAdresseAPI-adapter
+static/modern.css      Moderne visuel overstyring
+static/modern.js       Progressive UX-forbedringer
+station_data/          Stations- og ressourcedata
+Dockerfile             Produktionsimage
+.github/workflows/     CI og GHCR build/publish
+```
+
+De ældre root-filer `index.html`, `style.css`, `app.js`, `manifest.json` og `service-worker.js` stammer fra et tidligere statisk projekt og indgår ikke i Flask-produktionsentrypointet. De bør fjernes i en separat oprydning, når det er bekræftet, at ingen ekstern deployment stadig bruger dem.

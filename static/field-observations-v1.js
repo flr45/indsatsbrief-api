@@ -307,7 +307,7 @@
     if (!glance) return;
     let chip = glance.querySelector(".ib-field-glance-chip");
     if (!state.active) {
-      chip?.remove();
+      if (chip) chip.remove();
       return;
     }
     const strip = glance.querySelector(".ib-v4-risk-strip");
@@ -317,16 +317,40 @@
       chip.className = "ib-v4-risk info ib-field-glance-chip";
       strip.prepend(chip);
     }
-    chip.textContent = `Lokal vind ${state.speed.toFixed(1)} m/s fra ${directionName(state.direction)}`;
+    const desired = `Lokal vind ${state.speed.toFixed(1)} m/s fra ${directionName(state.direction)}`;
+    if (chip.textContent !== desired) chip.textContent = desired;
   }
 
   function observePage() {
-    const observer = new MutationObserver(() => {
-      const data = currentIncidentData();
-      if (data) ensureIncidentState(data);
-      if (document.getElementById("ib-smoke-controls")) renderPanel();
-      renderStatus();
-      syncGlanceChip();
+    let scheduled = false;
+    const observer = new MutationObserver((mutations) => {
+      const hasExternalMutation = mutations.some((mutation) => {
+        const target = mutation.target instanceof Element
+          ? mutation.target
+          : mutation.target?.parentElement;
+        if (!target) return true;
+        return !target.closest("#ib-field-observations, #ib-field-wind-status, .ib-field-glance-chip");
+      });
+      if (!hasExternalMutation || scheduled) return;
+      scheduled = true;
+      window.requestAnimationFrame(() => {
+        scheduled = false;
+        const data = currentIncidentData();
+        const incidentChanged = Boolean(data && data !== state.incident);
+        if (incidentChanged) {
+          ensureIncidentState(data);
+          renderPanel();
+          renderStatus();
+        } else if (
+          data &&
+          !document.getElementById("ib-field-observations") &&
+          document.getElementById("ib-smoke-controls")
+        ) {
+          renderPanel();
+        }
+        if (state.active && !document.getElementById("ib-field-wind-status")) renderStatus();
+        syncGlanceChip();
+      });
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }

@@ -1,0 +1,250 @@
+#ib-smoke-optin,
+#ib-smoke-optin *,
+#ib-smoke-advanced,
+#ib-smoke-advanced * {
+  box-sizing: border-box;
+}
+
+#ib-smoke-optin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(96, 165, 250, 0.20);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(9, 22, 38, 0.94), rgba(5, 14, 26, 0.96));
+  color: #e6eef7;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+}
+
+.ib-smoke-optin-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ib-smoke-optin-copy > span {
+  color: #60a5fa;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .11em;
+}
+
+.ib-smoke-optin-copy > strong {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.ib-smoke-optin-copy > small {
+  max-width: 760px;
+  color: #93a7bb;
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ib-smoke-optin-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.ib-smoke-optin-start,
+.ib-smoke-optin-settings {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid rgba(96, 165, 250, .34);
+  border-radius: 11px;
+  background: rgba(37, 99, 235, .18);
+  color: #dbeafe;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ib-smoke-optin-start:hover,
+.ib-smoke-optin-settings:hover,
+.ib-smoke-optin-start:focus-visible,
+.ib-smoke-optin-settings:focus-visible {
+  border-color: rgba(96, 165, 250, .58);
+  background: rgba(37, 99, 235, .28);
+  outline: none;
+}
+
+.ib-smoke-optin-start:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
+#ib-smoke-advanced {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 10px;
+  border: 1px solid rgba(148, 177, 207, .18);
+  border-radius: 14px;
+  background: rgba(7, 17, 31, .72);
+  overflow: hidden;
+}
+
+#ib-smoke-advanced > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 13px;
+  color: #e8f0f8;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+#ib-smoke-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+#ib-smoke-advanced > summary > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+#ib-smoke-advanced > summary strong {
+  font-size: 11.5px;
+  font-weight: 950;
+}
+
+#ib-smoke-advanced > summary small {
+  color: #8fa5b9;
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+}
+
+#ib-smoke-advanced > summary em {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, .10);
+  color: #bfdbfe;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ib-smoke-advanced-body {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(148, 177, 207, .11);
+}
+
+#ib-smoke-advanced:not([open]) .ib-smoke-advanced-body {
+  display: none;
+}
+
+.ib-smoke-advanced-body > * {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* The smoke workspace used to contain several wide minimum columns. These
+   guards keep every panel inside the card on laptops/tablets and in fullscreen. */
+#map-section,
+#ib-operational-map,
+#ib-smoke-summary,
+#ib-smoke-controls,
+#ib-v4-scenario-helper,
+#ib-field-observations,
+#ib-smoke-context-panel {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#map-section {
+  overflow: hidden;
+}
+
+#ib-smoke-controls > *,
+#ib-v4-scenario-helper > *,
+#ib-field-observations > *,
+#ib-smoke-context-panel > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#ib-smoke-controls select,
+#ib-smoke-controls input,
+#ib-field-observations select,
+#ib-field-observations input,
+#ib-smoke-context-panel select,
+#ib-smoke-context-panel input,
+#ib-smoke-context-panel button {
+  max-width: 100%;
+}
+
+.ib-v3-metric strong,
+.ib-v3-detail-grid strong,
+.ib-context-place,
+.ib-context-place * {
+  overflow-wrap: anywhere;
+}
+
+body:not(.ib-smoke-analysis-active) #ib-operational-glance.ib-smoke-not-started .ib-v4-glance-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .ib-smoke-analysis-active #ib-smoke-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ib-smoke-analysis-active #ib-smoke-controls .ib-v3-profile,
+  .ib-smoke-analysis-active #ib-smoke-controls .ib-v3-toggles {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  #ib-smoke-optin {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ib-smoke-optin-actions,
+  .ib-smoke-optin-start,
+  .ib-smoke-optin-settings {
+    width: 100%;
+  }
+
+  body:not(.ib-smoke-analysis-active) #ib-operational-glance.ib-smoke-not-started .ib-v4-glance-grid,
+  .ib-smoke-analysis-active #ib-smoke-controls {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ib-smoke-analysis-active #ib-smoke-controls .ib-v3-profile,
+  .ib-smoke-analysis-active #ib-smoke-controls .ib-v3-toggles {
+    grid-column: auto;
+  }
+
+  #ib-smoke-advanced > summary {
+    align-items: flex-start;
+  }
+}

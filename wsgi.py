@@ -1,14 +1,17 @@
 """Production entrypoint for IndsatsBrief.
 
 The legacy application still lives in app.py. This thin runtime layer lets us
-improve deployment, security, provider selection and presentation without a
-large risky rewrite of the working application.
+improve deployment, security, provider selection, performance and presentation
+without a large risky rewrite of the working application.
 """
 
+from copy import deepcopy
+from functools import wraps
 import importlib
 import os
 import sys
-from functools import wraps
+import threading
+import time
 
 import psycopg2
 from flask import jsonify, request
@@ -23,6 +26,17 @@ def env_bool(name, default=False):
     if value is None:
         return bool(default)
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name, default, minimum=0, maximum=None):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
 
 
 def _postgres_dsn():
@@ -117,9 +131,138 @@ app.config["SESSION_COOKIE_SECURE"] = env_bool(
     base_url.lower().startswith("https://"),
 )
 app.config["MAX_CONTENT_LENGTH"] = min(
-    int(app.config.get("MAX_CONTENT_LENGTH") or 26 * 1024 * 1024),
+    env_int(
+        "MAX_UPLOAD_BYTES",
+        int(app.config.get("MAX_CONTENT_LENGTH") or 26 * 1024 * 1024),
+        minimum=1024 * 1024,
+    ),
     26 * 1024 * 1024,
 )
+
+
+# ---------------------------------------------------------------------------
+# Small, bounded per-worker caches for public external data.
+# We deliberately do NOT cache report responses, user data, OpenAI answers or
+# admin content. TTL values reflect how quickly each public source can change.
+# ---------------------------------------------------------------------------
+def _freeze(value):
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _freeze(item)) for key, item in value.items()))
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, set):
+        return tuple(sorted(_freeze(item) for item in value))
+    try:
+        hash(value)
+        return value
+    except TypeError:
+        return repr(value)
+
+
+def ttl_memoize(ttl_seconds, max_entries=256, cacheable=None):
+    ttl_seconds = max(0, int(ttl_seconds))
+    max_entries = max(1, int(max_entries))
+
+    def decorator(func):
+        cache = {}
+        lock = threading.RLock()
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if ttl_seconds <= 0:
+                return func(*args, **kwargs)
+
+            key = (_freeze(args), _freeze(kwargs))
+            now = time.monotonic()
+
+            with lock:
+                cached = cache.get(key)
+                if cached and now - cached["stored_at"] < ttl_seconds:
+                    return deepcopy(cached["value"])
+                if cached:
+                    cache.pop(key, None)
+
+            value = func(*args, **kwargs)
+            should_cache = cacheable(value) if cacheable else True
+            if not should_cache:
+                return value
+
+            with lock:
+                if len(cache) >= max_entries:
+                    expired = [
+                        cache_key
+                        for cache_key, item in cache.items()
+                        if now - item["stored_at"] >= ttl_seconds
+                    ]
+                    for cache_key in expired:
+                        cache.pop(cache_key, None)
+
+                while len(cache) >= max_entries:
+                    oldest = min(cache, key=lambda cache_key: cache[cache_key]["stored_at"])
+                    cache.pop(oldest, None)
+
+                cache[key] = {"stored_at": now, "value": deepcopy(value)}
+
+            return value
+
+        wrapper._runtime_ttl_seconds = ttl_seconds
+        return wrapper
+
+    return decorator
+
+
+def _dict_without_error(value):
+    return isinstance(value, dict) and not value.get("error")
+
+
+def _working_hydrant_result(value):
+    return isinstance(value, dict) and bool(value.get("working_overpass_url"))
+
+
+def _working_osm_result(value):
+    return isinstance(value, dict) and value.get("ok") is True
+
+
+def _install_public_data_caches():
+    cache_specs = [
+        (
+            "lookup_address",
+            env_int("ADDRESS_CACHE_TTL_SECONDS", 3600, maximum=86400),
+            512,
+            _dict_without_error,
+        ),
+        (
+            "get_weather_data",
+            env_int("WEATHER_CACHE_TTL_SECONDS", 300, maximum=1800),
+            256,
+            _dict_without_error,
+        ),
+        (
+            "get_possible_hydrants_from_osm",
+            env_int("HYDRANT_CACHE_TTL_SECONDS", 900, maximum=86400),
+            256,
+            _working_hydrant_result,
+        ),
+        (
+            "get_osm_risk_check",
+            env_int("OSM_RISK_CACHE_TTL_SECONDS", 900, maximum=86400),
+            256,
+            _working_osm_result,
+        ),
+    ]
+
+    for function_name, ttl_seconds, max_entries, cacheable in cache_specs:
+        original = getattr(legacy, function_name, None)
+        if not callable(original) or getattr(original, "_runtime_ttl_seconds", None) is not None:
+            continue
+        setattr(
+            legacy,
+            function_name,
+            ttl_memoize(ttl_seconds, max_entries=max_entries, cacheable=cacheable)(original),
+        )
+
+
+_install_public_data_caches()
 
 
 # ---------------------------------------------------------------------------
@@ -228,21 +371,35 @@ legacy.build_short_report_building = improved_short_report_building
 # ---------------------------------------------------------------------------
 # Health endpoint and access hardening for diagnostic endpoints.
 # ---------------------------------------------------------------------------
+def _database_health():
+    database = getattr(legacy, "db", None)
+    if not database:
+        return True, "not_configured"
+    try:
+        with database.engine.connect() as connection:
+            connection.exec_driver_sql("SELECT 1")
+        return True, "ok"
+    except Exception as error:
+        app.logger.warning("Health check database error: %s", error)
+        return False, "unavailable"
+
+
 if not any(rule.rule == "/health" for rule in app.url_map.iter_rules()):
 
     @app.get("/health")
     def runtime_health():
-        return jsonify(
-            {
-                "ok": True,
-                "service": "indsatsbrief",
-                "bbr_provider": (
-                    "danskadresse"
-                    if bbr_danskadresse.configured()
-                    else "datafordeler"
-                ),
-            }
-        )
+        database_ok, database_status = _database_health()
+        payload = {
+            "ok": database_ok,
+            "service": "indsatsbrief",
+            "database": database_status,
+            "bbr_provider": (
+                "danskadresse"
+                if bbr_danskadresse.configured()
+                else "datafordeler"
+            ),
+        }
+        return jsonify(payload), 200 if database_ok else 503
 
 
 ADMIN_ONLY_PATHS = {

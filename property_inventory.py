@@ -236,7 +236,10 @@ def report_lines(building):
     if not count:
         return ["Bygningsoversigt: Ingen separate BBR-bygningsposter fundet på adressen"]
 
-    header = f"Bygningsoversigt: {count} registreret" + (" bygning" if count == 1 else " bygninger")
+    if count == 1:
+        header = "Bygningsoversigt: 1 registreret bygning"
+    else:
+        header = f"Bygningsoversigt: {count} registrerede bygninger"
     if building.get("building_inventory_may_be_truncated"):
         header += " (API-grænse på 20 er nået; der kan findes flere)"
 

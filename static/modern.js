@@ -21,7 +21,7 @@
     });
 
     const addressInput = document.querySelector("#address");
-    const autocomplete = document.querySelector("#autocomplete");
+    const autocomplete = document.querySelector("#autocomplete-list");
 
     // Cmd/Ctrl+K is a fast, familiar way to jump to the incident address.
     document.addEventListener("keydown", (event) => {
@@ -32,7 +32,10 @@
       }
 
       if (event.key === "Escape") {
-        if (autocomplete) autocomplete.innerHTML = "";
+        if (autocomplete) {
+          autocomplete.replaceChildren();
+          autocomplete.style.display = "none";
+        }
         if (document.activeElement instanceof HTMLElement) {
           document.activeElement.blur();
         }
@@ -64,17 +67,28 @@
       });
     });
 
-    // Give long-running actions a clear visual busy state without changing any
-    // of the existing request logic in app.py.
+    // Mark clicked buttons as busy if the existing application disables them
+    // while an async operation is running. We intentionally do not change the
+    // application's request logic.
+    let lastActionButton = null;
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest?.("button");
+      if (button instanceof HTMLButtonElement && !button.disabled) {
+        lastActionButton = button;
+      }
+    }, true);
+
     const syncBusyState = (button) => {
       if (!(button instanceof HTMLButtonElement)) return;
-      const busy = button.disabled && button.dataset.ibWasEnabled === "true";
+      const busy = button.disabled && button === lastActionButton;
       button.classList.toggle("ib-busy", busy);
       button.setAttribute("aria-busy", busy ? "true" : "false");
+      if (!button.disabled && button === lastActionButton) {
+        lastActionButton = null;
+      }
     };
 
     document.querySelectorAll("button").forEach((button) => {
-      button.dataset.ibWasEnabled = button.disabled ? "false" : "true";
       const observer = new MutationObserver(() => syncBusyState(button));
       observer.observe(button, { attributes: true, attributeFilter: ["disabled"] });
     });

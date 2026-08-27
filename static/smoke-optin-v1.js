@@ -7,7 +7,7 @@
     launcher: null,
     advanced: null,
     advancedBody: null,
-    modelScriptPromise: null,
+    analysisAssetsPromise: null,
     uiSyncQueued: false,
   };
 
@@ -21,13 +21,36 @@
     }
   }
 
-  function ensureStylesheet() {
-    if (document.querySelector('link[data-ib-smoke-v3="true"]')) return;
+  function ensureStylesheet(path, key) {
+    if (document.querySelector(`link[data-ib-analysis-style="${key}"]`)) return;
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = `/static/smoke-v3.css?v=${encodeURIComponent(assetVersion())}`;
-    link.dataset.ibSmokeV3 = "true";
+    link.href = `${path}?v=${encodeURIComponent(assetVersion())}`;
+    link.dataset.ibAnalysisStyle = key;
     document.head.appendChild(link);
+  }
+
+  function loadScript(path, key) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-ib-analysis-script="${key}"]`);
+      if (existing) {
+        if (existing.dataset.loaded === "true") resolve();
+        else {
+          existing.addEventListener("load", resolve, { once: true });
+          existing.addEventListener("error", reject, { once: true });
+        }
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = `${path}?v=${encodeURIComponent(assetVersion())}`;
+      script.dataset.ibAnalysisScript = key;
+      script.addEventListener("load", () => {
+        script.dataset.loaded = "true";
+        resolve();
+      }, { once: true });
+      script.addEventListener("error", () => reject(new Error(`${path} kunne ikke indlæses`)), { once: true });
+      document.body.appendChild(script);
+    });
   }
 
   function currentFrame() {
@@ -73,7 +96,7 @@
 
     if (!state.active) {
       title.textContent = state.loading ? "Starter røgmodel …" : "Valgfri analyse";
-      detail.textContent = "Kortet vises normalt. Røgmodel, plume-rise og røgkontekst beregnes kun, når du vælger det.";
+      detail.textContent = "Kortet vises normalt. Røgmodel, plume-rise, lokal vind og røgkontekst startes kun, når du vælger det.";
     } else {
       title.textContent = "Røganalyse aktiv";
       detail.textContent = "Modellen er startet for denne side-session. Avancerede indstillinger er samlet og skjult som standard.";
@@ -98,30 +121,21 @@
     return launcher;
   }
 
-  function loadModelScript() {
-    if (state.modelScriptPromise) return state.modelScriptPromise;
-    ensureStylesheet();
-    state.modelScriptPromise = new Promise((resolve, reject) => {
-      const existing = document.querySelector('script[data-ib-smoke-v3="true"]');
-      if (existing) {
-        if (existing.dataset.loaded === "true") resolve();
-        else {
-          existing.addEventListener("load", resolve, { once: true });
-          existing.addEventListener("error", reject, { once: true });
-        }
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = `/static/smoke-v3.js?v=${encodeURIComponent(assetVersion())}`;
-      script.dataset.ibSmokeV3 = "true";
-      script.addEventListener("load", () => {
-        script.dataset.loaded = "true";
-        resolve();
-      }, { once: true });
-      script.addEventListener("error", () => reject(new Error("Røgmodel kunne ikke indlæses")), { once: true });
-      document.body.appendChild(script);
-    });
-    return state.modelScriptPromise;
+  function loadAnalysisAssets() {
+    if (state.analysisAssetsPromise) return state.analysisAssetsPromise;
+    ensureStylesheet("/static/smoke-v3.css", "smoke-v3");
+    ensureStylesheet("/static/field-observations-v1.css", "field-observations-v1");
+    ensureStylesheet("/static/smoke-context-v1.css", "smoke-context-v1");
+
+    state.analysisAssetsPromise = (async () => {
+      // smoke-v3 creates the map/controls synchronously before its async weather
+      // request. The dependent tools are loaded afterwards so they see their
+      // expected anchors on first startup.
+      await loadScript("/static/smoke-v3.js", "smoke-v3");
+      await loadScript("/static/field-observations-v1.js", "field-observations-v1");
+      await loadScript("/static/smoke-context-v1.js", "smoke-context-v1");
+    })();
+    return state.analysisAssetsPromise;
   }
 
   async function activate() {
@@ -129,7 +143,7 @@
     state.loading = true;
     renderLauncher();
     try {
-      await loadModelScript();
+      await loadAnalysisAssets();
       state.active = true;
       document.body.classList.add("ib-smoke-analysis-active");
       window.dispatchEvent(new CustomEvent("indsatsbrief:smoke-analysis-state", { detail: { active: true } }));
@@ -139,12 +153,12 @@
       window.setTimeout(queueUiSync, 900);
     } catch (error) {
       console.warn("[IndsatsBrief] Røganalyse kunne ikke startes", error);
-      state.modelScriptPromise = null;
+      state.analysisAssetsPromise = null;
       const launcher = document.getElementById("ib-smoke-optin");
       if (launcher) launcher.dataset.state = "";
       const rendered = renderLauncher();
       const detail = rendered?.querySelector("small");
-      if (detail) detail.textContent = "Røgmodellen kunne ikke indlæses. Det almindelige kort er stadig tilgængeligt.";
+      if (detail) detail.textContent = "Røganalysen kunne ikke indlæses. Det almindelige kort er stadig tilgængeligt.";
     } finally {
       state.loading = false;
       const launcher = document.getElementById("ib-smoke-optin");

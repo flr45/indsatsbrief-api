@@ -95,3 +95,35 @@ def enriched_build_deterministic_building_sections(raw_incident_data):
 
 
 legacy.build_deterministic_building_sections = enriched_build_deterministic_building_sections
+
+
+# Add the smoke-map enhancement only on pages that already contain the legacy
+# OpenStreetMap frame. The script progressively replaces that iframe with a
+# Leaflet map and leaves the iframe in place as a fallback if Leaflet fails.
+SMOKE_MAP_JS_TAG = '<script defer src="/static/smoke-map.js?v=20260827"></script>'
+
+
+@app.after_request
+def inject_smoke_map_script(response):
+    if (
+        response.mimetype == "text/html"
+        and not response.direct_passthrough
+        and response.status_code < 500
+    ):
+        try:
+            page_html = response.get_data(as_text=True)
+            if (
+                "map-frame" in page_html
+                and SMOKE_MAP_JS_TAG not in page_html
+                and "</body>" in page_html
+            ):
+                page_html = page_html.replace(
+                    "</body>",
+                    f"{SMOKE_MAP_JS_TAG}</body>",
+                    1,
+                )
+                response.set_data(page_html)
+                response.headers.pop("Content-Length", None)
+        except Exception:
+            app.logger.exception("Kunne ikke injicere røgkort-script")
+    return response

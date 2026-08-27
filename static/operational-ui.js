@@ -1,8 +1,8 @@
 (() => {
   "use strict";
 
-  const UI_VERSION = "UX 2";
-  const SMOKE_MODEL_VERSION = "Røgmodel v2.1";
+  const UI_VERSION = "UX 3";
+  const SMOKE_MODEL_VERSION = "Røgmodel v3.0";
 
   function onReady(callback) {
     if (document.readyState === "loading") {
@@ -140,7 +140,7 @@
     const version = document.createElement("span");
     version.className = "ib-model-version";
     version.textContent = SMOKE_MODEL_VERSION;
-    version.title = "15-minutters vindprognose, vindprofil i flere højder og stabilitetsestimat";
+    version.title = "5-minutters screening, vindprofil i højden, plume-rise, relativ jordpåvirkning og vejledende nedfald";
 
     const expandButton = document.createElement("button");
     expandButton.type = "button";

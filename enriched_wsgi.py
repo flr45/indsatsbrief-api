@@ -3,6 +3,7 @@
 import asbestos_guard
 import bbr_danskadresse
 import danskadresse_full
+import datafordeler_asbestos
 import property_inventory
 import wsgi as runtime
 
@@ -13,7 +14,8 @@ legacy = runtime.legacy
 
 # wsgi._provider_bbr_lookup resolves bbr_danskadresse.get_building at request
 # time. Wrap the full provider so every lookup also performs the property-wide
-# asbestos check and captures all registered BBR buildings on the access address.
+# asbestos check, then uses the modern Datafordeler GraphQL field as a targeted
+# fallback when DanskAdresseAPI did not return an unambiguous registration.
 _original_full_get_building = danskadresse_full.get_building
 
 
@@ -24,8 +26,9 @@ def get_building_with_asbestos(address_data, app_module):
         or (building or {}).get("access_address_id")
     )
     building = asbestos_guard.enrich_building(building, access_address_id)
-    # This reuses asbestos_guard's 24h cache, so the building inventory normally
-    # does not create a second external API request.
+    building = datafordeler_asbestos.enrich_if_needed(building, access_address_id)
+    # asbestos_guard and the Datafordeler fallback cache independently, so the
+    # operational building inventory can remain unchanged.
     return property_inventory.enrich_building(building, access_address_id)
 
 
@@ -49,6 +52,13 @@ def operational_report_additions_with_asbestos(building):
     for line in asbestos_guard.report_lines(building):
         if line not in risk_lines:
             risk_lines.append(line)
+
+    fallback = (building or {}).get("asbestos_fallback") or {}
+    if fallback.get("status") == "yes" and fallback.get("location_text"):
+        detail = f"Asbesttype: {fallback['location_text']}"
+        if detail not in risk_lines:
+            risk_lines.append(detail)
+
     additions["risk_context_lines"] = risk_lines
 
     details = list(additions.get("building_details") or [])
@@ -97,12 +107,14 @@ def enriched_build_deterministic_building_sections(raw_incident_data):
 legacy.build_deterministic_building_sections = enriched_build_deterministic_building_sections
 
 
-# Versioned front-end assets. Changing this value is intentional: the previous
-# smoke-map v1 and v2 used the same URL, which allowed browsers to keep a cached
-# v1 script even after the v2 container had been deployed.
-FRONTEND_ASSET_VERSION = "20260827-smoke-v21-ux2"
+# Versioned front-end assets. Smoke v3 replaces the previous smoke-map asset,
+# while keeping the existing OpenStreetMap iframe as a progressive fallback.
+FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux3"
 SMOKE_MAP_JS_TAG = (
-    f'<script defer src="/static/smoke-map.js?v={FRONTEND_ASSET_VERSION}"></script>'
+    f'<script defer src="/static/smoke-v3.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
+SMOKE_MAP_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/smoke-v3.css?v={FRONTEND_ASSET_VERSION}">'
 )
 OPERATIONAL_UI_CSS_TAG = (
     f'<link rel="stylesheet" href="/static/operational-ui.css?v={FRONTEND_ASSET_VERSION}">'
@@ -122,10 +134,15 @@ def inject_operational_frontend(response):
         try:
             page_html = response.get_data(as_text=True)
 
-            if OPERATIONAL_UI_CSS_TAG not in page_html and "</head>" in page_html:
+            styles = []
+            if OPERATIONAL_UI_CSS_TAG not in page_html:
+                styles.append(OPERATIONAL_UI_CSS_TAG)
+            if "map-frame" in page_html and SMOKE_MAP_CSS_TAG not in page_html:
+                styles.append(SMOKE_MAP_CSS_TAG)
+            if styles and "</head>" in page_html:
                 page_html = page_html.replace(
                     "</head>",
-                    f"{OPERATIONAL_UI_CSS_TAG}</head>",
+                    "".join(styles) + "</head>",
                     1,
                 )
 

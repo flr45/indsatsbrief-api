@@ -107,9 +107,10 @@ def enriched_build_deterministic_building_sections(raw_incident_data):
 legacy.build_deterministic_building_sections = enriched_build_deterministic_building_sections
 
 
-# Versioned front-end assets. Smoke v3 replaces the previous smoke-map asset,
-# while keeping the existing OpenStreetMap iframe as a progressive fallback.
-FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux3"
+# Versioned front-end assets. Smoke v3 remains the calculation engine, while
+# Operational Intelligence v4 adds a separate glance/scenario/navigation layer.
+# The new version string intentionally busts browser caches after deployment.
+FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux4"
 SMOKE_MAP_JS_TAG = (
     f'<script defer src="/static/smoke-v3.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
@@ -121,6 +122,12 @@ OPERATIONAL_UI_CSS_TAG = (
 )
 OPERATIONAL_UI_JS_TAG = (
     f'<script defer src="/static/operational-ui.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
+OPERATIONAL_INTELLIGENCE_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/operational-intelligence-v4.css?v={FRONTEND_ASSET_VERSION}">'
+)
+OPERATIONAL_INTELLIGENCE_JS_TAG = (
+    f'<script defer src="/static/operational-intelligence-v4.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
 
 
@@ -137,6 +144,8 @@ def inject_operational_frontend(response):
             styles = []
             if OPERATIONAL_UI_CSS_TAG not in page_html:
                 styles.append(OPERATIONAL_UI_CSS_TAG)
+            if OPERATIONAL_INTELLIGENCE_CSS_TAG not in page_html:
+                styles.append(OPERATIONAL_INTELLIGENCE_CSS_TAG)
             if "map-frame" in page_html and SMOKE_MAP_CSS_TAG not in page_html:
                 styles.append(SMOKE_MAP_CSS_TAG)
             if styles and "</head>" in page_html:
@@ -151,6 +160,8 @@ def inject_operational_frontend(response):
                 scripts.append(SMOKE_MAP_JS_TAG)
             if OPERATIONAL_UI_JS_TAG not in page_html:
                 scripts.append(OPERATIONAL_UI_JS_TAG)
+            if OPERATIONAL_INTELLIGENCE_JS_TAG not in page_html:
+                scripts.append(OPERATIONAL_INTELLIGENCE_JS_TAG)
 
             if scripts and "</body>" in page_html:
                 page_html = page_html.replace(

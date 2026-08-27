@@ -114,14 +114,21 @@ legacy.build_deterministic_building_sections = enriched_build_deterministic_buil
 
 # Versioned front-end assets. Smoke v3 remains the calculation engine,
 # Operational Intelligence v4 is the main UX layer, Field Observations v1 can
-# override wind locally, and Smoke Context v1 screens selected OSM places in a
-# downwind sector. The version bump intentionally breaks browser caches.
-FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux4-field1-context1"
+# override wind locally, Smoke Context v1 screens selected OSM places in a
+# downwind sector, and Map Bridge v1 projects those results onto the Leaflet
+# smoke map. The version bump intentionally breaks browser caches.
+FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux4-field1-context1-mapbridge1"
 SMOKE_MAP_JS_TAG = (
     f'<script defer src="/static/smoke-v3.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
 SMOKE_MAP_CSS_TAG = (
     f'<link rel="stylesheet" href="/static/smoke-v3.css?v={FRONTEND_ASSET_VERSION}">'
+)
+SMOKE_MAP_BRIDGE_JS_TAG = (
+    f'<script defer src="/static/smoke-map-bridge-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
+SMOKE_MAP_BRIDGE_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/smoke-map-bridge-v1.css?v={FRONTEND_ASSET_VERSION}">'
 )
 OPERATIONAL_UI_CSS_TAG = (
     f'<link rel="stylesheet" href="/static/operational-ui.css?v={FRONTEND_ASSET_VERSION}">'
@@ -168,6 +175,8 @@ def inject_operational_frontend(response):
                 styles.append(FIELD_OBSERVATIONS_CSS_TAG)
             if SMOKE_CONTEXT_CSS_TAG not in page_html:
                 styles.append(SMOKE_CONTEXT_CSS_TAG)
+            if "map-frame" in page_html and SMOKE_MAP_BRIDGE_CSS_TAG not in page_html:
+                styles.append(SMOKE_MAP_BRIDGE_CSS_TAG)
             if "map-frame" in page_html and SMOKE_MAP_CSS_TAG not in page_html:
                 styles.append(SMOKE_MAP_CSS_TAG)
             if styles and "</head>" in page_html:
@@ -178,6 +187,10 @@ def inject_operational_frontend(response):
                 )
 
             scripts = []
+            # The bridge must execute before smoke-v3. It watches the dynamic
+            # Leaflet loader and wraps L.map just before smoke-v3 creates the map.
+            if "map-frame" in page_html and SMOKE_MAP_BRIDGE_JS_TAG not in page_html:
+                scripts.append(SMOKE_MAP_BRIDGE_JS_TAG)
             if "map-frame" in page_html and SMOKE_MAP_JS_TAG not in page_html:
                 scripts.append(SMOKE_MAP_JS_TAG)
             if OPERATIONAL_UI_JS_TAG not in page_html:

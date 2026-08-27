@@ -22,7 +22,7 @@ COPY --chown=app:app . .
 RUN chown app:app /app
 
 # Fail the image build early on syntax or provider-contract regressions.
-RUN python -m py_compile app.py wsgi.py bbr_danskadresse.py \
+RUN python -m py_compile app.py wsgi.py enriched_wsgi.py bbr_danskadresse.py danskadresse_full.py \
     && python -m unittest discover -s tests -p 'test_*.py'
 
 USER app
@@ -32,4 +32,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD curl --fail --silent http://127.0.0.1:8000/health >/dev/null || exit 1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "180", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "180", "--access-logfile", "-", "--error-logfile", "-", "enriched_wsgi:app"]

@@ -32,6 +32,7 @@ jobs:
         run: |
           node --check static/smoke-v3.js
           node --check static/operational-ui.js
+          node --check static/operational-intelligence-v4.js
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

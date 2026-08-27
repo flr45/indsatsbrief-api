@@ -1,0 +1,254 @@
+/* Local field observations for the IndsatsBrief smoke model. */
+
+.ib-field-observations {
+  margin-top: 9px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 14px;
+  background: rgba(4, 14, 27, 0.58);
+  overflow: hidden;
+}
+
+.ib-field-observations > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  color: #dceafb;
+  font-size: 11px;
+  font-weight: 900;
+  user-select: none;
+}
+
+.ib-field-observations > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ib-field-observations > summary::after {
+  content: "+";
+  float: right;
+  color: #7da4c8;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ib-field-observations[open] > summary::after {
+  content: "–";
+}
+
+.ib-field-observations[open] > summary {
+  border-bottom: 1px solid rgba(96, 165, 250, 0.13);
+  background: rgba(37, 99, 235, 0.07);
+}
+
+.ib-field-content {
+  padding: 11px 12px 12px;
+}
+
+.ib-field-intro,
+.ib-field-warning {
+  margin: 0;
+  color: #8fa6bc;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.ib-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.ib-field-input {
+  min-width: 0;
+}
+
+.ib-field-input > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #9fb3c6;
+  font-size: 9.5px;
+  font-weight: 850;
+}
+
+.ib-field-input-wrap {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid rgba(148, 177, 207, 0.17);
+  border-radius: 10px;
+  background: rgba(2, 10, 20, 0.72);
+  overflow: hidden;
+}
+
+.ib-field-input-wrap input {
+  width: 100% !important;
+  min-width: 0;
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 4px 7px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #f4f9fe !important;
+  font-size: 11px !important;
+}
+
+.ib-field-input-wrap small {
+  flex: 0 0 auto;
+  padding-right: 8px;
+  color: #728aa1;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.ib-field-compass {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ib-field-compass > span {
+  margin-right: 2px;
+  color: #768ca2;
+  font-size: 9.5px;
+  font-weight: 850;
+}
+
+.ib-field-compass button,
+.ib-field-actions button,
+#ib-field-wind-status button {
+  width: auto !important;
+  box-shadow: none !important;
+  font-family: inherit;
+}
+
+.ib-field-compass button {
+  min-width: 30px !important;
+  min-height: 28px !important;
+  padding: 3px 7px !important;
+  border: 1px solid rgba(96, 165, 250, 0.18) !important;
+  border-radius: 999px !important;
+  background: rgba(37, 99, 235, 0.08) !important;
+  color: #cde2f8 !important;
+  font-size: 9.5px !important;
+  font-weight: 850 !important;
+}
+
+.ib-field-api-reference {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(148, 177, 207, 0.12);
+  border-radius: 10px;
+  background: rgba(2, 10, 20, 0.38);
+  color: #7f96ac;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.ib-field-api-reference.error {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(127, 29, 29, 0.16);
+  color: #fecaca;
+}
+
+.ib-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ib-field-apply,
+.ib-field-clear {
+  min-height: 31px !important;
+  padding: 4px 9px !important;
+  border-radius: 999px !important;
+  font-size: 9.5px !important;
+  font-weight: 900 !important;
+}
+
+.ib-field-apply {
+  border: 1px solid rgba(74, 222, 128, 0.25) !important;
+  background: rgba(20, 83, 45, 0.20) !important;
+  color: #dcfce7 !important;
+}
+
+.ib-field-clear {
+  border: 1px solid rgba(148, 177, 207, 0.18) !important;
+  background: rgba(148, 163, 184, 0.07) !important;
+  color: #cfdae5 !important;
+}
+
+.ib-field-warning {
+  margin-top: 8px;
+  color: #6f8499;
+}
+
+#ib-field-wind-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 9px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  border-radius: 11px;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.20), rgba(2, 12, 23, 0.72));
+  color: #dbeafe;
+}
+
+#ib-field-wind-status[hidden] {
+  display: none !important;
+}
+
+#ib-field-wind-status strong {
+  color: #93c5fd;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+}
+
+#ib-field-wind-status span {
+  flex: 1 1 auto;
+  min-width: 180px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+#ib-field-wind-status button {
+  min-height: 27px !important;
+  padding: 3px 8px !important;
+  border: 1px solid rgba(147, 197, 253, 0.22) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #eaf4ff !important;
+  font-size: 9px !important;
+  font-weight: 850 !important;
+}
+
+.ib-field-glance-chip {
+  border-color: rgba(96, 165, 250, 0.40) !important;
+  background: rgba(30, 64, 175, 0.23) !important;
+  color: #dbeafe !important;
+}
+
+@media (max-width: 700px) {
+  .ib-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ib-field-actions button {
+    width: auto !important;
+  }
+}
+
+@media print {
+  .ib-field-observations,
+  #ib-field-wind-status {
+    display: none !important;
+  }
+}

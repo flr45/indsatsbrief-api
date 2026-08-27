@@ -112,11 +112,11 @@ def enriched_build_deterministic_building_sections(raw_incident_data):
 legacy.build_deterministic_building_sections = enriched_build_deterministic_building_sections
 
 
-# Versioned front-end assets. Smoke v3 is now intentionally NOT loaded during a
-# normal address lookup. Smoke Opt-in v1 loads smoke-v3.js and smoke-v3.css only
-# after an explicit user action. This keeps the default brief clean and avoids
-# model/weather work until it is actually requested.
-FRONTEND_ASSET_VERSION = "20260827-smoke-optin1-cleanup1-context-mapbridge1"
+# Versioned front-end assets. Smoke v3, Field Observations and Smoke Context are
+# intentionally NOT loaded during a normal address lookup. Smoke Opt-in v1 owns
+# the explicit activation and dynamically loads all smoke-analysis assets only
+# after the user asks for them.
+FRONTEND_ASSET_VERSION = "20260827-smoke-optin1-cleanup2-context-mapbridge1"
 SMOKE_MAP_BRIDGE_JS_TAG = (
     f'<script defer src="/static/smoke-map-bridge-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
@@ -141,18 +141,6 @@ OPERATIONAL_INTELLIGENCE_CSS_TAG = (
 OPERATIONAL_INTELLIGENCE_JS_TAG = (
     f'<script defer src="/static/operational-intelligence-v4.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
-FIELD_OBSERVATIONS_CSS_TAG = (
-    f'<link rel="stylesheet" href="/static/field-observations-v1.css?v={FRONTEND_ASSET_VERSION}">'
-)
-FIELD_OBSERVATIONS_JS_TAG = (
-    f'<script defer src="/static/field-observations-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
-)
-SMOKE_CONTEXT_CSS_TAG = (
-    f'<link rel="stylesheet" href="/static/smoke-context-v1.css?v={FRONTEND_ASSET_VERSION}">'
-)
-SMOKE_CONTEXT_JS_TAG = (
-    f'<script defer src="/static/smoke-context-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
-)
 
 
 @app.after_request
@@ -170,10 +158,6 @@ def inject_operational_frontend(response):
                 styles.append(OPERATIONAL_UI_CSS_TAG)
             if OPERATIONAL_INTELLIGENCE_CSS_TAG not in page_html:
                 styles.append(OPERATIONAL_INTELLIGENCE_CSS_TAG)
-            if FIELD_OBSERVATIONS_CSS_TAG not in page_html:
-                styles.append(FIELD_OBSERVATIONS_CSS_TAG)
-            if SMOKE_CONTEXT_CSS_TAG not in page_html:
-                styles.append(SMOKE_CONTEXT_CSS_TAG)
             if "map-frame" in page_html and SMOKE_MAP_BRIDGE_CSS_TAG not in page_html:
                 styles.append(SMOKE_MAP_BRIDGE_CSS_TAG)
             if "map-frame" in page_html and SMOKE_OPTIN_CSS_TAG not in page_html:
@@ -187,7 +171,8 @@ def inject_operational_frontend(response):
 
             scripts = []
             # Map Bridge is passive until Leaflet exists. Smoke Opt-in owns the
-            # explicit activation and dynamically loads the actual smoke model.
+            # explicit activation and dynamically loads the actual smoke model,
+            # local observations and røgkontekst in dependency order.
             if "map-frame" in page_html and SMOKE_MAP_BRIDGE_JS_TAG not in page_html:
                 scripts.append(SMOKE_MAP_BRIDGE_JS_TAG)
             if "map-frame" in page_html and SMOKE_OPTIN_JS_TAG not in page_html:
@@ -196,10 +181,6 @@ def inject_operational_frontend(response):
                 scripts.append(OPERATIONAL_UI_JS_TAG)
             if OPERATIONAL_INTELLIGENCE_JS_TAG not in page_html:
                 scripts.append(OPERATIONAL_INTELLIGENCE_JS_TAG)
-            if FIELD_OBSERVATIONS_JS_TAG not in page_html:
-                scripts.append(FIELD_OBSERVATIONS_JS_TAG)
-            if SMOKE_CONTEXT_JS_TAG not in page_html:
-                scripts.append(SMOKE_CONTEXT_JS_TAG)
 
             if scripts and "</body>" in page_html:
                 page_html = page_html.replace(

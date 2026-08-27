@@ -28,6 +28,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check frontend JavaScript
+        run: |
+          node --check static/smoke-v3.js
+          node --check static/operational-ui.js
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

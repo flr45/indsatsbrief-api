@@ -92,6 +92,53 @@ class DanskAdresseAdapterTests(unittest.TestCase):
         self.assertEqual(building["basement_area_m2"], 69)
         self.assertEqual(len(building["technical_installations"]), 1)
 
+    def test_native_v1_code_fields_are_translated(self):
+        result = {
+            "ok": True,
+            "cache": "miss",
+            "payload": {
+                "id": self.address["access_address_id"],
+                "husnr": "1",
+                "bbr": {
+                    "bygning": {
+                        "id": "building-1",
+                        "status": 6,
+                        "bygningsnummer": 10,
+                        "anvendelse": 223,
+                        "opfoerelsesaar": 1978,
+                        "antal_etager": 1,
+                        "samlet_bygningsareal": 4093,
+                        "samlet_boligareal": 2280,
+                        "ydervaeggens_materiale": 5,
+                        "tagdaekningsmateriale": 2,
+                        "varmeinstallation": 7,
+                        "opvarmningsmiddel": 1,
+                        "supplerende_varme": 5,
+                        "vandforsyning": 1,
+                        "asbestholdigt_materiale": 0,
+                        "fredning": 0,
+                    },
+                    "enhed": None,
+                    "etager": [],
+                    "tekniske_anlaeg": [],
+                    "grunde": [],
+                    "opgange": [],
+                },
+            },
+        }
+
+        building = bbr_danskadresse.normalize(result, self.address, FakeAppModule)
+
+        self.assertEqual(building["building_type_text"], "Værksted")
+        self.assertEqual(building["outer_wall_material_text"], "Træ")
+        self.assertEqual(building["roof_material_text"], "Cementtagsten")
+        self.assertEqual(building["heating_installation_text"], "Elvarme")
+        self.assertEqual(building["heating_fuel_text"], "El")
+        self.assertEqual(building["supplementary_heating_text"], "Solenergi")
+        self.assertEqual(building["water_supply_text"], "Alment vandforsyningsanlæg")
+        self.assertEqual(building["asbestos_material_text"], "Nej")
+        self.assertEqual(building["preservation_status_text"], "Ingen")
+
     def test_payload_envelope_is_supported(self):
         payload = {
             "data": {
@@ -107,6 +154,13 @@ class DanskAdresseAdapterTests(unittest.TestCase):
         )
         self.assertTrue(normalized["basement_present"])
         self.assertIsNone(normalized["basement_area_m2"])
+
+    def test_native_floor_area_alias_is_supported(self):
+        normalized = bbr_danskadresse._normalize_floors(
+            {"etager": [{"etagebetegnelse": "kl", "samlet_etage_areal": 80}]}
+        )
+        self.assertTrue(normalized["basement_present"])
+        self.assertEqual(normalized["basement_area_m2"], 80)
 
 
 if __name__ == "__main__":

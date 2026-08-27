@@ -5,11 +5,16 @@ import bbr_danskadresse
 import danskadresse_full
 import datafordeler_asbestos
 import property_inventory
+import smoke_context
 import wsgi as runtime
 
 
 app = runtime.app
 legacy = runtime.legacy
+
+# Add the authenticated OSM wind-sector endpoint without touching the legacy
+# application routes. The endpoint is read-only and caches nearby OSM objects.
+smoke_context.register_routes(app, legacy)
 
 
 # wsgi._provider_bbr_lookup resolves bbr_danskadresse.get_building at request
@@ -108,9 +113,10 @@ legacy.build_deterministic_building_sections = enriched_build_deterministic_buil
 
 
 # Versioned front-end assets. Smoke v3 remains the calculation engine,
-# Operational Intelligence v4 is the main UX layer, and Field Observations v1
-# can temporarily override wind inputs for the smoke model in the browser.
-FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux4-field1"
+# Operational Intelligence v4 is the main UX layer, Field Observations v1 can
+# override wind locally, and Smoke Context v1 screens selected OSM places in a
+# downwind sector. The version bump intentionally breaks browser caches.
+FRONTEND_ASSET_VERSION = "20260827-smoke-v30-ux4-field1-context1"
 SMOKE_MAP_JS_TAG = (
     f'<script defer src="/static/smoke-v3.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
@@ -135,6 +141,12 @@ FIELD_OBSERVATIONS_CSS_TAG = (
 FIELD_OBSERVATIONS_JS_TAG = (
     f'<script defer src="/static/field-observations-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
+SMOKE_CONTEXT_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/smoke-context-v1.css?v={FRONTEND_ASSET_VERSION}">'
+)
+SMOKE_CONTEXT_JS_TAG = (
+    f'<script defer src="/static/smoke-context-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
 
 
 @app.after_request
@@ -154,6 +166,8 @@ def inject_operational_frontend(response):
                 styles.append(OPERATIONAL_INTELLIGENCE_CSS_TAG)
             if FIELD_OBSERVATIONS_CSS_TAG not in page_html:
                 styles.append(FIELD_OBSERVATIONS_CSS_TAG)
+            if SMOKE_CONTEXT_CSS_TAG not in page_html:
+                styles.append(SMOKE_CONTEXT_CSS_TAG)
             if "map-frame" in page_html and SMOKE_MAP_CSS_TAG not in page_html:
                 styles.append(SMOKE_MAP_CSS_TAG)
             if styles and "</head>" in page_html:
@@ -172,6 +186,8 @@ def inject_operational_frontend(response):
                 scripts.append(OPERATIONAL_INTELLIGENCE_JS_TAG)
             if FIELD_OBSERVATIONS_JS_TAG not in page_html:
                 scripts.append(FIELD_OBSERVATIONS_JS_TAG)
+            if SMOKE_CONTEXT_JS_TAG not in page_html:
+                scripts.append(SMOKE_CONTEXT_JS_TAG)
 
             if scripts and "</body>" in page_html:
                 page_html = page_html.replace(

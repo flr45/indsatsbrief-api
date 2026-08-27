@@ -8,6 +8,7 @@
     advanced: null,
     advancedBody: null,
     modelScriptPromise: null,
+    uiSyncQueued: false,
   };
 
   function assetVersion() {
@@ -42,6 +43,11 @@
     return button;
   }
 
+  function launcherNeedsUpdate(launcher) {
+    const desiredState = state.active ? "active" : state.loading ? "loading" : "idle";
+    return launcher?.dataset?.state !== desiredState;
+  }
+
   function renderLauncher() {
     const frame = currentFrame();
     if (!frame) return null;
@@ -53,6 +59,9 @@
       frame.insertAdjacentElement("beforebegin", launcher);
     }
     state.launcher = launcher;
+    if (!launcherNeedsUpdate(launcher)) return launcher;
+
+    launcher.dataset.state = state.active ? "active" : state.loading ? "loading" : "idle";
     launcher.replaceChildren();
 
     const text = document.createElement("div");
@@ -79,10 +88,10 @@
       actions.appendChild(start);
     } else {
       actions.appendChild(makeButton("Indstillinger", "ib-smoke-optin-settings", () => {
-        ensureAdvancedWorkspace();
-        if (!state.advanced) return;
-        state.advanced.open = !state.advanced.open;
-        if (state.advanced.open) state.advanced.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        const details = ensureAdvancedWorkspace();
+        if (!details) return;
+        details.open = !details.open;
+        if (details.open) details.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }));
     }
     launcher.append(text, actions);
@@ -125,22 +134,21 @@
       document.body.classList.add("ib-smoke-analysis-active");
       window.dispatchEvent(new CustomEvent("indsatsbrief:smoke-analysis-state", { detail: { active: true } }));
       renderLauncher();
-      window.setTimeout(() => {
-        ensureAdvancedWorkspace();
-        compactOperationalGlance();
-      }, 120);
-      window.setTimeout(() => {
-        ensureAdvancedWorkspace();
-        compactOperationalGlance();
-      }, 900);
+      queueUiSync();
+      window.setTimeout(queueUiSync, 180);
+      window.setTimeout(queueUiSync, 900);
     } catch (error) {
       console.warn("[IndsatsBrief] Røganalyse kunne ikke startes", error);
       state.modelScriptPromise = null;
-      const launcher = renderLauncher();
-      const detail = launcher?.querySelector("small");
+      const launcher = document.getElementById("ib-smoke-optin");
+      if (launcher) launcher.dataset.state = "";
+      const rendered = renderLauncher();
+      const detail = rendered?.querySelector("small");
       if (detail) detail.textContent = "Røgmodellen kunne ikke indlæses. Det almindelige kort er stadig tilgængeligt.";
     } finally {
       state.loading = false;
+      const launcher = document.getElementById("ib-smoke-optin");
+      if (launcher) launcher.dataset.state = "";
       renderLauncher();
     }
   }
@@ -228,26 +236,64 @@
     });
   }
 
-  function observeUi() {
-    const observer = new MutationObserver(() => {
-      renderLauncher();
+  function compactNavigation() {
+    if (state.active) return;
+    document.querySelectorAll('.ib-quick-nav [data-target="ib-smoke-context-panel"]').forEach((node) => node.remove());
+  }
+
+  function queueUiSync() {
+    if (state.uiSyncQueued) return;
+    state.uiSyncQueued = true;
+    window.requestAnimationFrame(() => {
+      state.uiSyncQueued = false;
       compactOperationalGlance();
+      compactNavigation();
       if (state.active) {
         ensureAdvancedWorkspace();
         moveAdvancedPanels();
       }
     });
+  }
+
+  function mutationIsRelevant(mutation) {
+    const target = mutation.target instanceof Element ? mutation.target : mutation.target?.parentElement;
+    if (target?.closest?.("#ib-smoke-optin, #ib-smoke-advanced")) return false;
+    if (target?.closest?.("#ib-operational-glance, .ib-quick-nav")) return true;
+    for (const node of mutation.addedNodes || []) {
+      if (!(node instanceof Element)) continue;
+      if (
+        node.matches?.("#ib-operational-glance, .ib-quick-nav, #ib-smoke-summary, #ib-smoke-controls, #ib-v4-scenario-helper, #ib-field-observations, #ib-smoke-context-panel") ||
+        node.querySelector?.("#ib-operational-glance, .ib-quick-nav, #ib-smoke-summary, #ib-smoke-controls, #ib-v4-scenario-helper, #ib-field-observations, #ib-smoke-context-panel")
+      ) return true;
+    }
+    return false;
+  }
+
+  function observeUi() {
+    const observer = new MutationObserver((mutations) => {
+      if (mutations.some(mutationIsRelevant)) queueUiSync();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function interceptSmokeShortcut() {
+    document.addEventListener("keydown", (event) => {
+      if (state.active || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (event.key.toLowerCase() !== "r") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      activate();
+    }, true);
   }
 
   function start() {
     renderLauncher();
     compactOperationalGlance();
+    compactNavigation();
     observeUi();
-    window.setTimeout(() => {
-      renderLauncher();
-      compactOperationalGlance();
-    }, 800);
+    interceptSmokeShortcut();
+    window.setTimeout(queueUiSync, 850);
   }
 
   window.IndsatsBriefSmokeOptIn = {

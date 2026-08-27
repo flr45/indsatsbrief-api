@@ -22,7 +22,7 @@ COPY --chown=app:app . .
 RUN chown app:app /app
 
 # Fail the image build early on syntax or provider-contract regressions.
-RUN python -m py_compile app.py wsgi.py enriched_wsgi.py bbr_danskadresse.py danskadresse_full.py asbestos_guard.py property_inventory.py \
+RUN python -m py_compile app.py wsgi.py enriched_wsgi.py bbr_danskadresse.py danskadresse_full.py asbestos_guard.py datafordeler_asbestos.py property_inventory.py \
     && python -m unittest discover -s tests -p 'test_*.py'
 
 USER app

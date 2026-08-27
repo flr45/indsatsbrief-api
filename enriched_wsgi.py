@@ -97,14 +97,23 @@ def enriched_build_deterministic_building_sections(raw_incident_data):
 legacy.build_deterministic_building_sections = enriched_build_deterministic_building_sections
 
 
-# Add the smoke-map enhancement only on pages that already contain the legacy
-# OpenStreetMap frame. The script progressively replaces that iframe with a
-# Leaflet map and leaves the iframe in place as a fallback if Leaflet fails.
-SMOKE_MAP_JS_TAG = '<script defer src="/static/smoke-map.js?v=20260827"></script>'
+# Versioned front-end assets. Changing this value is intentional: the previous
+# smoke-map v1 and v2 used the same URL, which allowed browsers to keep a cached
+# v1 script even after the v2 container had been deployed.
+FRONTEND_ASSET_VERSION = "20260827-smoke-v21-ux2"
+SMOKE_MAP_JS_TAG = (
+    f'<script defer src="/static/smoke-map.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
+OPERATIONAL_UI_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/operational-ui.css?v={FRONTEND_ASSET_VERSION}">'
+)
+OPERATIONAL_UI_JS_TAG = (
+    f'<script defer src="/static/operational-ui.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
 
 
 @app.after_request
-def inject_smoke_map_script(response):
+def inject_operational_frontend(response):
     if (
         response.mimetype == "text/html"
         and not response.direct_passthrough
@@ -112,18 +121,29 @@ def inject_smoke_map_script(response):
     ):
         try:
             page_html = response.get_data(as_text=True)
-            if (
-                "map-frame" in page_html
-                and SMOKE_MAP_JS_TAG not in page_html
-                and "</body>" in page_html
-            ):
+
+            if OPERATIONAL_UI_CSS_TAG not in page_html and "</head>" in page_html:
                 page_html = page_html.replace(
-                    "</body>",
-                    f"{SMOKE_MAP_JS_TAG}</body>",
+                    "</head>",
+                    f"{OPERATIONAL_UI_CSS_TAG}</head>",
                     1,
                 )
-                response.set_data(page_html)
-                response.headers.pop("Content-Length", None)
+
+            scripts = []
+            if "map-frame" in page_html and SMOKE_MAP_JS_TAG not in page_html:
+                scripts.append(SMOKE_MAP_JS_TAG)
+            if OPERATIONAL_UI_JS_TAG not in page_html:
+                scripts.append(OPERATIONAL_UI_JS_TAG)
+
+            if scripts and "</body>" in page_html:
+                page_html = page_html.replace(
+                    "</body>",
+                    "".join(scripts) + "</body>",
+                    1,
+                )
+
+            response.set_data(page_html)
+            response.headers.pop("Content-Length", None)
         except Exception:
-            app.logger.exception("Kunne ikke injicere røgkort-script")
+            app.logger.exception("Kunne ikke injicere operationelle frontend-assets")
     return response

@@ -284,6 +284,29 @@ def combine_checks(checks, coverage="main_building"):
     }
 
 
+def _merge_primary_check(checks, main_check):
+    """Keep the detailed primary-building result when the list endpoint is sparse."""
+    checks = list(checks or [])
+    if not isinstance(main_check, dict):
+        return checks
+
+    main_number = main_check.get("building_number")
+    if main_number not in (None, ""):
+        for index, check in enumerate(checks):
+            if check.get("building_number") == main_number:
+                if main_check.get("field_present"):
+                    checks[index] = main_check
+                else:
+                    for indicator in main_check.get("material_indicators") or []:
+                        if indicator not in check.get("material_indicators", []):
+                            check.setdefault("material_indicators", []).append(indicator)
+                return checks
+
+    if main_check.get("field_present"):
+        checks.append(main_check)
+    return checks
+
+
 def enrich_building(building, access_address_id=None):
     """Attach a property-wide asbestos_check object to normalized building data."""
     if not isinstance(building, dict):
@@ -294,6 +317,7 @@ def enrich_building(building, access_address_id=None):
 
     if all_result.get("ok") and all_result.get("buildings"):
         checks = [inspect_building(item) for item in all_result["buildings"]]
+        checks = _merge_primary_check(checks, main_check)
         combined = combine_checks(checks, coverage="all_registered_buildings")
         combined["source_status"] = "ok"
         combined["cache"] = all_result.get("cache")

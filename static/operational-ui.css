@@ -1,0 +1,261 @@
+/* Operational UX layer for IndsatsBrief.
+   Intentionally additive: the existing page structure and business logic remain unchanged. */
+
+:root {
+  --ib-nav-bg: rgba(6, 16, 28, 0.88);
+  --ib-nav-border: rgba(148, 177, 207, 0.22);
+  --ib-critical-bg: rgba(127, 29, 29, 0.28);
+  --ib-critical-border: rgba(248, 113, 113, 0.52);
+  --ib-caution-bg: rgba(120, 53, 15, 0.24);
+  --ib-caution-border: rgba(251, 191, 36, 0.44);
+}
+
+.ib-quick-nav {
+  position: sticky;
+  top: 10px;
+  z-index: 760;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0 16px;
+  padding: 7px;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  border: 1px solid var(--ib-nav-border);
+  border-radius: 999px;
+  background: var(--ib-nav-bg);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.ib-quick-nav::before {
+  content: "INDSATS";
+  flex: 0 0 auto;
+  padding: 0 7px 0 5px;
+  color: #74879b;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.ib-quick-nav a {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 5px 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #cbd8e6;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.ib-quick-nav a:hover,
+.ib-quick-nav a:focus-visible {
+  color: #fff;
+  border-color: rgba(148, 177, 207, 0.26);
+  background: rgba(255, 255, 255, 0.055);
+  transform: translateY(-1px);
+}
+
+.ib-quick-nav a.ib-active {
+  color: #fff;
+  border-color: rgba(248, 113, 113, 0.28);
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.30), rgba(249, 115, 22, 0.16));
+}
+
+.ib-section-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: #71849a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+#map-section {
+  position: relative;
+}
+
+.ib-map-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ib-map-heading-row > h2 {
+  margin: 0 !important;
+}
+
+.ib-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ib-map-action {
+  min-height: 34px !important;
+  width: auto !important;
+  padding: 5px 10px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(148, 177, 207, 0.24) !important;
+  background: rgba(24, 43, 65, 0.88) !important;
+  box-shadow: none !important;
+  color: #e8f0f7 !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+}
+
+.ib-map-action:hover:not(:disabled) {
+  background: rgba(42, 64, 90, 0.96) !important;
+}
+
+.ib-model-version {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.10);
+  color: #bfdbfe;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+#map-section:fullscreen,
+#map-section.ib-map-expanded {
+  display: flex !important;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  margin: 0;
+  padding: 14px;
+  border-radius: 0 !important;
+  background: #06101b !important;
+  overflow: auto;
+}
+
+#map-section.ib-map-expanded {
+  position: fixed !important;
+  inset: 0;
+  z-index: 5000;
+}
+
+#map-section:fullscreen #ib-operational-map,
+#map-section.ib-map-expanded #ib-operational-map,
+#map-section:fullscreen #map-frame,
+#map-section.ib-map-expanded #map-frame {
+  flex: 1 1 auto;
+  min-height: 56vh;
+  height: auto !important;
+  border-radius: 14px !important;
+}
+
+#map-section:fullscreen #ib-smoke-summary,
+#map-section.ib-map-expanded #ib-smoke-summary,
+#map-section:fullscreen #ib-smoke-controls,
+#map-section.ib-map-expanded #ib-smoke-controls,
+#map-section:fullscreen .map-links,
+#map-section.ib-map-expanded .map-links {
+  flex: 0 0 auto;
+}
+
+body.ib-map-lock {
+  overflow: hidden !important;
+}
+
+.ib-risk-banner {
+  display: none;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 14px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.ib-risk-banner.ib-visible {
+  display: block;
+}
+
+.ib-risk-banner.ib-critical {
+  border-color: var(--ib-critical-border);
+  background: var(--ib-critical-bg);
+  color: #fee2e2;
+  box-shadow: inset 4px 0 0 #ef4444;
+}
+
+.ib-risk-banner.ib-caution {
+  border-color: var(--ib-caution-border);
+  background: var(--ib-caution-bg);
+  color: #fef3c7;
+  box-shadow: inset 4px 0 0 #f59e0b;
+}
+
+#report li.ib-asbestos-positive {
+  border: 1px solid rgba(248, 113, 113, 0.30);
+  background: rgba(127, 29, 29, 0.22);
+  color: #fff;
+  font-weight: 850;
+}
+
+#report li.ib-asbestos-positive::before {
+  background: #ef4444 !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14) !important;
+}
+
+#report li.ib-asbestos-uncertain {
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  background: rgba(120, 53, 15, 0.16);
+}
+
+.ib-runtime-chip::after {
+  content: " · UX 2";
+  opacity: 0.68;
+}
+
+@media (max-width: 700px) {
+  .ib-quick-nav {
+    top: 6px;
+    margin-left: -2px;
+    margin-right: -2px;
+  }
+
+  .ib-quick-nav::before {
+    display: none;
+  }
+
+  .ib-map-heading-row {
+    align-items: flex-start;
+  }
+
+  .ib-map-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media print {
+  .ib-quick-nav,
+  .ib-map-actions,
+  .ib-model-version,
+  .ib-risk-banner {
+    display: none !important;
+  }
+}

@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import asbestos_guard
 
@@ -43,6 +44,34 @@ class AsbestosGuardTests(unittest.TestCase):
         lines = asbestos_guard.report_lines(building)
         self.assertTrue(any("ASBEST" in line for line in lines))
         self.assertTrue(any("1 af 2" in line for line in lines))
+
+    def test_full_primary_bbr_asbestos_survives_sparse_building_list(self):
+        building = {
+            "bbr_id": 1,
+            "asbestos_material": 1,
+            "asbestos_material_text": "Ja",
+            "raw_bbr_building": {
+                "bygningsnummer": 1,
+                "byg036AsbestholdigtMateriale": 1,
+            },
+        }
+        sparse_list = {
+            "ok": True,
+            "buildings": [
+                {"bygningsnummer": 1, "anvendelse_tekst": "Bolig"},
+                {"bygningsnummer": 2, "anvendelse_tekst": "Udhus"},
+            ],
+            "cache": "miss",
+        }
+
+        with patch.object(asbestos_guard, "fetch_all_buildings", return_value=sparse_list):
+            enriched = asbestos_guard.enrich_building(building, "access-1")
+
+        self.assertEqual(enriched["asbestos_check"]["status"], "yes")
+        self.assertEqual(enriched["asbestos_check"]["buildings_checked"], 2)
+        self.assertTrue(
+            any("ASBEST" in line for line in asbestos_guard.report_lines(enriched))
+        )
 
     def test_no_is_worded_as_bbr_registration_not_absolute_truth(self):
         combined = asbestos_guard.combine_checks(

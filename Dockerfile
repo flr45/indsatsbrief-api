@@ -17,8 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . .
 
-# Fail the image build early if the runtime layer or BBR adapter has a syntax error.
-RUN python -m py_compile app.py wsgi.py bbr_danskadresse.py
+# Fail the image build early on syntax or provider-contract regressions.
+RUN python -m py_compile app.py wsgi.py bbr_danskadresse.py \
+    && python -m unittest discover -s tests -p 'test_*.py'
 
 USER app
 

@@ -15,11 +15,19 @@ import requests
 from flask import jsonify, request
 
 
+# Public Overpass capacity can fluctuate. Keep multiple global endpoints and use
+# POST (the recommended form for non-trivial queries) rather than a long GET URL.
+# kumi remains last because it has occasionally shared availability issues with
+# the main public instance.
 OVERPASS_URLS = (
     "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
 CACHE_TTL_SECONDS = 900
+STALE_CACHE_MAX_AGE_SECONDS = 21600
+REQUESTED_QUERY_DEADLINE_SECONDS = 18
+DEGRADED_RADIUS_M = 2500
 _CACHE = {}
 _CACHE_LOCK = threading.RLock()
 
@@ -120,13 +128,13 @@ def _element_coordinates(element):
 def _overpass_query(lat, lon, radius_m):
     radius = int(radius_m)
     return f"""
-[out:json][timeout:8];
+[out:json][timeout:12];
 (
   nwr(around:{radius},{lat:.7f},{lon:.7f})[\"amenity\"~\"^(school|kindergarten|childcare|hospital|clinic|college|university|nursing_home|social_facility|prison)$\"];
   nwr(around:{radius},{lat:.7f},{lon:.7f})[\"healthcare\"~\"^(hospital|clinic|doctor|hospice|rehabilitation)$\"];
   nwr(around:{radius},{lat:.7f},{lon:.7f})[\"social_facility\"~\"^(nursing_home|assisted_living|group_home|day_care|shelter)$\"];
 );
-out center tags;
+out center tags qt;
 """.strip()
 
 
@@ -170,68 +178,168 @@ def _normalize_elements(payload, origin_lat, origin_lon):
     return places
 
 
-def fetch_nearby_places(lat, lon, radius_m):
-    """Fetch and cache nearby selected OSM places independently of wind direction."""
-    radius_m = int(_clamp(int(radius_m), 1000, 15000))
-    cache_key = (round(float(lat), 4), round(float(lon), 4), radius_m)
-    now = time.monotonic()
+def _cache_key(lat, lon, radius_m):
+    return (round(float(lat), 4), round(float(lon), 4), int(radius_m))
 
+
+def _read_cache(lat, lon, radius_m, allow_stale=False):
+    key = _cache_key(lat, lon, radius_m)
+    now = time.monotonic()
     with _CACHE_LOCK:
-        cached = _CACHE.get(cache_key)
-        if cached and now - cached["stored_at"] < CACHE_TTL_SECONDS:
+        cached = _CACHE.get(key)
+        if not cached:
+            return None
+        age = now - cached["stored_at"]
+        if age < CACHE_TTL_SECONDS:
             result = deepcopy(cached["result"])
             result["cache"] = "hit"
+            result["cache_age_seconds"] = round(age)
             return result
-        if cached:
-            _CACHE.pop(cache_key, None)
+        if allow_stale and age < STALE_CACHE_MAX_AGE_SECONDS:
+            result = deepcopy(cached["result"])
+            result["cache"] = "stale"
+            result["cache_age_seconds"] = round(age)
+            result["degraded"] = True
+            result["degraded_reason"] = "Live OSM-opslag fejlede; viser seneste cachede resultat."
+            return result
+        _CACHE.pop(key, None)
+    return None
 
+
+def _store_cache(lat, lon, radius_m, result):
+    key = _cache_key(lat, lon, radius_m)
+    with _CACHE_LOCK:
+        while len(_CACHE) >= 128:
+            oldest = min(_CACHE, key=lambda item: _CACHE[item]["stored_at"])
+            _CACHE.pop(oldest, None)
+        _CACHE[key] = {"stored_at": time.monotonic(), "result": deepcopy(result)}
+
+
+def _request_overpass(lat, lon, radius_m, deadline_seconds=REQUESTED_QUERY_DEADLINE_SECONDS):
     query = _overpass_query(float(lat), float(lon), radius_m)
     attempts = []
     started = time.monotonic()
+
     for url in OVERPASS_URLS:
-        if time.monotonic() - started > 9:
+        elapsed = time.monotonic() - started
+        if elapsed >= deadline_seconds:
             break
+        remaining = max(2.5, deadline_seconds - elapsed)
+        read_timeout = min(7.0, max(3.5, remaining - 0.5))
         try:
-            response = requests.get(
+            response = requests.post(
                 url,
-                params={"data": query},
+                data={"data": query},
                 headers={
-                    "User-Agent": "IndsatsBrief/1.4 smoke-context",
+                    "User-Agent": "IndsatsBrief/1.5 smoke-context",
                     "Accept": "application/json",
                 },
-                timeout=(2, 6),
+                timeout=(2.5, read_timeout),
             )
-            attempts.append({"url": url, "status_code": response.status_code})
+            attempt = {"url": url, "status_code": response.status_code}
+            attempts.append(attempt)
             response.raise_for_status()
             payload = response.json()
-            places = _normalize_elements(payload, float(lat), float(lon))
+            return {
+                "ok": True,
+                "payload": payload,
+                "working_overpass_url": url,
+                "attempts": attempts,
+            }
+        except (requests.RequestException, ValueError) as error:
+            attempts.append({"url": url, "error": str(error)})
+
+    return {"ok": False, "attempts": attempts}
+
+
+def fetch_nearby_places(lat, lon, radius_m):
+    """Fetch and cache nearby selected OSM places independently of wind direction.
+
+    If public Overpass capacity is unavailable, prefer a stale cache or a clearly
+    labelled smaller-radius partial result instead of returning an opaque timeout.
+    """
+    radius_m = int(_clamp(int(radius_m), 1000, 15000))
+    cached = _read_cache(lat, lon, radius_m)
+    if cached:
+        return cached
+
+    live = _request_overpass(lat, lon, radius_m)
+    if live.get("ok"):
+        places = _normalize_elements(live.get("payload") or {}, float(lat), float(lon))
+        result = {
+            "ok": True,
+            "source": "OpenStreetMap via Overpass API",
+            "working_overpass_url": live.get("working_overpass_url"),
+            "radius_m": radius_m,
+            "requested_radius_m": radius_m,
+            "places": places,
+            "nearby_count": len(places),
+            "cache": "miss",
+            "degraded": False,
+            "attempts": live.get("attempts") or [],
+        }
+        _store_cache(lat, lon, radius_m, result)
+        return result
+
+    stale = _read_cache(lat, lon, radius_m, allow_stale=True)
+    if stale:
+        stale["attempts"] = live.get("attempts") or []
+        return stale
+
+    # A large around-query is the most common failure mode on free public
+    # Overpass instances. Retry a smaller operational radius and explicitly mark
+    # the result as partial instead of pretending it covers the requested range.
+    if radius_m > DEGRADED_RADIUS_M:
+        degraded_radius = DEGRADED_RADIUS_M
+        degraded_cached = _read_cache(lat, lon, degraded_radius, allow_stale=True)
+        if degraded_cached:
+            degraded_cached["requested_radius_m"] = radius_m
+            degraded_cached["radius_m"] = degraded_radius
+            degraded_cached["degraded"] = True
+            degraded_cached["degraded_reason"] = (
+                f"OSM kunne ikke hente {round(radius_m / 1000, 1)} km; "
+                f"viser delresultat inden for {round(degraded_radius / 1000, 1)} km."
+            )
+            degraded_cached["attempts"] = live.get("attempts") or []
+            return degraded_cached
+
+        degraded_live = _request_overpass(lat, lon, degraded_radius, deadline_seconds=10)
+        if degraded_live.get("ok"):
+            places = _normalize_elements(
+                degraded_live.get("payload") or {}, float(lat), float(lon)
+            )
             result = {
                 "ok": True,
                 "source": "OpenStreetMap via Overpass API",
-                "working_overpass_url": url,
-                "radius_m": radius_m,
+                "working_overpass_url": degraded_live.get("working_overpass_url"),
+                "radius_m": degraded_radius,
+                "requested_radius_m": radius_m,
                 "places": places,
                 "nearby_count": len(places),
                 "cache": "miss",
+                "degraded": True,
+                "degraded_reason": (
+                    f"OSM kunne ikke hente {round(radius_m / 1000, 1)} km; "
+                    f"viser delresultat inden for {round(degraded_radius / 1000, 1)} km."
+                ),
+                "attempts": (live.get("attempts") or [])
+                + (degraded_live.get("attempts") or []),
             }
-            with _CACHE_LOCK:
-                while len(_CACHE) >= 128:
-                    oldest = min(_CACHE, key=lambda item: _CACHE[item]["stored_at"])
-                    _CACHE.pop(oldest, None)
-                _CACHE[cache_key] = {"stored_at": now, "result": deepcopy(result)}
+            _store_cache(lat, lon, degraded_radius, result)
             return result
-        except (requests.RequestException, ValueError) as error:
-            if attempts:
-                attempts[-1]["error"] = str(error)
 
     return {
         "ok": False,
         "source": "OpenStreetMap via Overpass API",
         "radius_m": radius_m,
+        "requested_radius_m": radius_m,
         "places": [],
         "nearby_count": 0,
-        "attempts": attempts,
-        "error": "OSM-kontekst kunne ikke hentes inden for timeout.",
+        "attempts": live.get("attempts") or [],
+        "error": (
+            "De offentlige OSM/Overpass-servere svarede ikke i tide. "
+            "Prøv igen eller vælg 2 km; selve røgmodellen er ikke påvirket."
+        ),
         "cache": "miss",
     }
 
@@ -267,8 +375,13 @@ def build_context(lat, lon, direction_to, radius_m=5000, half_angle=45):
     return {
         "ok": True,
         "source": nearby.get("source"),
+        "working_overpass_url": nearby.get("working_overpass_url"),
         "cache": nearby.get("cache"),
+        "cache_age_seconds": nearby.get("cache_age_seconds"),
         "radius_m": nearby.get("radius_m"),
+        "requested_radius_m": nearby.get("requested_radius_m", nearby.get("radius_m")),
+        "degraded": bool(nearby.get("degraded")),
+        "degraded_reason": nearby.get("degraded_reason"),
         "direction_to_deg": round(normalize_bearing(direction_to), 1),
         "half_angle_deg": round(float(half_angle), 1),
         "nearby_count": nearby.get("nearby_count", 0),

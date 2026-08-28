@@ -1,0 +1,242 @@
+/* IndsatsBrief layout stabilization v1.
+   The smoke tools often live in a narrow right-hand card even on a wide
+   desktop viewport. Use the actual component width instead of viewport-only
+   breakpoints, and never let controls or long model text push outside cards. */
+
+#map-section {
+  container-type: inline-size;
+  container-name: ib-map-panel;
+  max-width: 100%;
+  min-width: 0;
+  overflow: clip;
+}
+
+#map-section *,
+#ib-smoke-advanced *,
+#ib-operational-glance * {
+  box-sizing: border-box;
+}
+
+#ib-operational-map,
+#ib-smoke-summary,
+#ib-smoke-controls,
+#ib-smoke-advanced,
+#ib-v4-scenario-helper,
+#ib-field-observations,
+#ib-smoke-context-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Model result cards: auto-fit based on the actual container width. */
+.ib-v3-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)) !important;
+}
+
+.ib-v3-detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)) !important;
+}
+
+.ib-v3-metric,
+.ib-v3-detail-grid > div {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ib-v3-metric-title {
+  font-size: 10.5px !important;
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere;
+}
+
+.ib-v3-metric strong {
+  display: block;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  font-size: 14px !important;
+  line-height: 1.15 !important;
+}
+
+.ib-v3-metric small,
+.ib-v3-detail-grid,
+.ib-v3-note,
+.ib-v3-disclaimer,
+.ib-v3-asbestos-note {
+  font-size: 10.5px !important;
+  line-height: 1.42 !important;
+  overflow-wrap: anywhere;
+}
+
+.ib-v3-detail-grid > div {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.ib-v3-detail-grid strong {
+  white-space: normal !important;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Controls must respond to the card width, not the browser width. */
+#ib-smoke-controls {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)) !important;
+  align-items: end;
+}
+
+#ib-smoke-controls .ib-v3-profile {
+  grid-column: auto !important;
+}
+
+#ib-smoke-controls .ib-v3-toggles {
+  grid-column: 1 / -1 !important;
+  min-width: 0;
+}
+
+#ib-smoke-controls select,
+#ib-smoke-controls input,
+#ib-smoke-controls button,
+#ib-field-observations select,
+#ib-field-observations input,
+#ib-field-observations button,
+#ib-smoke-context-panel select,
+#ib-smoke-context-panel input,
+#ib-smoke-context-panel button {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ib-v3-toggles,
+.ib-v4-scenario-presets,
+.ib-v4-scenario-secondary,
+.ib-field-observation-row,
+.ib-field-observation-actions {
+  flex-wrap: wrap !important;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ib-v3-toggle,
+.ib-v4-scenario,
+.ib-v4-mini-action {
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+/* Røgkontekst used fixed 120/130/auto columns, which overflowed in the narrow
+   right rail. Auto-fit keeps every control readable. */
+.ib-context-controls {
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)) !important;
+}
+
+.ib-context-scan {
+  width: 100% !important;
+  white-space: normal !important;
+}
+
+.ib-context-heading,
+.ib-context-result-summary,
+.ib-context-place {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ib-context-heading strong,
+.ib-context-heading span,
+.ib-context-result-summary strong,
+.ib-context-result-summary span,
+.ib-context-result-summary em,
+.ib-context-place strong,
+.ib-context-place span,
+.ib-context-note,
+.ib-context-error,
+.ib-context-loading,
+.ib-context-empty,
+.ib-context-none {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+}
+
+.ib-context-place {
+  grid-template-columns: 29px minmax(0, 1fr) !important;
+}
+
+.ib-context-place a {
+  grid-column: 2;
+  justify-self: start;
+  max-width: 100%;
+}
+
+#ib-smoke-optin {
+  flex-wrap: wrap;
+}
+
+.ib-smoke-optin-copy {
+  flex: 1 1 220px;
+}
+
+.ib-smoke-optin-actions {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+/* In a narrow right rail, favor two readable result cards over four clipped
+   cards. Fullscreen naturally grows back to more columns through auto-fit. */
+@container ib-map-panel (max-width: 620px) {
+  .ib-v3-metrics,
+  .ib-v3-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #ib-smoke-controls,
+  .ib-context-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ib-v3-summary-heading,
+  .ib-context-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ib-v3-confidence {
+    white-space: normal !important;
+  }
+}
+
+@container ib-map-panel (max-width: 420px) {
+  .ib-v3-metrics,
+  .ib-v3-detail-grid,
+  #ib-smoke-controls,
+  .ib-context-controls {
+    grid-template-columns: 1fr !important;
+  }
+
+  #ib-smoke-controls .ib-v3-toggles {
+    grid-column: auto !important;
+  }
+
+  .ib-smoke-optin-actions,
+  .ib-smoke-optin-actions > button {
+    width: 100%;
+  }
+}
+
+/* Fullscreen should remain roomy and readable, not stretch text into one long
+   line. */
+#map-section:fullscreen #ib-smoke-summary,
+#map-section.ib-map-expanded #ib-smoke-summary,
+#map-section:fullscreen #ib-smoke-advanced,
+#map-section.ib-map-expanded #ib-smoke-advanced {
+  max-width: 1500px;
+  margin-left: auto;
+  margin-right: auto;
+}

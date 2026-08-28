@@ -1,9 +1,14 @@
 import unittest
+from unittest.mock import patch
 
 import smoke_context
 
 
 class SmokeContextTests(unittest.TestCase):
+    def setUp(self):
+        with smoke_context._CACHE_LOCK:
+            smoke_context._CACHE.clear()
+
     def test_angular_difference_wraps_north(self):
         self.assertAlmostEqual(smoke_context.angular_difference(350, 10), 20)
         self.assertAlmostEqual(smoke_context.angular_difference(90, 270), 180)
@@ -49,6 +54,43 @@ class SmokeContextTests(unittest.TestCase):
         self.assertEqual(places[0]["category"], "childcare")
         self.assertEqual(places[0]["name"], "Børnehuset")
         self.assertGreater(places[0]["distance_m"], 1000)
+
+    def test_overpass_query_is_post_friendly_and_bounded(self):
+        query = smoke_context._overpass_query(55.4, 11.35, 2000)
+        self.assertIn("[timeout:12]", query)
+        self.assertIn("around:2000", query)
+        self.assertIn("out center tags qt;", query)
+
+    @patch("smoke_context._request_overpass")
+    def test_large_radius_falls_back_to_clearly_marked_partial_result(self, request_mock):
+        request_mock.side_effect = [
+            {"ok": False, "attempts": [{"url": "primary", "error": "timeout"}]},
+            {
+                "ok": True,
+                "working_overpass_url": "fallback",
+                "attempts": [{"url": "fallback", "status_code": 200}],
+                "payload": {
+                    "elements": [
+                        {
+                            "type": "node",
+                            "id": 1,
+                            "lat": 55.401,
+                            "lon": 11.351,
+                            "tags": {"amenity": "school", "name": "Testskole"},
+                        }
+                    ]
+                },
+            },
+        ]
+
+        result = smoke_context.fetch_nearby_places(55.4, 11.35, 5000)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["degraded"])
+        self.assertEqual(result["requested_radius_m"], 5000)
+        self.assertEqual(result["radius_m"], smoke_context.DEGRADED_RADIUS_M)
+        self.assertEqual(result["nearby_count"], 1)
+        self.assertIn("delresultat", result["degraded_reason"])
 
 
 if __name__ == "__main__":

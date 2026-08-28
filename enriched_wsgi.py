@@ -40,9 +40,33 @@ def get_building_with_asbestos(address_data, app_module):
 bbr_danskadresse.get_building = get_building_with_asbestos
 
 
+def _construction_year(building):
+    if not isinstance(building, dict):
+        return None
+    for key in ("construction_year", "opfoerelsesaar", "byg026Opfoerelsesaar"):
+        value = building.get(key)
+        try:
+            year = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 1800 <= year <= 2200:
+            return year
+    raw = building.get("raw_bbr_building")
+    if isinstance(raw, dict):
+        try:
+            year = int(raw.get("byg026Opfoerelsesaar"))
+        except (TypeError, ValueError):
+            year = None
+        if year and 1800 <= year <= 2200:
+            return year
+    return None
+
+
 # Always surface the asbestos control result and all registered BBR buildings.
 # The older enrichment only emitted an asbestos line when BBR said yes;
-# operationally we also need no/unknown/not-returned to be explicit.
+# operationally we also need no/unknown/not-returned to be explicit. When the
+# authoritative fallback is not configured, say that directly instead of
+# making "field not returned" look like a successful negative lookup.
 _original_operational_report_additions = danskadresse_full.operational_report_additions
 
 
@@ -63,6 +87,35 @@ def operational_report_additions_with_asbestos(building):
         detail = f"Asbesttype: {fallback['location_text']}"
         if detail not in risk_lines:
             risk_lines.append(detail)
+    elif fallback.get("status") == "unavailable":
+        error_text = str(fallback.get("error") or "")
+        if "DATAFORDELER_API_KEY" in error_text:
+            detail = (
+                "Asbestkilde: direkte BBR-asbestopslag er ikke konfigureret "
+                "(Datafordeler API-key mangler)"
+            )
+            if detail not in risk_lines:
+                risk_lines.append(detail)
+
+    # Operational advisory only: Arbejdstilsynet treats pre-1990 buildings as
+    # a relevant asbestos-risk period. We still never infer a confirmed BBR
+    # registration from year/material text alone.
+    check = (building or {}).get("asbestos_check") or {}
+    year = _construction_year(building)
+    indicators = list(check.get("material_indicators") or [])
+    if (
+        check.get("status") in {"not_returned", "unknown", "partial_no"}
+        and year is not None
+        and year < 1990
+        and indicators
+    ):
+        advisory = (
+            f"Asbestmistanke: bygningen er opført {year} og har materialeindikator "
+            f"({'; '.join(indicators[:2])}). Dette er ikke dokumentation for asbest; "
+            "afklar med register/oplysninger eller forundersøgelse."
+        )
+        if advisory not in risk_lines:
+            risk_lines.append(advisory)
 
     additions["risk_context_lines"] = risk_lines
 
@@ -115,8 +168,9 @@ legacy.build_deterministic_building_sections = enriched_build_deterministic_buil
 # Versioned front-end assets. Smoke v3, Field Observations and Smoke Context are
 # intentionally NOT loaded during a normal address lookup. Smoke Opt-in v1 owns
 # the explicit activation and dynamically loads all smoke-analysis assets only
-# after the user asks for them.
-FRONTEND_ASSET_VERSION = "20260827-smoke-optin1-cleanup2-context-mapbridge1"
+# after the user asks for them. layout-hotfix-v1 is intentionally loaded last so
+# narrow right-rail cards respond to their component width rather than viewport.
+FRONTEND_ASSET_VERSION = "20260828-stabilize1-smoke-optin1-context2-mapbridge1"
 SMOKE_MAP_BRIDGE_JS_TAG = (
     f'<script defer src="/static/smoke-map-bridge-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
@@ -141,6 +195,9 @@ OPERATIONAL_INTELLIGENCE_CSS_TAG = (
 OPERATIONAL_INTELLIGENCE_JS_TAG = (
     f'<script defer src="/static/operational-intelligence-v4.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
+LAYOUT_HOTFIX_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/layout-hotfix-v1.css?v={FRONTEND_ASSET_VERSION}">'
+)
 
 
 @app.after_request
@@ -162,6 +219,8 @@ def inject_operational_frontend(response):
                 styles.append(SMOKE_MAP_BRIDGE_CSS_TAG)
             if "map-frame" in page_html and SMOKE_OPTIN_CSS_TAG not in page_html:
                 styles.append(SMOKE_OPTIN_CSS_TAG)
+            if LAYOUT_HOTFIX_CSS_TAG not in page_html:
+                styles.append(LAYOUT_HOTFIX_CSS_TAG)
             if styles and "</head>" in page_html:
                 page_html = page_html.replace(
                     "</head>",

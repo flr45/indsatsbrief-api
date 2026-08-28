@@ -132,6 +132,15 @@
     return `https://www.openstreetmap.org/?mlat=${encodeURIComponent(lat)}&mlon=${encodeURIComponent(lon)}#map=17/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}`;
   }
 
+  function appendRetryTwoKm(container) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ib-context-scan ib-context-retry";
+    button.textContent = "Prøv hurtigscan 2 km";
+    button.addEventListener("click", () => scanContext(2000, 45));
+    container.appendChild(button);
+  }
+
   function renderResults(container) {
     if (state.loading) {
       const loading = document.createElement("div");
@@ -144,7 +153,7 @@
     if (!state.result) {
       const empty = document.createElement("div");
       empty.className = "ib-context-empty";
-      empty.textContent = "Tryk Scan røgretning for at finde udvalgte sårbare steder i vindsektoren.";
+      empty.textContent = "Tryk Scan røgretning for at finde udvalgte sårbare steder i vindsektoren. 2 km er hurtig standard; udvid kun ved behov.";
       container.appendChild(empty);
       return;
     }
@@ -154,6 +163,7 @@
       error.className = "ib-context-error";
       error.textContent = state.result.error || "OSM-screeningen kunne ikke hentes.";
       container.appendChild(error);
+      appendRetryTwoKm(container);
       return;
     }
 
@@ -164,7 +174,18 @@
     const detail = document.createElement("span");
     detail.textContent = `${state.result.nearby_count || 0} relevante OSM-objekter undersøgt i ${formatDistance(state.result.radius_m)}`;
     summary.append(strong, detail);
-    if (state.stale) {
+
+    if (state.result.degraded) {
+      const degraded = document.createElement("em");
+      degraded.className = "ib-context-degraded";
+      degraded.textContent = state.result.degraded_reason || "OSM-resultatet er et delresultat";
+      summary.appendChild(degraded);
+    } else if (state.result.cache === "stale") {
+      const cached = document.createElement("em");
+      cached.className = "ib-context-degraded";
+      cached.textContent = "Viser seneste cachede OSM-resultat";
+      summary.appendChild(cached);
+    } else if (state.stale) {
       const stale = document.createElement("em");
       stale.textContent = "Vind/model er ændret – scan igen";
       summary.appendChild(stale);
@@ -250,7 +271,8 @@
     controls.className = "ib-context-controls";
     const radiusLabel = document.createElement("label");
     radiusLabel.innerHTML = "<span>Afstand</span>";
-    const radiusSelect = createSelect([[2000, "2 km"], [5000, "5 km"], [10000, "10 km"]], state.result?.radius_m || 5000);
+    const defaultRadius = state.result?.requested_radius_m || state.result?.radius_m || 2000;
+    const radiusSelect = createSelect([[2000, "2 km · hurtig"], [5000, "5 km"], [10000, "10 km"]], defaultRadius);
     radiusLabel.appendChild(radiusSelect);
 
     const angleLabel = document.createElement("label");
@@ -274,7 +296,7 @@
 
     const note = document.createElement("p");
     note.className = "ib-context-note";
-    note.textContent = "Screeningen bruger en vindsektor – ikke den præcise røgpolygon. Fund betyder derfor ‘i forventet retning’, ikke dokumenteret røgpåvirkning. OSM kan være ufuldstændigt.";
+    note.textContent = "Screeningen bruger en vindsektor – ikke den præcise røgpolygon. Fund betyder derfor ‘i forventet retning’, ikke dokumenteret røgpåvirkning. OSM kan være ufuldstændigt, og offentlige Overpass-servere kan være belastede.";
     panel.appendChild(note);
   }
 

@@ -60,6 +60,22 @@
     return `${Math.round(number / 10) * 10} m`;
   }
 
+  function formatCacheAge(seconds) {
+    const value = toNumber(seconds);
+    if (value === null || value < 0) return null;
+    if (value < 120) return "under 2 min";
+    if (value < 3600) return `${Math.round(value / 60)} min`;
+    return `${Math.round(value / 3600)} t`;
+  }
+
+  function sourceLabel(result) {
+    const source = String(result?.source || "OpenStreetMap").trim();
+    const age = formatCacheAge(result?.cache_age_seconds);
+    if (result?.cache === "stale") return `${source} · ældre cache${age ? ` ${age}` : ""}`;
+    if (result?.cache === "hit") return `${source} · cache${age ? ` ${age}` : ""}`;
+    return `${source} · nyt opslag`;
+  }
+
   function resetForIncident(data) {
     if (data === state.incident) return;
     state.incident = data;
@@ -173,7 +189,10 @@
     strong.textContent = `${state.result.sector_count || 0} fund i sektoren`;
     const detail = document.createElement("span");
     detail.textContent = `${state.result.nearby_count || 0} relevante OSM-objekter undersøgt i ${formatDistance(state.result.radius_m)}`;
-    summary.append(strong, detail);
+    const provenance = document.createElement("span");
+    provenance.className = "ib-context-source";
+    provenance.textContent = sourceLabel(state.result);
+    summary.append(strong, detail, provenance);
 
     if (state.result.degraded) {
       const degraded = document.createElement("em");

@@ -1,0 +1,124 @@
+.ib-data-quality {
+  margin: 14px 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.54);
+  overflow: clip;
+}
+
+.ib-data-quality[hidden] {
+  display: none !important;
+}
+
+.ib-data-quality > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 15px;
+  user-select: none;
+}
+
+.ib-data-quality > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ib-data-quality > summary > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ib-data-quality > summary strong {
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+}
+
+.ib-data-quality > summary small,
+.ib-data-quality > summary em {
+  color: var(--muted, #94a3b8);
+  font-size: 0.76rem;
+  font-style: normal;
+}
+
+.ib-data-quality-body {
+  padding: 0 15px 14px;
+}
+
+.ib-data-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.ib-data-quality-item {
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(2, 6, 23, 0.38);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ib-data-quality-item::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #64748b;
+  margin-bottom: 2px;
+}
+
+.ib-data-quality-item.good::before {
+  background: #22c55e;
+}
+
+.ib-data-quality-item.fallback::before {
+  background: #f59e0b;
+}
+
+.ib-data-quality-item.warning::before {
+  background: #ef4444;
+}
+
+.ib-data-quality-item span {
+  color: var(--muted, #94a3b8);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ib-data-quality-item strong {
+  overflow-wrap: anywhere;
+  font-size: 0.84rem;
+}
+
+.ib-data-quality-item small {
+  color: var(--muted, #94a3b8);
+  line-height: 1.35;
+  font-size: 0.72rem;
+}
+
+.ib-data-quality-body > p {
+  margin: 10px 1px 0;
+  color: var(--muted, #94a3b8);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 680px) {
+  .ib-data-quality-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .ib-data-quality-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -170,7 +170,7 @@ legacy.build_deterministic_building_sections = enriched_build_deterministic_buil
 # the explicit activation and dynamically loads all smoke-analysis assets only
 # after the user asks for them. layout-hotfix-v1 is intentionally loaded last so
 # narrow right-rail cards respond to their component width rather than viewport.
-FRONTEND_ASSET_VERSION = "20260828-stabilize1-smoke-optin1-context2-mapbridge1"
+FRONTEND_ASSET_VERSION = "20260830-data-quality1"
 SMOKE_MAP_BRIDGE_JS_TAG = (
     f'<script defer src="/static/smoke-map-bridge-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
@@ -195,6 +195,12 @@ OPERATIONAL_INTELLIGENCE_CSS_TAG = (
 OPERATIONAL_INTELLIGENCE_JS_TAG = (
     f'<script defer src="/static/operational-intelligence-v4.js?v={FRONTEND_ASSET_VERSION}"></script>'
 )
+DATA_QUALITY_CSS_TAG = (
+    f'<link rel="stylesheet" href="/static/data-quality-v1.css?v={FRONTEND_ASSET_VERSION}">'
+)
+DATA_QUALITY_JS_TAG = (
+    f'<script defer src="/static/data-quality-v1.js?v={FRONTEND_ASSET_VERSION}"></script>'
+)
 LAYOUT_HOTFIX_CSS_TAG = (
     f'<link rel="stylesheet" href="/static/layout-hotfix-v1.css?v={FRONTEND_ASSET_VERSION}">'
 )
@@ -215,6 +221,8 @@ def inject_operational_frontend(response):
                 styles.append(OPERATIONAL_UI_CSS_TAG)
             if OPERATIONAL_INTELLIGENCE_CSS_TAG not in page_html:
                 styles.append(OPERATIONAL_INTELLIGENCE_CSS_TAG)
+            if DATA_QUALITY_CSS_TAG not in page_html:
+                styles.append(DATA_QUALITY_CSS_TAG)
             if "map-frame" in page_html and SMOKE_MAP_BRIDGE_CSS_TAG not in page_html:
                 styles.append(SMOKE_MAP_BRIDGE_CSS_TAG)
             if "map-frame" in page_html and SMOKE_OPTIN_CSS_TAG not in page_html:
@@ -240,6 +248,8 @@ def inject_operational_frontend(response):
                 scripts.append(OPERATIONAL_UI_JS_TAG)
             if OPERATIONAL_INTELLIGENCE_JS_TAG not in page_html:
                 scripts.append(OPERATIONAL_INTELLIGENCE_JS_TAG)
+            if DATA_QUALITY_JS_TAG not in page_html:
+                scripts.append(DATA_QUALITY_JS_TAG)
 
             if scripts and "</body>" in page_html:
                 page_html = page_html.replace(
